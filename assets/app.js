@@ -60,7 +60,7 @@
   const state = {
     headers: [], rows: [], sourceName: "", rawText: "", delimiter: ",", type: formTypes.at(-1), confidence: 0,
     quality: { blockers: [], warnings: [], info: [], completeness: 0 },
-    analysis: null, sampleMaxScore: null
+    analysis: null, sampleMaxScore: null, pendingWorkbook: null, workbookMeta: null
   };
 
   const $ = (id) => document.getElementById(id);
@@ -146,16 +146,83 @@
     return { blockers, warnings, info, completeness };
   }
 
+  function ingestTable(headers, rows, sourceName, sampleMaxScore = null, workbookMeta = null) {
+    state.headers = headers;
+    state.rows = rows;
+    state.sourceName = sourceName;
+    state.sampleMaxScore = sampleMaxScore;
+    state.workbookMeta = workbookMeta;
+    const recognized = classify(state.headers, state.rows);
+    state.type = recognized.type;
+    state.confidence = recognized.confidence;
+    state.quality = assessQuality(state.headers, state.rows);
+    if (workbookMeta?.headerRow) {
+      state.quality.info.unshift({
+        title: `تم اكتشاف صف العناوين في الصف ${workbookMeta.headerRow}`,
+        detail: `الورقة: ${workbookMeta.sheetName}. يمكنك مراجعة الأعمدة قبل التحليل.`
+      });
+    }
+    renderReview();
+    showPanel(2);
+  }
+
   function ingest(text, sourceName, sampleMaxScore = null) {
     clearMessage("inputMessage");
     try {
       const parsed = parseDelimited(text);
-      state.headers = parsed.headers; state.rows = parsed.rows; state.delimiter = parsed.delimiter; state.rawText = text;
-      state.sourceName = sourceName; state.sampleMaxScore = sampleMaxScore;
-      const recognized = classify(state.headers, state.rows); state.type = recognized.type; state.confidence = recognized.confidence;
-      state.quality = assessQuality(state.headers, state.rows);
-      renderReview(); showPanel(2);
-    } catch (err) { setMessage("inputMessage", err.message || "تعذر قراءة البيانات.", true); }
+      state.delimiter = parsed.delimiter;
+      state.rawText = text;
+      ingestTable(parsed.headers, parsed.rows, sourceName, sampleMaxScore, null);
+    } catch (err) {
+      setMessage("inputMessage", err.message || "تعذر قراءة البيانات.", true);
+    }
+  }
+
+  async function ingestExcel(file) {
+    clearMessage("inputMessage");
+    setMessage("inputMessage", "جارٍ قراءة مصنف Excel محليًا…");
+    try {
+      if (!window.TaqareerXlsx?.readWorkbook) throw new Error("وحدة قراءة Excel غير متاحة في هذه الصفحة.");
+      const workbook = await window.TaqareerXlsx.readWorkbook(file);
+      state.pendingWorkbook = workbook;
+      if (workbook.sheets.length === 1) {
+        applyWorkbookSheet(0);
+        return;
+      }
+      $("sheetSelect").innerHTML = workbook.sheets.map((sheet, index) =>
+        `<option value="${index}">${escapeHtml(sheet.name)} · ${sheet.rows.length} سجل · ${sheet.headers.length} أعمدة</option>`
+      ).join("");
+      $("sheetDialogSummary").textContent = `عُثر على ${workbook.sheets.length} أوراق تحتوي جداول واضحة. اختر الورقة المطلوبة.`;
+      clearMessage("inputMessage");
+      $("sheetDialog").showModal();
+    } catch (err) {
+      state.pendingWorkbook = null;
+      setMessage("inputMessage", err.message || "تعذر قراءة ملف Excel.", true);
+    }
+  }
+
+  function applyWorkbookSheet(index) {
+    const workbook = state.pendingWorkbook;
+    const sheet = workbook?.sheets?.[Number(index)];
+    if (!workbook || !sheet) return setMessage("inputMessage", "لم تُحدد ورقة Excel صالحة.", true);
+    state.rawText = "";
+    clearMessage("inputMessage");
+    ingestTable(sheet.headers, sheet.rows, `${workbook.name} · ${sheet.name}`, null, {
+      fileName: workbook.name,
+      sheetName: sheet.name,
+      headerRow: sheet.headerRow,
+      sheetCount: workbook.sheets.length
+    });
+    state.pendingWorkbook = null;
+  }
+
+  async function handleInputFile(file) {
+    if (!file) return;
+    const ext = file.name.split(".").pop().toLowerCase();
+    if (["csv", "tsv", "txt"].includes(ext)) return ingest(await file.text(), file.name);
+    if (["xlsx", "xlsm"].includes(ext)) return ingestExcel(file);
+    if (ext === "xls") return setMessage("inputMessage", "صيغة XLS القديمة غير مدعومة بعد. احفظ الملف بصيغة XLSX أو CSV ثم ارفعه.", false);
+    return setMessage("inputMessage", `صيغة ${ext.toUpperCase()} لم تُفعّل بعد. PDF وWord والصور تأتي بعد طبقة الاستخراج الموحّدة.`, false);
   }
 
   function renderReview() {
@@ -348,7 +415,7 @@
   }
 
   function exportAnalysis() {
-    const payload = { app: "تقارير", version: "0.2.0", generatedAt: new Date().toISOString(), source: state.sourceName, recognizedType: { id: state.type.id, name: state.type.name, confidence: state.confidence }, quality: state.quality, analysis: state.analysis };
+    const payload = { app: "تقارير", version: "0.3.0", generatedAt: new Date().toISOString(), source: state.sourceName, workbook: state.workbookMeta, recognizedType: { id: state.type.id, name: state.type.name, confidence: state.confidence }, quality: state.quality, analysis: state.analysis };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"}); const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download="taqareer-analysis.json"; a.click(); URL.revokeObjectURL(url);
   }
 
@@ -356,7 +423,7 @@
   function escapeAttr(v) { return escapeHtml(v); }
 
   function reset() {
-    Object.assign(state, { headers: [], rows: [], sourceName: "", rawText: "", delimiter: ",", type: formTypes.at(-1), confidence: 0, quality: { blockers: [], warnings: [], info: [], completeness: 0 }, analysis: null, sampleMaxScore: null });
+    Object.assign(state, { headers: [], rows: [], sourceName: "", rawText: "", delimiter: ",", type: formTypes.at(-1), confidence: 0, quality: { blockers: [], warnings: [], info: [], completeness: 0 }, analysis: null, sampleMaxScore: null, pendingWorkbook: null, workbookMeta: null });
     $("fileInput").value = ""; $("pasteInput").value = ""; clearMessage("inputMessage"); clearMessage("setupMessage"); showPanel(1);
   }
 
@@ -370,13 +437,11 @@
     }));
     $("sampleGrid").addEventListener("click", e => { const btn=e.target.closest("[data-sample]"); if(!btn)return; const s=samples.find(x=>x.id===btn.dataset.sample); ingest(s.text, `نموذج: ${s.title}`, s.maxScore); });
     $("parsePasteBtn").addEventListener("click", () => ingest($("pasteInput").value, "جدول ملصق"));
-    $("fileInput").addEventListener("change", async e => {
-      const file=e.target.files[0]; if(!file)return; const ext=file.name.split(".").pop().toLowerCase();
-      if (!["csv","tsv","txt"].includes(ext)) return setMessage("inputMessage", `صيغة ${ext.toUpperCase()} مدرجة في الخطة لكنها غير مفعلة في هذه النسخة. استخدم CSV حاليًا أو نموذجًا جاهزًا.`, false);
-      const text=await file.text(); ingest(text, file.name);
-    });
+    $("fileInput").addEventListener("change", async e => handleInputFile(e.target.files[0]));
     const zone=$("uploadZone"); ["dragenter","dragover"].forEach(ev=>zone.addEventListener(ev,e=>{e.preventDefault();zone.classList.add("dragover");})); ["dragleave","drop"].forEach(ev=>zone.addEventListener(ev,e=>{e.preventDefault();zone.classList.remove("dragover");}));
-    zone.addEventListener("drop", async e => { const file=e.dataTransfer.files[0]; if(!file)return; const ext=file.name.split(".").pop().toLowerCase(); if(!["csv","tsv","txt"].includes(ext)) return setMessage("inputMessage", `صيغة ${ext.toUpperCase()} غير مفعلة بعد.`, false); ingest(await file.text(), file.name); });
+    zone.addEventListener("drop", async e => { const file=e.dataTransfer.files[0]; if(file) await handleInputFile(file); });
+    $("applySheetBtn").addEventListener("click", e => { e.preventDefault(); const index=$("sheetSelect").value; $("sheetDialog").close(); applyWorkbookSheet(index); });
+    $("cancelSheetBtn").addEventListener("click", () => { state.pendingWorkbook=null; clearMessage("inputMessage"); });
 
     $("backToInputBtn").addEventListener("click",()=>showPanel(1));
     $("toSetupBtn").addEventListener("click",()=>{renderSetup();showPanel(3);});

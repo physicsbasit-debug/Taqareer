@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="تقارير - منصة التحليل التربوي الذكي" />
-  <title>تقارير | نواة استقبال البيانات v0.2.0</title>
+  <title>تقارير | قراءة Excel والنواة التحليلية v0.3.0</title>
   <link rel="stylesheet" href="assets/styles.css" />
 </head>
 <body>
@@ -18,7 +18,7 @@
         </div>
       </a>
       <div class="top-actions">
-        <span class="version-badge">نسخة تشغيلية مبكرة v0.2.0</span>
+        <span class="version-badge">نسخة تشغيلية مبكرة v0.3.0</span>
         <button id="resetTopBtn" class="ghost-button" type="button">بدء تحليل جديد</button>
       </div>
     </header>
@@ -26,12 +26,12 @@
     <main>
       <section class="hero">
         <div class="hero-copy">
-          <span class="eyebrow">Phase 1-A1 · نواة استقبال البيانات</span>
+          <span class="eyebrow">Phase 1-A2 · قراءة Excel الفعلية</span>
           <h2>ارفع البيانات، راجع ما فهمه النظام، ثم حلّلها دون متاهة إعدادات.</h2>
-          <p>تقرأ هذه النسخة CSV وTSV والنصوص الجدولية فعليًا، وتتعرف على بنية البيانات، وتفحص جودتها، ثم تنشئ تحليلًا أوليًا موثقًا. أما PDF وExcel وWord والصور فموجودة في المسار، لكنها لم تُفعّل بعد بدل الادعاء بأنها تعمل بقوة الإرادة.</p>
+          <p>تقرأ هذه النسخة CSV وTSV وملفات Excel الحديثة فعليًا داخل المتصفح، وتكتشف ورقة العمل وصف العناوين، ثم تعرض البيانات قبل التحليل. PDF وWord والصور لم تُفعّل بعد، لأننا نفضل ميزة تعمل على زر مزخرف يؤدي إلى لا شيء.</p>
         </div>
         <div class="hero-kpis">
-          <div><strong>فعلي</strong><span>قراءة CSV وTSV</span></div>
+          <div><strong>فعلي</strong><span>قراءة CSV وTSV وXLSX</span></div>
           <div><strong>مرن</strong><span>تعرف قابل للتوسع</span></div>
           <div><strong>واضح</strong><span>القيود الحرجة فقط تمنع</span></div>
         </div>
@@ -61,14 +61,14 @@
 
         <div id="input-file" class="input-mode active-input-mode">
           <label class="upload-zone" id="uploadZone" for="fileInput">
-            <input id="fileInput" type="file" accept=".csv,.tsv,.txt,.pdf,.xlsx,.xls,.doc,.docx,.png,.jpg,.jpeg" />
+            <input id="fileInput" type="file" accept=".csv,.tsv,.txt,.xlsx,.xlsm,.xls,.pdf,.doc,.docx,.png,.jpg,.jpeg" />
             <div class="upload-symbol" aria-hidden="true">↑</div>
             <strong>اختر ملف البيانات</strong>
-            <span>يُقرأ الآن: CSV وTSV وTXT الجدولي. الصيغ الأخرى تظهر حالتها بوضوح ولا تمرر تحليلًا وهميًا.</span>
+            <span>يُقرأ الآن: CSV وTSV وTXT الجدولي وXLSX وXLSM. ملفات XLS القديمة تحتاج تحويلًا إلى XLSX أو CSV.</span>
           </label>
           <div class="format-grid">
             <div class="format-card ready"><strong>CSV / TSV</strong><span>يعمل فعليًا</span></div>
-            <div class="format-card queued"><strong>Excel</strong><span>المرحلة التالية</span></div>
+            <div class="format-card ready"><strong>Excel XLSX</strong><span>يعمل فعليًا</span></div>
             <div class="format-card queued"><strong>PDF / Word</strong><span>المرحلة التالية</span></div>
             <div class="format-card queued"><strong>الصور</strong><span>بعد طبقة الاستخراج</span></div>
           </div>
@@ -226,15 +226,27 @@
       <section class="status-section">
         <div><span class="eyebrow light">شفافية التطوير</span><h3>ما يعمل الآن وما يأتي لاحقًا</h3></div>
         <div class="status-grid">
-          <div><strong>يعمل فعليًا</strong><span>CSV وTSV، لصق الجداول، التعرف الأولي، فحص الجودة، التحليل الوصفي، الإتقان، التصدير والطباعة.</span></div>
-          <div><strong>قيد التطوير</strong><span>قراءة Excel وPDF وWord والصور، ومطابقة القوالب المؤسسية المعقدة.</span></div>
+          <div><strong>يعمل فعليًا</strong><span>CSV وTSV وXLSX/XLSM، اختيار ورقة العمل، اكتشاف صف العناوين، لصق الجداول، فحص الجودة، التحليل الوصفي، الإتقان، التصدير والطباعة.</span></div>
+          <div><strong>قيد التطوير</strong><span>قراءة PDF وWord والصور، وتحسين فهم الجداول المركبة والقوالب المؤسسية المعقدة.</span></div>
           <div><strong>الربط الذكي القادم</strong><span>وظيفة خادمية آمنة للذكاء الاصطناعي، وتحليل نصي متعمق، وحفظ المشاريع والتقارير.</span></div>
         </div>
       </section>
     </main>
 
-    <footer><span>تقارير · v0.2.0</span><span>واجهة بسيطة فوق محركات يمكن تدقيقها.</span></footer>
+    <footer><span>تقارير · v0.3.0</span><span>واجهة بسيطة فوق محركات يمكن تدقيقها.</span></footer>
   </div>
+
+
+  <dialog id="sheetDialog">
+    <form method="dialog" class="dialog-card">
+      <h3>اختر ورقة Excel</h3>
+      <p id="sheetDialogSummary">عُثر على أكثر من ورقة تحتوي بيانات.</p>
+      <label class="field-label" for="sheetSelect">ورقة العمل</label>
+      <select id="sheetSelect"></select>
+      <div class="soft-note">سيعرض «تقارير» الورقة المختارة قبل التحليل، ويمكنك الرجوع ورفع الملف من جديد إن لم تكن هي المطلوبة.</div>
+      <div class="actions"><button id="cancelSheetBtn" class="secondary" value="cancel">إلغاء</button><button id="applySheetBtn" class="primary" value="default">فتح الورقة</button></div>
+    </form>
+  </dialog>
 
   <dialog id="typeDialog">
     <form method="dialog" class="dialog-card">
@@ -245,6 +257,7 @@
     </form>
   </dialog>
 
+  <script src="assets/xlsx-lite.js"></script>
   <script src="assets/app.js"></script>
 </body>
 </html>
