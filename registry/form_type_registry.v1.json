@@ -1,0 +1,280 @@
+{
+  "registryVersion": "1.0.0",
+  "status": "draft-for-implementation",
+  "principles": {
+    "openEndedTypes": true,
+    "aiCentral": true,
+    "deterministicCalculations": true,
+    "evidenceRequired": true,
+    "humanApprovalRequired": true
+  },
+  "types": [
+    {
+      "id": "supervision.indicator_summary.v1",
+      "nameAr": "ملخص مؤشرات الزيارة الإشرافية",
+      "unitOfAnalysis": "teacher",
+      "modality": "mixed",
+      "sourceExamples": [
+        "CrystalReportViewer1-2.pdf"
+      ],
+      "recognition": {
+        "titleSignals": [
+          "مواطن القوة",
+          "أولويات التطوير",
+          "الزيارة الإشرافية"
+        ],
+        "requiredFields": [
+          "indicator_text",
+          "indicator_score"
+        ],
+        "sectionSignals": [
+          "بنود التقويم",
+          "المتوسط"
+        ]
+      },
+      "analysisFamilies": [
+        "criterion_analysis",
+        "gap_analysis",
+        "priority_ranking",
+        "longitudinal_analysis"
+      ],
+      "qualityTools": [
+        "gap_analysis",
+        "radar",
+        "priority_matrix",
+        "pareto_if_repeated"
+      ],
+      "forbiddenInferences": [
+        "general_teacher_competence_from_single_visit",
+        "causal_claim_without_evidence"
+      ],
+      "reportTemplate": "supervision_indicator_report.v1"
+    },
+    {
+      "id": "supervision.narrative_evidence.v1",
+      "nameAr": "التقرير السردي للزيارة الإشرافية",
+      "unitOfAnalysis": "teacher",
+      "modality": "narrative_text",
+      "sourceExamples": [
+        "CrystalReportViewer1-1(2).pdf"
+      ],
+      "recognition": {
+        "titleSignals": [
+          "التقرير التجميعي",
+          "الزيارة الإشرافية"
+        ],
+        "sectionSignals": [
+          "جوانب الإجادة",
+          "تحتاج إلى تطوير",
+          "الدعم المقدم",
+          "التوصيات"
+        ]
+      },
+      "analysisFamilies": [
+        "evidence_analysis",
+        "consistency_analysis",
+        "professional_growth_planning"
+      ],
+      "qualityTools": [
+        "evidence_matrix",
+        "priority_matrix",
+        "pdca"
+      ],
+      "forbiddenInferences": [
+        "treating_praise_as_evidence",
+        "root_cause_as_fact"
+      ],
+      "reportTemplate": "supervision_narrative_report.v1"
+    },
+    {
+      "id": "student_work.criteria_summary.v1",
+      "nameAr": "ملخص فحص أعمال الطلبة",
+      "unitOfAnalysis": "class",
+      "modality": "categorical_table",
+      "sourceExamples": [
+        "CrystalReportViewer1(1).pdf"
+      ],
+      "recognition": {
+        "titleSignals": [
+          "فحص أعمال الطلبة",
+          "ملخص الأداء"
+        ],
+        "requiredFields": [
+          "criterion_text",
+          "mean",
+          "mode"
+        ]
+      },
+      "analysisFamilies": [
+        "criterion_analysis",
+        "distribution_analysis",
+        "improvement_planning"
+      ],
+      "qualityTools": [
+        "gap_analysis_if_target",
+        "pareto",
+        "heatmap"
+      ],
+      "forbiddenInferences": [
+        "blaming_students_without_task_quality_evidence"
+      ],
+      "reportTemplate": "student_work_summary_report.v1"
+    },
+    {
+      "id": "student_results.level_distribution.v1",
+      "nameAr": "توزيع مستويات الطلبة",
+      "unitOfAnalysis": "class",
+      "modality": "categorical_table",
+      "sourceExamples": [
+        "CrystalReportViewer1-3.pdf"
+      ],
+      "recognition": {
+        "titleSignals": [
+          "إحصائية بنسب مستويات الطلبة"
+        ],
+        "requiredFields": [
+          "grade_or_class",
+          "level",
+          "count_or_percentage"
+        ]
+      },
+      "analysisFamilies": [
+        "distribution_analysis",
+        "comparative_analysis",
+        "longitudinal_analysis"
+      ],
+      "qualityTools": [
+        "stacked_distribution",
+        "heatmap",
+        "trend_if_time"
+      ],
+      "forbiddenInferences": [
+        "cause_from_distribution_only"
+      ],
+      "reportTemplate": "level_distribution_report.v1"
+    },
+    {
+      "id": "student_results.single_subject.v1",
+      "nameAr": "نتائج الطلبة في مادة واحدة",
+      "unitOfAnalysis": "student",
+      "modality": "numeric_table",
+      "sourceExamples": [
+        "CrystalReportViewer1-4.pdf"
+      ],
+      "recognition": {
+        "titleSignals": [
+          "كشف نتائج الطلب",
+          "مستوى المادة"
+        ],
+        "requiredFields": [
+          "student_name",
+          "score",
+          "level"
+        ],
+        "optionalFields": [
+          "nationality",
+          "enrollment_status",
+          "second_round"
+        ]
+      },
+      "analysisFamilies": [
+        "descriptive_statistics",
+        "mastery_analysis",
+        "student_grouping"
+      ],
+      "qualityTools": [
+        "distribution",
+        "heatmap_if_classes",
+        "pareto_if_error_categories"
+      ],
+      "forbiddenInferences": [
+        "mastery_without_confirmed_scale",
+        "zero_as_low_achievement_without_review"
+      ],
+      "reportTemplate": "single_subject_results_report.v1"
+    },
+    {
+      "id": "student_results.assessment_component.v1",
+      "nameAr": "نتائج مكون تقويمي",
+      "unitOfAnalysis": "student",
+      "modality": "numeric_table",
+      "sourceExamples": [
+        "PDF_SearchReportXSD_28202603151717.XSD.PDF",
+        "PDF_SearchReportXSD_28202603239179.XSD.PDF"
+      ],
+      "recognition": {
+        "titleSignals": [
+          "كشف مراجعة إدخال الدرجات",
+          "عنصر المادة"
+        ],
+        "requiredFields": [
+          "student_name",
+          "assessment_component",
+          "component_score"
+        ]
+      },
+      "analysisFamilies": [
+        "component_analysis",
+        "paired_comparison_if_linked"
+      ],
+      "qualityTools": [
+        "distribution",
+        "paired_difference",
+        "outlier_review"
+      ],
+      "forbiddenInferences": [
+        "teacher_leniency_from_difference",
+        "exam_difficulty_from_difference_only"
+      ],
+      "reportTemplate": "assessment_component_report.v1"
+    },
+    {
+      "id": "student_results.cross_subject_profile.v1",
+      "nameAr": "ملف الأداء الأكاديمي عبر المواد",
+      "unitOfAnalysis": "student",
+      "modality": "numeric_table",
+      "sourceExamples": [
+        "CrystalReportViewer1-5.pdf"
+      ],
+      "recognition": {
+        "titleSignals": [
+          "كشف نتائج الطلب"
+        ],
+        "requiredFields": [
+          "student_name",
+          "multiple_subject_scores"
+        ]
+      },
+      "analysisFamilies": [
+        "student_profile",
+        "cross_subject_comparison",
+        "school_level_subject_analysis"
+      ],
+      "qualityTools": [
+        "profile_radar_if_normalized",
+        "heatmap",
+        "priority_matrix"
+      ],
+      "forbiddenInferences": [
+        "diagnosis_from_grades",
+        "cross_subject_comparison_without_normalization"
+      ],
+      "reportTemplate": "cross_subject_profile_report.v1"
+    }
+  ],
+  "unknownTypeWorkflow": {
+    "steps": [
+      "extract_structure",
+      "infer_educational_purpose",
+      "infer_unit_of_analysis",
+      "infer_data_modality",
+      "draft_analysis_plan",
+      "user_confirmation",
+      "save_institutional_type"
+    ],
+    "confidenceThresholds": {
+      "high": 0.9,
+      "medium": 0.65
+    }
+  }
+}
