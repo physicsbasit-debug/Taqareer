@@ -199,3 +199,12 @@ dialog::backdrop { background: rgba(12,22,42,.5); backdrop-filter: blur(3px); }
   .app-shell { width: 100%; }
   .finding { break-inside: avoid; }
 }
+
+/* Phase 1-A3: document intake and narrative review */
+.format-card.partial { border-color: #ead8ae; background: #fffaf0; }
+.format-card.partial span { color: #8a5a00; }
+.muted-copy { margin: 0 0 12px !important; color: var(--muted); font-size: 12px; }
+.narrative-review { min-height: 290px; font-family: inherit; }
+.manual-preview { margin: 12px 0 16px; padding: 10px; border: 1px solid var(--line); border-radius: 14px; background: #f7f8fa; text-align: center; }
+.manual-preview img { display: block; max-width: 100%; max-height: 360px; margin: auto; border-radius: 10px; object-fit: contain; }
+#manualTextInput { min-height: 220px; }

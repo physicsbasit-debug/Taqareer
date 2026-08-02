@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="تقارير - منصة التحليل التربوي الذكي" />
-  <title>تقارير | قراءة Excel والنواة التحليلية v0.3.0</title>
+  <meta name="description" content="تقارير - منصة التحليل التربوي الذكي للبيانات والاستمارات التعليمية" />
+  <title>تقارير | قراءة PDF وWord والصور v0.4.0</title>
   <link rel="stylesheet" href="assets/styles.css" />
 </head>
 <body>
@@ -18,7 +18,7 @@
         </div>
       </a>
       <div class="top-actions">
-        <span class="version-badge">نسخة تشغيلية مبكرة v0.3.0</span>
+        <span class="version-badge">نسخة تشغيلية مبكرة v0.4.0</span>
         <button id="resetTopBtn" class="ghost-button" type="button">بدء تحليل جديد</button>
       </div>
     </header>
@@ -26,14 +26,14 @@
     <main>
       <section class="hero">
         <div class="hero-copy">
-          <span class="eyebrow">Phase 1-A2 · قراءة Excel الفعلية</span>
-          <h2>ارفع البيانات، راجع ما فهمه النظام، ثم حلّلها دون متاهة إعدادات.</h2>
-          <p>تقرأ هذه النسخة CSV وTSV وملفات Excel الحديثة فعليًا داخل المتصفح، وتكتشف ورقة العمل وصف العناوين، ثم تعرض البيانات قبل التحليل. PDF وWord والصور لم تُفعّل بعد، لأننا نفضل ميزة تعمل على زر مزخرف يؤدي إلى لا شيء.</p>
+          <span class="eyebrow">Phase 1-A3 · استقبال المستندات والتحليل السردي</span>
+          <h2>ارفع الملف كما هو، ثم راجع ما استخرجه النظام قبل أن يبدأ التحليل.</h2>
+          <p>تقرأ هذه النسخة CSV وExcel وWord DOCX، وتستخرج النص والجداول من ملفات PDF ذات الطبقة النصية. كما تعرض الصور للمراجعة وإدخال النص مؤقتًا إلى أن تُربط القراءة البصرية بالذكاء الاصطناعي الحي. التعقيد في الخلفية، حيث يجب أن يبقى بعيدًا عن البشر لأسباب إنسانية بحتة.</p>
         </div>
         <div class="hero-kpis">
-          <div><strong>فعلي</strong><span>قراءة CSV وTSV وXLSX</span></div>
-          <div><strong>مرن</strong><span>تعرف قابل للتوسع</span></div>
-          <div><strong>واضح</strong><span>القيود الحرجة فقط تمنع</span></div>
+          <div><strong>متعدد الصيغ</strong><span>جداول ومستندات ونصوص</span></div>
+          <div><strong>تربوي</strong><span>تحليل سردي مرتبط بالأدلة</span></div>
+          <div><strong>مرن</strong><span>التنبيه لا يوقف إلا عند الضرورة</span></div>
         </div>
       </section>
 
@@ -50,34 +50,39 @@
             <span class="eyebrow">الخطوة الأولى</span>
             <h3>اختر طريقة إدخال البيانات</h3>
           </div>
-          <span class="subtle">لا تُرسل الملفات إلى أي خادم في هذه النسخة</span>
+          <span class="subtle">تبقى ملفات CSV وExcel وWord والصور داخل متصفحك في هذه النسخة</span>
         </div>
 
         <div class="input-tabs" role="tablist" aria-label="طرق الإدخال">
           <button class="input-tab active" data-input-mode="file" role="tab">رفع ملف</button>
-          <button class="input-tab" data-input-mode="paste" role="tab">لصق جدول</button>
+          <button class="input-tab" data-input-mode="paste" role="tab">لصق جدول أو نص</button>
           <button class="input-tab" data-input-mode="sample" role="tab">نموذج جاهز</button>
         </div>
 
         <div id="input-file" class="input-mode active-input-mode">
           <label class="upload-zone" id="uploadZone" for="fileInput">
-            <input id="fileInput" type="file" accept=".csv,.tsv,.txt,.xlsx,.xlsm,.xls,.pdf,.doc,.docx,.png,.jpg,.jpeg" />
+            <input id="fileInput" type="file" accept=".csv,.tsv,.txt,.xlsx,.xlsm,.xls,.pdf,.doc,.docx,.png,.jpg,.jpeg,.webp" />
             <div class="upload-symbol" aria-hidden="true">↑</div>
-            <strong>اختر ملف البيانات</strong>
-            <span>يُقرأ الآن: CSV وTSV وTXT الجدولي وXLSX وXLSM. ملفات XLS القديمة تحتاج تحويلًا إلى XLSX أو CSV.</span>
+            <strong>اختر ملف البيانات أو المستند</strong>
+            <span>يُقرأ الآن: CSV وTSV وTXT وXLSX وXLSM وDOCX وPDF النصي. الصور تُعرض للمراجعة مع إدخال النص يدويًا مؤقتًا.</span>
           </label>
           <div class="format-grid">
-            <div class="format-card ready"><strong>CSV / TSV</strong><span>يعمل فعليًا</span></div>
-            <div class="format-card ready"><strong>Excel XLSX</strong><span>يعمل فعليًا</span></div>
-            <div class="format-card queued"><strong>PDF / Word</strong><span>المرحلة التالية</span></div>
-            <div class="format-card queued"><strong>الصور</strong><span>بعد طبقة الاستخراج</span></div>
+            <div class="format-card ready"><strong>CSV / TSV</strong><span>قراءة وتحليل فعليان</span></div>
+            <div class="format-card ready"><strong>Excel XLSX</strong><span>اختيار الورقة وصف العناوين</span></div>
+            <div class="format-card ready"><strong>Word DOCX</strong><span>قراءة الجداول والنص محليًا</span></div>
+            <div class="format-card ready"><strong>PDF نصي</strong><span>استخراج عبر PDF.js عند الاتصال</span></div>
+            <div class="format-card partial"><strong>الصور</strong><span>معاينة وإدخال نص مؤقت</span></div>
+            <div class="format-card partial"><strong>PDF ممسوح</strong><span>مسار يدوي حتى تفعيل OCR الذكي</span></div>
           </div>
         </div>
 
         <div id="input-paste" class="input-mode">
-          <label class="field-label" for="pasteInput">الصق جدولًا من Excel أو أي نظام</label>
-          <textarea id="pasteInput" rows="12" placeholder="اسم الطالب\tالدرجة\tالمستوى\nطالب 1\t78\tج\nطالب 2\t91\tأ"></textarea>
-          <div class="actions"><button id="parsePasteBtn" class="primary" type="button">قراءة الجدول</button></div>
+          <label class="field-label" for="pasteInput">الصق جدولًا من Excel أو نصًا تربويًا</label>
+          <textarea id="pasteInput" rows="12" placeholder="اسم الطالب	الدرجة	المستوى
+طالب 1	78	ج
+طالب 2	91	أ"></textarea>
+          <div class="soft-note">لتحليل نص سردي مباشرة، استخدم نموذج «تقرير إشرافي سردي» أو ارفعه بصيغة DOCX/PDF. اللصق الحالي يقرأ الجداول المفصولة بعلامات واضحة.</div>
+          <div class="actions"><button id="parsePasteBtn" class="primary" type="button">قراءة المحتوى</button></div>
         </div>
 
         <div id="input-sample" class="input-mode">
@@ -109,11 +114,11 @@
           </article>
 
           <article class="card">
-            <h4>ملخص البيانات</h4>
+            <h4>ملخص المحتوى</h4>
             <dl class="data-summary">
-              <div><dt>السجلات</dt><dd id="rowCount">0</dd></div>
-              <div><dt>الأعمدة</dt><dd id="columnCount">0</dd></div>
-              <div><dt>اكتمال البيانات</dt><dd id="completenessValue">0%</dd></div>
+              <div><dt>السجلات أو الأسطر</dt><dd id="rowCount">0</dd></div>
+              <div><dt>الحقول</dt><dd id="columnCount">0</dd></div>
+              <div><dt>اكتمال المحتوى</dt><dd id="completenessValue">0%</dd></div>
               <div><dt>المصدر</dt><dd id="sourceName">—</dd></div>
             </dl>
           </article>
@@ -121,7 +126,7 @@
 
         <article class="card table-card">
           <div class="card-heading-inline">
-            <div><h4>معاينة البيانات</h4><p>أول 8 سجلات فقط. البيانات الأصلية تبقى في متصفحك.</p></div>
+            <div><h4>معاينة المحتوى المستخرج</h4><p>أول 8 سجلات أو أسطر فقط. راجعها قبل التحليل، فالملف لا يملك حق الاعتراض لاحقًا.</p></div>
             <div id="headerTags" class="tag-list"></div>
           </div>
           <div class="table-scroll"><table id="previewTable"></table></div>
@@ -150,7 +155,7 @@
         </div>
 
         <div class="setup-grid">
-          <article class="card">
+          <article id="measurementCard" class="card">
             <h4>إعدادات القياس</h4>
             <div class="form-grid">
               <label><span>عمود الدرجة</span><select id="scoreColumnSelect"></select></label>
@@ -161,20 +166,27 @@
             <div class="soft-note">لا يفترض النظام الدرجة الكلية من أعلى درجة ظهرت. أكّدها فقط عند رغبتك في حساب النسب والإتقان.</div>
           </article>
 
+          <article id="narrativeSetupCard" class="card hidden">
+            <h4>مراجعة النص السردي</h4>
+            <p class="muted-copy">عدّل أخطاء الاستخراج الواضحة فقط. سيُحلل النص كما يظهر هنا.</p>
+            <textarea id="narrativeTextReview" class="narrative-review" rows="16" placeholder="النص المستخرج من التقرير..."></textarea>
+            <div class="soft-note">التحليل الحالي لغوي تربوي محلي، ويصنف الأدلة والموضوعات والتوصيات. لا يعتمد حكمًا نهائيًا دون مراجعتك.</div>
+          </article>
+
           <article class="card">
             <h4>خطة التحليل المقترحة</h4>
             <ul id="analysisPlan" class="clean-list"></ul>
           </article>
 
           <article class="card ai-card">
-            <div class="card-heading-inline"><h4>طبقة الذكاء الاصطناعي</h4><span class="mode-pill">وضع محلي آمن</span></div>
-            <p>تعمل هذه النسخة بمحرك استدلال محلي قابل للمراجعة. الربط الحي سيأتي عبر وظيفة خادمية آمنة، لا بوضع مفتاح API داخل المتصفح كمن يترك مفتاح البيت تحت السجادة ثم يعلن عن ابتكار أمني.</p>
-            <ul class="clean-list"><li>فهم النوع والبنية.</li><li>صياغة استنتاجات من المؤشرات المحسوبة.</li><li>ربط كل استنتاج بأدلة رقمية واضحة.</li><li>إظهار حدود الثقة بدل إخفائها.</li></ul>
+            <div class="card-heading-inline"><h4>طبقة الذكاء الاصطناعي</h4><span class="mode-pill">تحليل محلي قابل للمراجعة</span></div>
+            <p>تعمل هذه النسخة بمحرك فهم وتصنيف واستدلال لغوي محلي. الربط الحي بنموذج ذكاء اصطناعي سيأتي عبر وظيفة خادمية آمنة، لا بوضع مفتاح API في المتصفح ثم كتابة «أمان مؤسسي» بخط عريض.</p>
+            <ul class="clean-list"><li>فهم نوع الملف وبنيته.</li><li>تصنيف الموضوعات والأحكام والأدلة.</li><li>ربط الاستنتاجات بمؤشرات رقمية أو نصية.</li><li>إظهار حدود الثقة والتنبيه إلى الحاجة للمراجعة.</li></ul>
           </article>
 
           <article class="card deterministic-card">
             <h4>المحرك الحتمي</h4>
-            <ul class="clean-list"><li>العد والمتوسط والوسيط والمدى.</li><li>نسبة اكتمال البيانات والقيم المفقودة.</li><li>نسبة الإتقان عند تأكيد الدرجة الكلية.</li><li>اكتشاف التكرارات والقيم غير الرقمية.</li></ul>
+            <ul class="clean-list"><li>العد والمتوسط والوسيط والمدى.</li><li>فحص الاكتمال والتكرار والقيم غير الصالحة.</li><li>نسبة الإتقان عند تأكيد الدرجة الكلية.</li><li>عدم اختراع قيم ناقصة أو استنتاج سببية من مجرد نمط.</li></ul>
           </article>
         </div>
 
@@ -226,25 +238,37 @@
       <section class="status-section">
         <div><span class="eyebrow light">شفافية التطوير</span><h3>ما يعمل الآن وما يأتي لاحقًا</h3></div>
         <div class="status-grid">
-          <div><strong>يعمل فعليًا</strong><span>CSV وTSV وXLSX/XLSM، اختيار ورقة العمل، اكتشاف صف العناوين، لصق الجداول، فحص الجودة، التحليل الوصفي، الإتقان، التصدير والطباعة.</span></div>
-          <div><strong>قيد التطوير</strong><span>قراءة PDF وWord والصور، وتحسين فهم الجداول المركبة والقوالب المؤسسية المعقدة.</span></div>
-          <div><strong>الربط الذكي القادم</strong><span>وظيفة خادمية آمنة للذكاء الاصطناعي، وتحليل نصي متعمق، وحفظ المشاريع والتقارير.</span></div>
+          <div><strong>يعمل فعليًا</strong><span>CSV وTSV وXLSX/XLSM وDOCX، واستخراج PDF النصي عند توفر الاتصال، واختيار الجداول أو النص، والتحليل الرقمي والسردي، والتصدير والطباعة.</span></div>
+          <div><strong>مسار احتياطي مرن</strong><span>الصور وملفات PDF الممسوحة تُعرض للمراجعة مع إدخال النص أو الجدول يدويًا، دون منع بقية العمل.</span></div>
+          <div><strong>الربط الذكي القادم</strong><span>OCR بصري، ونموذج ذكاء اصطناعي حي لتحليل النصوص والأدلة، وحفظ المشاريع والتقارير والمقارنات الزمنية.</span></div>
         </div>
       </section>
     </main>
 
-    <footer><span>تقارير · v0.3.0</span><span>واجهة بسيطة فوق محركات يمكن تدقيقها.</span></footer>
+    <footer><span>تقارير · v0.4.0</span><span>واجهة بسيطة فوق محركات قابلة للتدقيق.</span></footer>
   </div>
-
 
   <dialog id="sheetDialog">
     <form method="dialog" class="dialog-card">
-      <h3>اختر ورقة Excel</h3>
-      <p id="sheetDialogSummary">عُثر على أكثر من ورقة تحتوي بيانات.</p>
-      <label class="field-label" for="sheetSelect">ورقة العمل</label>
+      <h3 id="sheetDialogTitle">اختر المحتوى المطلوب</h3>
+      <p id="sheetDialogSummary">عُثر على أكثر من محتوى قابل للتحليل.</p>
+      <label id="sheetSelectLabel" class="field-label" for="sheetSelect">المحتوى</label>
       <select id="sheetSelect"></select>
-      <div class="soft-note">سيعرض «تقارير» الورقة المختارة قبل التحليل، ويمكنك الرجوع ورفع الملف من جديد إن لم تكن هي المطلوبة.</div>
-      <div class="actions"><button id="cancelSheetBtn" class="secondary" value="cancel">إلغاء</button><button id="applySheetBtn" class="primary" value="default">فتح الورقة</button></div>
+      <div class="soft-note">سيعرض «تقارير» المحتوى المختار قبل التحليل، ويمكنك الرجوع إذا لم يكن هو المطلوب.</div>
+      <div class="actions"><button id="cancelSheetBtn" class="secondary" value="cancel">إلغاء</button><button id="applySheetBtn" class="primary" value="default">فتح المحتوى</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="manualDialog">
+    <form method="dialog" class="dialog-card">
+      <h3 id="manualDialogTitle">مراجعة المحتوى</h3>
+      <p id="manualDialogReason">أدخل النص أو الجدول المستخرج.</p>
+      <input id="manualSourceType" type="hidden" value="manual" />
+      <div id="manualImageWrap" class="manual-preview hidden"><img id="manualImagePreview" alt="معاينة الصورة المرفوعة" /></div>
+      <label class="field-label" for="manualTextInput">النص أو الجدول</label>
+      <textarea id="manualTextInput" rows="13" placeholder="الصق النص، أو جدولًا مفصولًا بعلامات تبويب أو فواصل..."></textarea>
+      <div class="soft-note">لا يُعتمد المحتوى إلا بعد معاينتك. هذا المسار يمنع توقف العمل عندما يكون الملف ممسوحًا ضوئيًا أو لا يحتوي طبقة نصية.</div>
+      <div class="actions"><button id="cancelManualBtn" class="secondary" value="cancel">إلغاء</button><button id="applyManualBtn" class="primary" value="default">استخدام المحتوى</button></div>
     </form>
   </dialog>
 
@@ -258,6 +282,7 @@
   </dialog>
 
   <script src="assets/xlsx-lite.js"></script>
+  <script src="assets/document-lite.js"></script>
   <script src="assets/app.js"></script>
 </body>
 </html>

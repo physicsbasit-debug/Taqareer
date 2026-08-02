@@ -1,11 +1,37 @@
 {
-  "name": "تقارير",
-  "short_name": "تقارير",
-  "version": "0.3.0",
-  "lang": "ar",
-  "dir": "rtl",
-  "start_url": "./",
-  "display": "standalone",
-  "background_color": "#f3f5f9",
-  "theme_color": "#263f8f"
+  "app": "تقارير",
+  "version": "0.4.0",
+  "phase": "1-A3",
+  "releaseName": "Document Intake and Narrative Analysis",
+  "buildType": "static-github-pages",
+  "supportedInputs": {
+    "table": ["csv", "tsv", "txt", "xlsx", "xlsm"],
+    "document": ["docx", "pdf-text-layer"],
+    "manualFallback": ["png", "jpg", "jpeg", "webp", "scanned-pdf"]
+  },
+  "features": [
+    "local-docx-ooxml-reading",
+    "pdfjs-text-extraction",
+    "pdf-table-heuristics",
+    "document-dataset-selection",
+    "narrative-educational-analysis",
+    "evidence-strength-review",
+    "flexible-manual-extraction-fallback",
+    "xlsx-multi-sheet-intake",
+    "data-quality-review",
+    "json-export",
+    "print-results"
+  ],
+  "externalRuntimeDependencies": {
+    "pdfjs": "6.2.108 via jsDelivr, loaded only when PDF is opened"
+  },
+  "notYetEnabled": [
+    "live-ai-provider",
+    "automatic-image-ocr",
+    "scanned-pdf-ocr",
+    "cloud-project-storage",
+    "user-accounts",
+    "direct-rpt-reading",
+    "legacy-doc-and-xls-reading"
+  ]
 }

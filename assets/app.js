@@ -49,6 +49,18 @@
       text: `بنود التقويم,المتوسط,الأكثر تكرارا\nينجز الطلبة الأعمال وفقا لمستوياتهم التحصيلية,2.2,2\nتحقق الأعمال أهداف المناهج الدراسية,2.7,3\nيحقق الطلبة تقدما بمرور الوقت,2.1,2\nيحسن الطلبة أعمالهم بناء على التغذية الراجعة,1.8,2\nتنمي الأعمال مهارات التعلم الذاتي والتعاوني,2.4,2\nيراعي المعلم التمايز بين الطلبة,1.9,2\nتتنوع الأعمال والأنشطة,2.6,3\nيقدم المعلم تغذية راجعة فعالة,1.7,2`
     },
     {
+      id: "narrative",
+      title: "تقرير إشرافي سردي",
+      desc: "نص يتضمن جوانب إجادة وأدلة ودعمًا وتوصيات.",
+      maxScore: null,
+      text: `القسم	النص
+جوانب الإجادة وأدلتها	يوظف المعلم المحاكاة الرقمية بفاعلية، حيث تمكن معظم الطلبة من تفسير حركة الماء داخل النبات اعتمادًا على المشاهدة والنقاش.
+جوانب الإجادة وأدلتها	يدير المعلم زمن التعلم بصورة منظمة من خلال توزيع الحصة بين الاستقصاء والعمل المخبري والتلخيص.
+الجوانب التي تحتاج إلى تطوير	يحتاج بعض الطلبة إلى دعم إضافي في صياغة الاستنتاج العلمي وربطه بالأدلة التجريبية.
+الدعم المقدم	تمت مناقشة بناء مهام قصيرة متدرجة لقياس التفسير والاستنتاج بصورة فردية.
+التوصيات	إعداد نشاط أسبوعي قصير يتطلب تفسير نتيجة تجربة مع مؤشر نجاح يتمثل في ارتفاع جودة الاستنتاجات في القياس اللاحق.`
+    },
+    {
       id: "unknown",
       title: "نوع جديد",
       desc: "نموذج متابعة خطة علاجية غير موجود في السجل الحالي.",
@@ -58,9 +70,9 @@
   ];
 
   const state = {
-    headers: [], rows: [], sourceName: "", rawText: "", delimiter: ",", type: formTypes.at(-1), confidence: 0,
+    headers: [], rows: [], sourceName: "", rawText: "", narrativeText: "", delimiter: ",", type: formTypes.at(-1), confidence: 0,
     quality: { blockers: [], warnings: [], info: [], completeness: 0 },
-    analysis: null, sampleMaxScore: null, pendingWorkbook: null, workbookMeta: null
+    analysis: null, sampleMaxScore: null, pendingSource: null, sourceMeta: null, pendingManualFileName: ""
   };
 
   const $ = (id) => document.getElementById(id);
@@ -146,20 +158,36 @@
     return { blockers, warnings, info, completeness };
   }
 
-  function ingestTable(headers, rows, sourceName, sampleMaxScore = null, workbookMeta = null) {
+  function ingestTable(headers, rows, sourceName, sampleMaxScore = null, sourceMeta = null, rawText = "") {
     state.headers = headers;
     state.rows = rows;
     state.sourceName = sourceName;
     state.sampleMaxScore = sampleMaxScore;
-    state.workbookMeta = workbookMeta;
+    state.sourceMeta = sourceMeta;
+    state.rawText = rawText || "";
+    state.narrativeText = sourceMeta?.mode === "narrative"
+      ? (rawText || rows.map(row => row["النص"] ?? Object.values(row).join(" ")).join("\n"))
+      : "";
     const recognized = classify(state.headers, state.rows);
     state.type = recognized.type;
     state.confidence = recognized.confidence;
     state.quality = assessQuality(state.headers, state.rows);
-    if (workbookMeta?.headerRow) {
+    if (sourceMeta?.headerRow) {
       state.quality.info.unshift({
-        title: `تم اكتشاف صف العناوين في الصف ${workbookMeta.headerRow}`,
-        detail: `الورقة: ${workbookMeta.sheetName}. يمكنك مراجعة الأعمدة قبل التحليل.`
+        title: `تم اكتشاف صف العناوين في الصف ${sourceMeta.headerRow}`,
+        detail: sourceMeta.sheetName ? `الورقة: ${sourceMeta.sheetName}. يمكنك مراجعة الأعمدة قبل التحليل.` : "راجع الأعمدة قبل التحليل."
+      });
+    }
+    if (sourceMeta?.sourceType === "pdf") {
+      state.quality.info.unshift({
+        title: sourceMeta.mode === "table" ? "استخراج جدولي من PDF" : "استخراج نصي من PDF",
+        detail: "راجع المعاينة لأن ترتيب النص في بعض ملفات PDF يعتمد على طريقة إنشاء التقرير."
+      });
+    }
+    if (sourceMeta?.sourceType === "docx") {
+      state.quality.info.unshift({
+        title: sourceMeta.mode === "table" ? "تمت قراءة جدول Word" : "تمت قراءة النص السردي من Word",
+        detail: "تم الاستخراج محليًا داخل المتصفح دون رفع المستند إلى خادم."
       });
     }
     renderReview();
@@ -172,10 +200,46 @@
       const parsed = parseDelimited(text);
       state.delimiter = parsed.delimiter;
       state.rawText = text;
-      ingestTable(parsed.headers, parsed.rows, sourceName, sampleMaxScore, null);
+      ingestTable(parsed.headers, parsed.rows, sourceName, sampleMaxScore, { sourceType: "delimited", mode: "table" }, text);
     } catch (err) {
       setMessage("inputMessage", err.message || "تعذر قراءة البيانات.", true);
     }
+  }
+
+  function queueDatasets(source) {
+    state.pendingSource = source;
+    const datasets = source?.datasets || [];
+    if (!datasets.length) throw new Error("لم يُعثر على محتوى واضح قابل للمراجعة.");
+    if (datasets.length === 1) {
+      applyPendingDataset(0);
+      return;
+    }
+    $("sheetDialogTitle").textContent = source.kind === "excel" ? "اختر ورقة Excel" : "اختر المحتوى المطلوب تحليله";
+    $("sheetSelectLabel").textContent = source.kind === "excel" ? "ورقة العمل" : "المحتوى المستخرج";
+    $("sheetSelect").innerHTML = datasets.map((dataset, index) =>
+      `<option value="${index}">${escapeHtml(dataset.name)} · ${dataset.rows.length} سجل · ${dataset.headers.length} أعمدة</option>`
+    ).join("");
+    $("sheetDialogSummary").textContent = source.kind === "excel"
+      ? `عُثر على ${datasets.length} أوراق تحتوي جداول واضحة. اختر الورقة المطلوبة.`
+      : `عُثر على ${datasets.length} خيارات قابلة للتحليل. اختر الجدول أو النص السردي الأنسب.`;
+    clearMessage("inputMessage");
+    $("sheetDialog").showModal();
+  }
+
+  function applyPendingDataset(index) {
+    const source = state.pendingSource;
+    const dataset = source?.datasets?.[Number(index)];
+    if (!source || !dataset) return setMessage("inputMessage", "لم يُحدد محتوى صالح.", true);
+    clearMessage("inputMessage");
+    ingestTable(
+      dataset.headers,
+      dataset.rows,
+      `${source.name} · ${dataset.name}`,
+      null,
+      { ...(dataset.meta || {}), fileName: source.name, datasetName: dataset.name, datasetCount: source.datasets.length },
+      dataset.rawText || ""
+    );
+    state.pendingSource = null;
   }
 
   async function ingestExcel(file) {
@@ -184,36 +248,94 @@
     try {
       if (!window.TaqareerXlsx?.readWorkbook) throw new Error("وحدة قراءة Excel غير متاحة في هذه الصفحة.");
       const workbook = await window.TaqareerXlsx.readWorkbook(file);
-      state.pendingWorkbook = workbook;
-      if (workbook.sheets.length === 1) {
-        applyWorkbookSheet(0);
-        return;
-      }
-      $("sheetSelect").innerHTML = workbook.sheets.map((sheet, index) =>
-        `<option value="${index}">${escapeHtml(sheet.name)} · ${sheet.rows.length} سجل · ${sheet.headers.length} أعمدة</option>`
-      ).join("");
-      $("sheetDialogSummary").textContent = `عُثر على ${workbook.sheets.length} أوراق تحتوي جداول واضحة. اختر الورقة المطلوبة.`;
-      clearMessage("inputMessage");
-      $("sheetDialog").showModal();
+      queueDatasets({
+        name: workbook.name,
+        kind: "excel",
+        datasets: workbook.sheets.map((sheet, index) => ({
+          id: `excel-sheet-${index}`,
+          name: sheet.name,
+          headers: sheet.headers,
+          rows: sheet.rows,
+          meta: { sourceType: "xlsx", mode: "table", sheetName: sheet.name, headerRow: sheet.headerRow, sheetCount: workbook.sheets.length }
+        }))
+      });
     } catch (err) {
-      state.pendingWorkbook = null;
+      state.pendingSource = null;
       setMessage("inputMessage", err.message || "تعذر قراءة ملف Excel.", true);
     }
   }
 
-  function applyWorkbookSheet(index) {
-    const workbook = state.pendingWorkbook;
-    const sheet = workbook?.sheets?.[Number(index)];
-    if (!workbook || !sheet) return setMessage("inputMessage", "لم تُحدد ورقة Excel صالحة.", true);
-    state.rawText = "";
+  async function ingestDocument(file, readerName) {
     clearMessage("inputMessage");
-    ingestTable(sheet.headers, sheet.rows, `${workbook.name} · ${sheet.name}`, null, {
-      fileName: workbook.name,
-      sheetName: sheet.name,
-      headerRow: sheet.headerRow,
-      sheetCount: workbook.sheets.length
-    });
-    state.pendingWorkbook = null;
+    const label = readerName === "readPdf" ? "PDF" : "Word";
+    setMessage("inputMessage", `جارٍ استخراج محتوى ${label} محليًا…`);
+    try {
+      const reader = window.TaqareerDocuments?.[readerName];
+      if (!reader) throw new Error(`وحدة قراءة ${label} غير متاحة.`);
+      const result = await reader(file);
+      queueDatasets(result);
+    } catch (err) {
+      state.pendingSource = null;
+      if (readerName === "readPdf") {
+        openManualExtraction(file.name, err.message || "تعذر استخراج PDF آليًا.", "pdf");
+      } else {
+        setMessage("inputMessage", err.message || `تعذر قراءة ${label}.`, true);
+      }
+    }
+  }
+
+  function openManualExtraction(fileName, reason, sourceType = "image", previewDataUrl = "") {
+    state.pendingManualFileName = fileName;
+    $("manualDialogTitle").textContent = sourceType === "image" ? "مراجعة محتوى الصورة" : "استخراج يدوي احتياطي";
+    $("manualDialogReason").textContent = reason;
+    $("manualTextInput").value = "";
+    $("manualImagePreview").src = previewDataUrl || "";
+    $("manualImageWrap").classList.toggle("hidden", !previewDataUrl);
+    $("manualSourceType").value = sourceType;
+    clearMessage("inputMessage");
+    $("manualDialog").showModal();
+  }
+
+  async function ingestImage(file) {
+    clearMessage("inputMessage");
+    setMessage("inputMessage", "جارٍ تجهيز الصورة للمراجعة المحلية…");
+    try {
+      const preview = await window.TaqareerDocuments.imagePreview(file);
+      openManualExtraction(
+        file.name,
+        "تظهر الصورة الآن للمراجعة. الصق النص أو الجدول المستخرج من الهاتف؛ القراءة البصرية بالذكاء الاصطناعي ستُربط لاحقًا عبر وظيفة خادمية آمنة.",
+        "image",
+        preview.dataUrl
+      );
+    } catch (err) {
+      setMessage("inputMessage", err.message || "تعذر فتح الصورة.", true);
+    }
+  }
+
+  function applyManualExtraction() {
+    const text = $("manualTextInput").value.trim();
+    const sourceType = $("manualSourceType").value || "manual";
+    if (!text) {
+      $("manualDialogReason").textContent = "أدخل النص أو الجدول أولًا. لن نخترع محتوى من فراغ، رغم أن بعض البرامج تبدع في هذه الرياضة.";
+      return;
+    }
+    $("manualDialog").close();
+    const looksTabular = /[\t,;|]/.test(text.split(/\r?\n/)[0] || "") && text.split(/\r?\n/).filter(Boolean).length >= 2;
+    if (looksTabular) {
+      try {
+        const parsed = parseDelimited(text);
+        state.delimiter = parsed.delimiter;
+        ingestTable(parsed.headers, parsed.rows, state.pendingManualFileName || "استخراج يدوي", null,
+          { sourceType, mode: "table", extractionMode: "manual-table" }, text);
+      } catch (err) {
+        setMessage("inputMessage", err.message || "تعذر قراءة الجدول الملصق.", true);
+      }
+      return;
+    }
+    const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    const rows = lines.map((line, index) => ({ "م": index + 1, "القسم": "نص مستخرج", "النص": line }));
+    ingestTable(["م", "القسم", "النص"], rows, state.pendingManualFileName || "استخراج يدوي", null,
+      { sourceType, mode: "narrative", extractionMode: "manual-text" }, text);
   }
 
   async function handleInputFile(file) {
@@ -221,8 +343,12 @@
     const ext = file.name.split(".").pop().toLowerCase();
     if (["csv", "tsv", "txt"].includes(ext)) return ingest(await file.text(), file.name);
     if (["xlsx", "xlsm"].includes(ext)) return ingestExcel(file);
-    if (ext === "xls") return setMessage("inputMessage", "صيغة XLS القديمة غير مدعومة بعد. احفظ الملف بصيغة XLSX أو CSV ثم ارفعه.", false);
-    return setMessage("inputMessage", `صيغة ${ext.toUpperCase()} لم تُفعّل بعد. PDF وWord والصور تأتي بعد طبقة الاستخراج الموحّدة.`, false);
+    if (ext === "docx") return ingestDocument(file, "readDocx");
+    if (ext === "pdf") return ingestDocument(file, "readPdf");
+    if (["png", "jpg", "jpeg", "webp"].includes(ext)) return ingestImage(file);
+    if (ext === "xls") return setMessage("inputMessage", "صيغة XLS القديمة غير مدعومة. احفظ الملف بصيغة XLSX أو CSV ثم ارفعه.", false);
+    if (ext === "doc") return setMessage("inputMessage", "صيغة DOC القديمة غير مدعومة محليًا. احفظ المستند بصيغة DOCX أو PDF.", false);
+    return setMessage("inputMessage", `صيغة ${ext.toUpperCase()} غير مدعومة في هذه النسخة.`, false);
   }
 
   function renderReview() {
@@ -265,7 +391,18 @@
     return candidates.find(h => normalizedKeywords.some(k => normalize(h).includes(k))) || candidates[0] || "";
   }
 
+  function isNarrativeMode() {
+    return state.sourceMeta?.mode === "narrative" || state.type.id === "supervision_narrative";
+  }
+
   function renderSetup() {
+    const narrativeMode = isNarrativeMode();
+    $("measurementCard").classList.toggle("hidden", narrativeMode);
+    $("narrativeSetupCard").classList.toggle("hidden", !narrativeMode);
+    if (narrativeMode) {
+      $("narrativeTextReview").value = state.narrativeText || state.rows.map(row => row["النص"] ?? Object.values(row).join(" ")).join("\n");
+    }
+
     const nums = numericColumns();
     const scoreSelect = $("scoreColumnSelect");
     scoreSelect.innerHTML = `<option value="">بدون عمود درجة</option>` + nums.map(x => `<option value="${escapeAttr(x.h)}">${escapeHtml(x.h)}</option>`).join("");
@@ -285,8 +422,10 @@
       cross_subject: ["تحليل الأداء عبر المواد", "تحديد المواد الأقوى والأضعف", "اكتشاف التفاوت داخل ملف الطالب", "تحديد التدخل الشامل أو التخصصي"],
       supervision_indicator: ["تحليل متوسطات المؤشرات", "ترتيب مواطن القوة وأولويات التطوير", "تحليل الفجوة عند تأكيد المقياس", "صياغة إجراءات تطوير قابلة للمتابعة"],
       student_work: ["تحليل جودة أعمال الطلبة", "تحديد أثر التغذية الراجعة والتمايز", "ترتيب البنود منخفضة الأداء", "اقتراح خطة تحسين للأعمال"],
-      supervision_narrative: ["تصنيف الأحكام والأدلة", "ربط جوانب التطوير بالدعم والتوصيات", "فحص قوة الدليل واتساقه", "إنشاء خطة نمو مهني"],
-      unknown: ["تحليل بنية الحقول وأنواع القيم", "استخراج المؤشرات الرقمية المتاحة", "تكوين استنتاجات عامة محدودة", "اقتراح تعريف تحليلي جديد للمراجعة"]
+      supervision_narrative: ["تصنيف الأحكام والأدلة", "ربط جوانب التطوير بالدعم والتوصيات", "فحص قوة الدليل واتساقه", "تحويل التوصيات إلى خطة نمو قابلة للمتابعة"],
+      unknown: narrativeMode
+        ? ["اكتشاف الأقسام والموضوعات المتكررة", "تمييز الحكم من الدليل", "تقدير قوة الأدلة وحدودها", "اقتراح تعريف تحليلي جديد للمراجعة"]
+        : ["تحليل بنية الحقول وأنواع القيم", "استخراج المؤشرات الرقمية المتاحة", "تكوين استنتاجات عامة محدودة", "اقتراح تعريف تحليلي جديد للمراجعة"]
     };
     $("analysisPlan").innerHTML = plans[state.type.id].map(x => `<li>${escapeHtml(x)}</li>`).join("");
   }
@@ -305,6 +444,17 @@
 
   function runAnalysis() {
     clearMessage("setupMessage");
+
+    if (isNarrativeMode()) {
+      const text = $("narrativeTextReview").value.trim();
+      if (text.length < 40) return setMessage("setupMessage", "النص قصير جدًا لإنتاج تحليل تربوي مفيد. أضف المحتوى المستخرج أو راجع الملف.", true);
+      state.narrativeText = text;
+      state.analysis = analyzeNarrative(text);
+      renderResults();
+      showPanel(4);
+      return;
+    }
+
     const scoreColumn = $("scoreColumnSelect").value;
     const levelColumn = $("levelColumnSelect").value;
     const maxScore = parseNumber($("maxScoreInput").value);
@@ -326,7 +476,8 @@
         state.analysis.findings.unshift(finding("استُبعدت قيم خارج النطاق", `استُبعدت ${excludedOutOfRange} قيمة أقل من صفر أو أعلى من الدرجة الكلية المؤكدة (${maxScore}).`, "مرتفعة", "إدخال هذه القيم كان سيشوّه المتوسط ونسبة الإتقان.", "مراجعة السجلات المستبعدة وتصحيحها قبل اعتماد التقرير النهائي."));
       }
     }
-    renderResults(); showPanel(4);
+    renderResults();
+    showPanel(4);
   }
 
   function analyzeScores(values, scoreColumn, levelColumn, maxScore, thresholdPct) {
@@ -376,6 +527,116 @@
     return { kind: "levels", total, entries, findings, executiveTitle: `أكبر فئة: المستوى ${top?.label || "—"}`, executiveSummary: `يشمل التقرير ${total} طالبًا. المستوى الأكثر انتشارًا هو ${top?.label || "—"} بنسبة ${round(top?.pct || 0)}%، بينما تمثل المستويات الدنيا ${round(lowerPct)}% من الإجمالي.`, action: { title: lowerPct >= 30 ? "تحليل المهارات المسببة للضعف" : "متابعة الحالات الفردية", text: lowerPct >= 30 ? "اربط هذا التوزيع بنتائج المهارات أو مفردات الاختبار لتحديد المحتوى الذي يحتاج تدخلاً، لأن المستوى وحده يصف النتيجة ولا يشرح سببها." : "استخدم كشف النتائج الفردي لاستخراج الحالات في المستويات الدنيا وتصميم متابعة قصيرة لها.", priority: lowerPct >= 30 ? "عالية" : "محددة", indicator: "انخفاض نسبة المستويات الدنيا في القياس التالي" } };
   }
 
+  function splitNarrativeSentences(text) {
+    return String(text || "")
+      .split(/\n+|(?<=[.!؟؛])\s+/)
+      .map(sentence => sentence.trim())
+      .filter(sentence => sentence.length >= 12);
+  }
+
+  function analyzeNarrative(text) {
+    const sentences = splitNarrativeSentences(text);
+    const lines = String(text).split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    const themes = [
+      { id: "student-learning", label: "تعلم الطلبة", keys: ["الطلبه", "تحصيل", "فهم", "تعلم", "تقدم", "استيعاب", "مهارات"] },
+      { id: "planning", label: "التخطيط", keys: ["تخطيط", "نواتج", "اهداف", "الخطة", "تسلسل"] },
+      { id: "instruction", label: "التدريس", keys: ["استراتيجيات", "تدريس", "استقصاء", "تعلم نشط", "نشاط", "شرح"] },
+      { id: "assessment", label: "التقويم", keys: ["تقويم", "تغذيه راجعه", "تقييم", "اسئله", "قياس"] },
+      { id: "classroom", label: "إدارة الصف", keys: ["اداره الصف", "زمن", "سلوك", "دافعيه", "مشاركه"] },
+      { id: "technology", label: "التقنية والموارد", keys: ["تقنيه", "رقمي", "محاكاه", "موارد", "عرض", "مختبر"] },
+      { id: "differentiation", label: "التمايز والدعم", keys: ["تمايز", "فروق فرديه", "دعم", "علاجي", "اثراء", "فئه"] }
+    ];
+    const themeEntries = themes.map(theme => ({
+      ...theme,
+      count: sentences.filter(sentence => theme.keys.some(key => normalize(sentence).includes(key))).length
+    })).filter(theme => theme.count > 0).sort((a, b) => b.count - a.count);
+
+    const evidenceMarkers = ["من خلال", "حيث", "يظهر", "يتضح", "مما", "نتيجه", "استنادا", "اعتمادا", "%"];
+    const evidenceSentences = sentences.filter(sentence => evidenceMarkers.some(marker => normalize(sentence).includes(normalize(marker))) || /\d/.test(sentence));
+    const recommendationMarkers = ["يوصي", "اوصي", "اعداد", "تفعيل", "تعزيز", "متابعه", "تزويد", "تصميم", "توجيه", "تنفيذ", "مناقشه"];
+    const recommendations = sentences.filter(sentence => recommendationMarkers.some(marker => normalize(sentence).includes(marker)));
+    const developmentSentences = sentences.filter(sentence => /تحتاج|بحاجه|تحسين|تطوير|ضعف|محدود|تحديات/.test(normalize(sentence)));
+    const strengthSentences = sentences.filter(sentence => /اجاده|قوه|متميز|فعال|فاعله|جيد|تحسن|اتقان/.test(normalize(sentence)));
+    const evidenceRatio = sentences.length ? evidenceSentences.length / sentences.length * 100 : 0;
+    const topTheme = themeEntries[0] || { label: "غير محدد", count: 0 };
+    const findings = [];
+
+    findings.push(finding(
+      "المجال الأكثر حضورًا في التقرير",
+      `${topTheme.label}: ظهر في ${topTheme.count} جملة من أصل ${sentences.length} جملة تحليلية.`,
+      topTheme.count >= 3 ? "مرتفعة" : "متوسطة",
+      "يوضح المجال الذي يستحوذ على معظم الأحكام والملاحظات، لكنه لا يثبت وحده أنه الأهم فعليًا.",
+      "مقارنة حضور هذا المجال بأهداف الزيارة أو الاستمارة للتأكد من توازن التغطية."
+    ));
+
+    if (evidenceRatio >= 35) {
+      findings.push(finding(
+        "ربط مقبول بين الأحكام والأدلة",
+        `احتوت ${evidenceSentences.length} جملة (${round(evidenceRatio)}%) على مؤشرات دليل مباشر أو وصف للممارسة والأثر.`,
+        "متوسطة",
+        "التقرير يتجاوز الأحكام العامة في جزء معتبر من محتواه، مع بقاء الحاجة إلى مراجعة بشرية لجودة كل دليل.",
+        "اعتماد صيغة ثابتة: ممارسة محددة + دليل ملاحظ + أثر على تعلم الطلبة."
+      ));
+    } else {
+      findings.push(finding(
+        "الأدلة المباشرة محدودة",
+        `لم يظهر مؤشر دليل واضح إلا في ${evidenceSentences.length} جملة (${round(evidenceRatio)}%).`,
+        "متوسطة",
+        "قد تكون بعض الأحكام صحيحة، لكن صياغتها الحالية لا تكفي لتتبعها أو الدفاع عنها مهنيًا.",
+        "إعادة صياغة الأحكام العامة بإضافة ما شوهد أو قيس والفئة المتأثرة والأثر الناتج."
+      ));
+    }
+
+    if (recommendations.length) {
+      const actionable = recommendations.filter(sentence => /اسبوع|شهر|مره|مؤشر|بنسبه|خلال|كل|فئه|نشاط|ورقه|جلسه/.test(normalize(sentence))).length;
+      findings.push(finding(
+        "التوصيات موجودة وتحتاج ضبط قابلية القياس",
+        `اكتُشفت ${recommendations.length} توصية أو إجراء، منها ${actionable} تتضمن عنصرًا تنفيذيًا أو زمنيًا أو مؤشرًا قابلًا للتتبع.`,
+        actionable >= Math.max(1, recommendations.length / 2) ? "مرتفعة" : "متوسطة",
+        "وجود التوصية لا يكفي؛ قيمتها ترتفع عندما تحدد الفئة والزمن والمسؤول ومؤشر النجاح.",
+        "تحويل التوصيات المختارة إلى جدول تنفيذ: الإجراء، المسؤول، الزمن، الدليل، مؤشر النجاح."
+      ));
+    } else {
+      findings.push(finding(
+        "لا توجد توصيات تنفيذية واضحة",
+        "لم يكتشف المحرك أفعالًا إجرائية صريحة في النص.",
+        "متوسطة",
+        "قد يبقى التقرير وصفيًا دون أن يقود إلى تحسين قابل للمتابعة.",
+        "إضافة إجراء واحد على الأقل لكل جانب تطوير، مع مسؤول وزمن ومؤشر نجاح."
+      ));
+    }
+
+    if (developmentSentences.length && !recommendations.length) {
+      findings.push(finding(
+        "جوانب التطوير غير مرتبطة بإجراء",
+        `ظهر ${developmentSentences.length} وصفًا لحاجة أو فرصة تحسين دون توصية تنفيذية مقابلة.`,
+        "متوسطة",
+        "الفجوة بين التشخيص والإجراء تقلل قيمة التقرير في المتابعة.",
+        "ربط كل جانب تطوير بإجراء واحد محدد على الأقل."
+      ));
+    }
+
+    const action = evidenceRatio < 35
+      ? { title: "تقوية سلسلة الحكم والدليل", text: "اختر أهم ثلاثة أحكام في التقرير وأعد صياغة كل واحد بصيغة: الممارسة، الدليل المشاهد، الفئة المتأثرة، الأثر، ثم الإجراء التالي.", priority: "عالية", indicator: "ارتباط كل حكم رئيس بدليل مباشر قابل للمراجعة" }
+      : { title: "تحويل التوصيات إلى خطة متابعة", text: "اعتمد التوصيات الأعلى أثرًا وحولها إلى إجراءات لها مسؤول وزمن ومؤشر نجاح، ثم اربطها بالزيارة أو القياس اللاحق.", priority: recommendations.length ? "متوسطة" : "عالية", indicator: "وجود مؤشر متابعة واضح لكل توصية معتمدة" };
+
+    return {
+      kind: "narrative",
+      sentenceCount: sentences.length,
+      lineCount: lines.length,
+      evidenceCount: evidenceSentences.length,
+      recommendationCount: recommendations.length,
+      strengthCount: strengthSentences.length,
+      developmentCount: developmentSentences.length,
+      evidenceRatio,
+      themes: themeEntries.slice(0, 7),
+      findings,
+      executiveTitle: evidenceRatio >= 35 ? "تقرير غني نسبيًا بالأدلة" : "التقرير يحتاج تقوية الأدلة",
+      executiveSummary: `تم تحليل ${sentences.length} جملة. برز مجال «${topTheme.label}» أكثر من غيره، وظهرت مؤشرات دليل مباشر في ${round(evidenceRatio)}% من الجمل، مع ${recommendations.length} توصية أو إجراء مكتشف. هذه قراءة لغوية تربوية أولية وليست اعتمادًا نهائيًا للحكم.`,
+      action
+    };
+  }
+
   function buildBins(values, maxScore) {
     const min = Math.min(...values), max = Math.max(...values);
     const start = maxScore ? 0 : min; const end = maxScore || max; const steps = 5; const width = (end-start)/steps || 1;
@@ -398,6 +659,16 @@
       ];
       $("metrics").innerHTML = metrics.map(m => `<div class="metric"><small>${m[0]}</small><strong>${m[1]}</strong><span>${m[2]}</span></div>`).join("");
       renderBars(a.bins.map(b => ({label:b.label,count:b.count})), "توزيع الدرجات");
+    } else if (a.kind === "narrative") {
+      const metrics = [
+        ["الجمل المحللة", a.sentenceCount, "جملة ذات معنى"],
+        ["جمل الأدلة", a.evidenceCount, `${round(a.evidenceRatio)}% من النص`],
+        ["التوصيات", a.recommendationCount, "إجراء مكتشف"],
+        ["جوانب التطوير", a.developmentCount, "حاجة أو فرصة تحسين"]
+      ];
+      $("metrics").innerHTML = metrics.map(m => `<div class="metric"><small>${m[0]}</small><strong>${m[1]}</strong><span>${m[2]}</span></div>`).join("");
+      const themeItems = a.themes.length ? a.themes.map(theme => ({ label: theme.label, count: theme.count })) : [{ label: "النص العام", count: a.sentenceCount }];
+      renderBars(themeItems, "الموضوعات التربوية الأكثر حضورًا");
     } else {
       const top = [...a.entries].sort((x,y)=>y.count-x.count)[0];
       const metrics = [["إجمالي الطلبة", a.total, "كل المستويات"], ["عدد المستويات", a.entries.length, "فئات مكتشفة"], ["الفئة الأكبر", top?.label||"—", `${top?.count||0} طالبًا`], ["نسبتها", `${round(top?.pct||0)}%`, "من الإجمالي"]];
@@ -415,16 +686,33 @@
   }
 
   function exportAnalysis() {
-    const payload = { app: "تقارير", version: "0.3.0", generatedAt: new Date().toISOString(), source: state.sourceName, workbook: state.workbookMeta, recognizedType: { id: state.type.id, name: state.type.name, confidence: state.confidence }, quality: state.quality, analysis: state.analysis };
-    const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"}); const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download="taqareer-analysis.json"; a.click(); URL.revokeObjectURL(url);
+    const payload = {
+      app: "تقارير",
+      version: "0.4.0",
+      generatedAt: new Date().toISOString(),
+      source: state.sourceName,
+      sourceMeta: state.sourceMeta,
+      recognizedType: { id: state.type.id, name: state.type.name, confidence: state.confidence },
+      quality: state.quality,
+      analysis: state.analysis
+    };
+    const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
+    const url=URL.createObjectURL(blob); const a=document.createElement("a");
+    a.href=url; a.download="taqareer-analysis-v0.4.0.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
   function escapeAttr(v) { return escapeHtml(v); }
 
   function reset() {
-    Object.assign(state, { headers: [], rows: [], sourceName: "", rawText: "", delimiter: ",", type: formTypes.at(-1), confidence: 0, quality: { blockers: [], warnings: [], info: [], completeness: 0 }, analysis: null, sampleMaxScore: null, pendingWorkbook: null, workbookMeta: null });
-    $("fileInput").value = ""; $("pasteInput").value = ""; clearMessage("inputMessage"); clearMessage("setupMessage"); showPanel(1);
+    Object.assign(state, {
+      headers: [], rows: [], sourceName: "", rawText: "", narrativeText: "", delimiter: ",",
+      type: formTypes.at(-1), confidence: 0,
+      quality: { blockers: [], warnings: [], info: [], completeness: 0 },
+      analysis: null, sampleMaxScore: null, pendingSource: null, sourceMeta: null, pendingManualFileName: ""
+    });
+    $("fileInput").value = ""; $("pasteInput").value = ""; $("manualTextInput").value = "";
+    clearMessage("inputMessage"); clearMessage("setupMessage"); showPanel(1);
   }
 
   function init() {
@@ -440,8 +728,15 @@
     $("fileInput").addEventListener("change", async e => handleInputFile(e.target.files[0]));
     const zone=$("uploadZone"); ["dragenter","dragover"].forEach(ev=>zone.addEventListener(ev,e=>{e.preventDefault();zone.classList.add("dragover");})); ["dragleave","drop"].forEach(ev=>zone.addEventListener(ev,e=>{e.preventDefault();zone.classList.remove("dragover");}));
     zone.addEventListener("drop", async e => { const file=e.dataTransfer.files[0]; if(file) await handleInputFile(file); });
-    $("applySheetBtn").addEventListener("click", e => { e.preventDefault(); const index=$("sheetSelect").value; $("sheetDialog").close(); applyWorkbookSheet(index); });
-    $("cancelSheetBtn").addEventListener("click", () => { state.pendingWorkbook=null; clearMessage("inputMessage"); });
+    $("applySheetBtn").addEventListener("click", e => { e.preventDefault(); const index=$("sheetSelect").value; $("sheetDialog").close(); applyPendingDataset(index); });
+    $("cancelSheetBtn").addEventListener("click", () => { state.pendingSource=null; clearMessage("inputMessage"); });
+    $("applyManualBtn").addEventListener("click", e => { e.preventDefault(); applyManualExtraction(); });
+    $("cancelManualBtn").addEventListener("click", () => {
+      state.pendingManualFileName = "";
+      $("manualTextInput").value = "";
+      $("manualImagePreview").removeAttribute("src");
+      clearMessage("inputMessage");
+    });
 
     $("backToInputBtn").addEventListener("click",()=>showPanel(1));
     $("toSetupBtn").addEventListener("click",()=>{renderSetup();showPanel(3);});
