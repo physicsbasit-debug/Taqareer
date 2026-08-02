@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="تقارير - منصة التحليل التربوي الذكي للبيانات والاستمارات التعليمية" />
-  <title>تقارير | قراءة PDF وWord والصور v0.4.0</title>
+  <title>تقارير | التحليل التربوي الذكي وOCR v0.5.0</title>
   <link rel="stylesheet" href="assets/styles.css" />
 </head>
 <body>
@@ -18,7 +18,9 @@
         </div>
       </a>
       <div class="top-actions">
-        <span class="version-badge">نسخة تشغيلية مبكرة v0.4.0</span>
+        <span class="version-badge">نسخة تشغيلية مبكرة v0.5.0</span>
+        <span id="aiHeaderStatus" class="version-badge">الذكاء الاصطناعي غير مربوط</span>
+        <button id="openAiSettingsTopBtn" class="ghost-button" type="button">إعداد الذكاء الاصطناعي</button>
         <button id="resetTopBtn" class="ghost-button" type="button">بدء تحليل جديد</button>
       </div>
     </header>
@@ -26,14 +28,14 @@
     <main>
       <section class="hero">
         <div class="hero-copy">
-          <span class="eyebrow">Phase 1-A3 · استقبال المستندات والتحليل السردي</span>
-          <h2>ارفع الملف كما هو، ثم راجع ما استخرجه النظام قبل أن يبدأ التحليل.</h2>
-          <p>تقرأ هذه النسخة CSV وExcel وWord DOCX، وتستخرج النص والجداول من ملفات PDF ذات الطبقة النصية. كما تعرض الصور للمراجعة وإدخال النص مؤقتًا إلى أن تُربط القراءة البصرية بالذكاء الاصطناعي الحي. التعقيد في الخلفية، حيث يجب أن يبقى بعيدًا عن البشر لأسباب إنسانية بحتة.</p>
+          <span class="eyebrow">Phase 1-B1 · بوابة الذكاء الاصطناعي والتحليل البصري</span>
+          <h2>ارفع الملف، ودع «تقارير» يفهمه ويحلله تربويًا مع بقاء الأدلة والحسابات قابلة للمراجعة.</h2>
+          <p>تضيف هذه النسخة قراءة بصرية للصور وملفات PDF الممسوحة، وتحليلًا تربويًا عميقًا عبر وظيفة خادمية آمنة. تبقى الحسابات وفحص الجودة محليين وحتميين، بينما يتولى الذكاء الاصطناعي فهم السياق وصياغة الاستنتاجات وخطة التحسين. تقسيم العمل، وهي فكرة ثورية لم تكتشفها بعض الأنظمة بعد.</p>
         </div>
         <div class="hero-kpis">
-          <div><strong>متعدد الصيغ</strong><span>جداول ومستندات ونصوص</span></div>
-          <div><strong>تربوي</strong><span>تحليل سردي مرتبط بالأدلة</span></div>
-          <div><strong>مرن</strong><span>التنبيه لا يوقف إلا عند الضرورة</span></div>
+          <div><strong>رؤية بصرية</strong><span>صور وPDF ممسوح عند ربط الذكاء الاصطناعي</span></div>
+          <div><strong>تحليل هجين</strong><span>حسابات حتمية وتفسير تربوي عميق</span></div>
+          <div><strong>خصوصية افتراضية</strong><span>إخفاء الحقول الشخصية قبل الإرسال</span></div>
         </div>
       </section>
 
@@ -50,7 +52,7 @@
             <span class="eyebrow">الخطوة الأولى</span>
             <h3>اختر طريقة إدخال البيانات</h3>
           </div>
-          <span class="subtle">تبقى ملفات CSV وExcel وWord والصور داخل متصفحك في هذه النسخة</span>
+          <span class="subtle">تُقرأ الملفات محليًا أولًا، ولا يُرسل محتوى إلى الذكاء الاصطناعي إلا بعد تفعيله</span>
         </div>
 
         <div class="input-tabs" role="tablist" aria-label="طرق الإدخال">
@@ -64,15 +66,15 @@
             <input id="fileInput" type="file" accept=".csv,.tsv,.txt,.xlsx,.xlsm,.xls,.pdf,.doc,.docx,.png,.jpg,.jpeg,.webp" />
             <div class="upload-symbol" aria-hidden="true">↑</div>
             <strong>اختر ملف البيانات أو المستند</strong>
-            <span>يُقرأ الآن: CSV وTSV وTXT وXLSX وXLSM وDOCX وPDF النصي. الصور تُعرض للمراجعة مع إدخال النص يدويًا مؤقتًا.</span>
+            <span>يُقرأ الآن: CSV وTSV وTXT وXLSX وXLSM وDOCX وPDF النصي. الصور وPDF الممسوح تُقرأ بصريًا عند ربط الذكاء الاصطناعي، مع مسار يدوي احتياطي.</span>
           </label>
           <div class="format-grid">
             <div class="format-card ready"><strong>CSV / TSV</strong><span>قراءة وتحليل فعليان</span></div>
             <div class="format-card ready"><strong>Excel XLSX</strong><span>اختيار الورقة وصف العناوين</span></div>
             <div class="format-card ready"><strong>Word DOCX</strong><span>قراءة الجداول والنص محليًا</span></div>
             <div class="format-card ready"><strong>PDF نصي</strong><span>استخراج عبر PDF.js عند الاتصال</span></div>
-            <div class="format-card partial"><strong>الصور</strong><span>معاينة وإدخال نص مؤقت</span></div>
-            <div class="format-card partial"><strong>PDF ممسوح</strong><span>مسار يدوي حتى تفعيل OCR الذكي</span></div>
+            <div class="format-card ai-ready"><strong>الصور</strong><span>قراءة بصرية ذكية أو مسار يدوي</span></div>
+            <div class="format-card ai-ready"><strong>PDF ممسوح</strong><span>تحويل أول الصفحات إلى صور وتحليلها</span></div>
           </div>
         </div>
 
@@ -170,7 +172,7 @@
             <h4>مراجعة النص السردي</h4>
             <p class="muted-copy">عدّل أخطاء الاستخراج الواضحة فقط. سيُحلل النص كما يظهر هنا.</p>
             <textarea id="narrativeTextReview" class="narrative-review" rows="16" placeholder="النص المستخرج من التقرير..."></textarea>
-            <div class="soft-note">التحليل الحالي لغوي تربوي محلي، ويصنف الأدلة والموضوعات والتوصيات. لا يعتمد حكمًا نهائيًا دون مراجعتك.</div>
+            <div class="soft-note">يبدأ التحليل بقواعد تربوية محلية، ثم يضيف قراءة ذكية عميقة عند تفعيل الاتصال. لا يعتمد حكمًا نهائيًا دون مراجعتك.</div>
           </article>
 
           <article class="card">
@@ -179,9 +181,15 @@
           </article>
 
           <article class="card ai-card">
-            <div class="card-heading-inline"><h4>طبقة الذكاء الاصطناعي</h4><span class="mode-pill">تحليل محلي قابل للمراجعة</span></div>
-            <p>تعمل هذه النسخة بمحرك فهم وتصنيف واستدلال لغوي محلي. الربط الحي بنموذج ذكاء اصطناعي سيأتي عبر وظيفة خادمية آمنة، لا بوضع مفتاح API في المتصفح ثم كتابة «أمان مؤسسي» بخط عريض.</p>
-            <ul class="clean-list"><li>فهم نوع الملف وبنيته.</li><li>تصنيف الموضوعات والأحكام والأدلة.</li><li>ربط الاستنتاجات بمؤشرات رقمية أو نصية.</li><li>إظهار حدود الثقة والتنبيه إلى الحاجة للمراجعة.</li></ul>
+            <div class="card-heading-inline"><h4>طبقة الذكاء الاصطناعي</h4><span class="mode-pill">اختيارية مع رجوع محلي</span></div>
+            <p id="aiConnectionStatus">أدخل رابط وظيفة Supabase والمفتاح العام مرة واحدة، ثم يتولى التطبيق بقية العمل.</p>
+            <div class="ai-controls">
+              <label class="switch-row"><input id="aiModeToggle" type="checkbox" checked /><span>استخدام التحليل الذكي عند توفر الاتصال</span></label>
+              <label class="switch-row"><input id="maskPersonalDataInput" type="checkbox" checked /><span>إخفاء الأسماء والحقول الشخصية قبل الإرسال</span></label>
+              <button id="openAiSettingsBtn" class="secondary compact" type="button">إعداد الاتصال واختباره</button>
+            </div>
+            <ul class="clean-list"><li>قراءة الصور وملفات PDF الممسوحة.</li><li>فهم نوع النموذج وهدفه حتى عند ظهور نوع جديد.</li><li>ربط الاستنتاجات بمراجع صفوف أو أسطر أو مؤشرات.</li><li>اقتراح أدوات الجودة وخطة تحسين قابلة للقياس.</li></ul>
+            <div class="soft-note">لا يوضع مفتاح OpenAI داخل GitHub Pages. يُحفظ في وظيفة Supabase الخادمية، بينما يحتفظ المتصفح فقط برابط الوظيفة والمفتاح العام الآمن.</div>
           </article>
 
           <article class="card deterministic-card">
@@ -203,9 +211,10 @@
             <span class="eyebrow">الخطوة الرابعة</span>
             <h3>نتائج أولية قابلة للمراجعة</h3>
           </div>
-          <span class="success-chip">تحليل محلي مكتمل</span>
+          <span id="analysisModeChip" class="success-chip">تحليل محلي مكتمل</span>
         </div>
 
+        <div id="aiResultNotice" class="ai-result-notice hidden"></div>
         <div id="metrics" class="metrics"></div>
 
         <div class="results-grid">
@@ -223,6 +232,20 @@
         <div class="section-title-row"><h4>الاستنتاجات</h4><span>كل استنتاج يعرض دليله وحدوده</span></div>
         <div id="findings" class="finding-list"></div>
 
+        <section id="qualityToolsSection" class="result-section hidden">
+          <div class="section-title-row"><h4>أدوات الجودة المختارة</h4><span>تظهر فقط عندما تتحقق شروط استخدامها</span></div>
+          <div id="qualityToolsGrid" class="quality-tools-grid"></div>
+        </section>
+
+        <section id="improvementPlanSection" class="result-section hidden">
+          <div class="section-title-row"><h4>خطة التحسين المقترحة</h4><span>إجراءات قابلة للتنفيذ والمراجعة</span></div>
+          <div class="table-scroll"><table class="plan-table"><thead><tr><th>الأولوية</th><th>الإجراء</th><th>المسؤول</th><th>الزمن</th><th>مؤشر النجاح</th></tr></thead><tbody id="improvementPlanBody"></tbody></table></div>
+        </section>
+
+        <article id="aiCautions" class="card caution-card hidden"><h4>تنبيهات وحدود التحليل الذكي</h4><ul id="aiCautionsList" class="clean-list"></ul></article>
+
+        <article id="aiSuggestedType" class="card suggested-type-card hidden"><span class="eyebrow">نوع جديد مقترح</span><h4 id="aiSuggestedTypeName"></h4><p id="aiSuggestedTypePurpose"></p><div id="aiSuggestedTypeMeta" class="tag-list"></div><div class="soft-note">هذا اقتراح تحليلي للمراجعة، ولا يُضاف إلى سجل الأنواع تلقائيًا في هذه المرحلة.</div></article>
+
         <article class="card action-card">
           <div><span class="eyebrow">الإجراء الأول المقترح</span><h4 id="actionTitle"></h4><p id="actionText"></p></div>
           <div class="action-meta"><span><small>الأولوية</small><strong id="actionPriority"></strong></span><span><small>مؤشر النجاح</small><strong id="actionIndicator"></strong></span></div>
@@ -238,14 +261,14 @@
       <section class="status-section">
         <div><span class="eyebrow light">شفافية التطوير</span><h3>ما يعمل الآن وما يأتي لاحقًا</h3></div>
         <div class="status-grid">
-          <div><strong>يعمل فعليًا</strong><span>CSV وTSV وXLSX/XLSM وDOCX، واستخراج PDF النصي عند توفر الاتصال، واختيار الجداول أو النص، والتحليل الرقمي والسردي، والتصدير والطباعة.</span></div>
-          <div><strong>مسار احتياطي مرن</strong><span>الصور وملفات PDF الممسوحة تُعرض للمراجعة مع إدخال النص أو الجدول يدويًا، دون منع بقية العمل.</span></div>
-          <div><strong>الربط الذكي القادم</strong><span>OCR بصري، ونموذج ذكاء اصطناعي حي لتحليل النصوص والأدلة، وحفظ المشاريع والتقارير والمقارنات الزمنية.</span></div>
+          <div><strong>يعمل فعليًا</strong><span>الجداول وWord وPDF النصي، والتحليل الرقمي والسردي، والقراءة البصرية والتحليل العميق عند ربط وظيفة الذكاء الاصطناعي.</span></div>
+          <div><strong>لا يتعطل عند الفشل</strong><span>إذا تعذر الاتصال، يحتفظ التطبيق بالتحليل المحلي ويعرض سبب التعذر بدل حذف النتائج أو تجميد المستخدم في طابور إلكتروني.</span></div>
+          <div><strong>القادم</strong><span>حفظ المشاريع، المقارنات الزمنية، اعتماد الاستنتاجات، تقارير Word/PDF احترافية، وحسابات مستخدمين وصلاحيات.</span></div>
         </div>
       </section>
     </main>
 
-    <footer><span>تقارير · v0.4.0</span><span>واجهة بسيطة فوق محركات قابلة للتدقيق.</span></footer>
+    <footer><span>تقارير · v0.5.0</span><span>ذكاء اصطناعي قوي، وحسابات لا تفاوض الواقع.</span></footer>
   </div>
 
   <dialog id="sheetDialog">
@@ -272,6 +295,23 @@
     </form>
   </dialog>
 
+  <dialog id="aiSettingsDialog">
+    <form method="dialog" class="dialog-card ai-settings-card">
+      <h3>إعداد الذكاء الاصطناعي</h3>
+      <p>هذه إعدادات ربط وظيفة Supabase. لا تضع مفتاح OpenAI هنا؛ مكانه في أسرار الوظيفة الخادمية.</p>
+      <label class="field-label" for="aiEndpointInput">رابط وظيفة التحليل</label>
+      <input id="aiEndpointInput" type="url" dir="ltr" placeholder="https://PROJECT.supabase.co/functions/v1/analyze-educational-form" />
+      <label class="field-label" for="aiAnonKeyInput">Supabase anon / publishable key</label>
+      <input id="aiAnonKeyInput" type="password" dir="ltr" autocomplete="off" placeholder="eyJ..." />
+      <label class="field-label" for="aiAccessCodeInput">رمز الوصول المدرسي</label>
+      <input id="aiAccessCodeInput" type="password" autocomplete="off" placeholder="الرمز الذي ضبطته في أسرار Supabase" />
+      <label class="switch-row settings-switch"><input id="aiEnabledInput" type="checkbox" checked /><span>تفعيل الذكاء الاصطناعي بعد الحفظ</span></label>
+      <div id="aiSettingsMessage" class="inline-message hidden"></div>
+      <div class="soft-note">يحفظ رابط الوظيفة والمفتاح العام في هذا المتصفح. رمز الوصول يبقى للجلسة الحالية فقط.</div>
+      <div class="actions"><button id="clearAiSettingsBtn" class="secondary" type="button">حذف الإعدادات</button><button class="secondary" value="cancel">إلغاء</button><button id="saveAiSettingsBtn" class="primary" type="button">حفظ واختبار</button></div>
+    </form>
+  </dialog>
+
   <dialog id="typeDialog">
     <form method="dialog" class="dialog-card">
       <h3>تعديل نوع البيانات</h3>
@@ -281,8 +321,10 @@
     </form>
   </dialog>
 
+  <script src="assets/runtime-config.js"></script>
   <script src="assets/xlsx-lite.js"></script>
   <script src="assets/document-lite.js"></script>
+  <script src="assets/ai-client.js"></script>
   <script src="assets/app.js"></script>
 </body>
 </html>

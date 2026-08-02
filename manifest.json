@@ -1,36 +1,52 @@
 {
   "app": "تقارير",
-  "version": "0.4.0",
-  "phase": "1-A3",
-  "releaseName": "Document Intake and Narrative Analysis",
-  "buildType": "static-github-pages",
+  "version": "0.5.0",
+  "phase": "1-B1",
+  "releaseName": "AI Analysis Gateway and Visual Intake",
+  "buildType": "static-github-pages-plus-supabase-edge-function",
   "supportedInputs": {
     "table": ["csv", "tsv", "txt", "xlsx", "xlsm"],
     "document": ["docx", "pdf-text-layer"],
-    "manualFallback": ["png", "jpg", "jpeg", "webp", "scanned-pdf"]
+    "aiVisual": ["png", "jpg", "jpeg", "webp", "scanned-pdf-first-pages"],
+    "manualFallback": ["image", "scanned-pdf"]
   },
   "features": [
-    "local-docx-ooxml-reading",
-    "pdfjs-text-extraction",
-    "pdf-table-heuristics",
-    "document-dataset-selection",
-    "narrative-educational-analysis",
-    "evidence-strength-review",
-    "flexible-manual-extraction-fallback",
-    "xlsx-multi-sheet-intake",
-    "data-quality-review",
+    "deterministic-local-analysis",
+    "live-ai-educational-interpretation",
+    "vision-table-and-narrative-extraction",
+    "evidence-reference-contract",
+    "server-side-evidence-reference-validation",
+    "quality-tool-selection",
+    "measurable-improvement-plan",
+    "dynamic-form-type-suggestion",
+    "personal-field-masking-before-ai",
+    "local-analysis-fallback",
+    "supabase-edge-function-gateway",
+    "openai-responses-structured-output",
     "json-export",
     "print-results"
   ],
-  "externalRuntimeDependencies": {
+  "runtime": {
+    "frontend": "GitHub Pages static site",
+    "aiGateway": "Supabase Edge Function",
+    "aiProvider": "OpenAI Responses API",
+    "defaultModel": "gpt-4o-mini",
     "pdfjs": "6.2.108 via jsDelivr, loaded only when PDF is opened"
   },
+  "security": {
+    "openAiKeyInBrowser": false,
+    "originAllowlist": true,
+    "sharedAccessCode": true,
+    "aiRequestsStoredByProvider": false,
+    "personalFieldMaskingDefault": true
+  },
   "notYetEnabled": [
-    "live-ai-provider",
-    "automatic-image-ocr",
-    "scanned-pdf-ocr",
     "cloud-project-storage",
     "user-accounts",
+    "role-based-access-control",
+    "durable-rate-limiting",
+    "saved-dynamic-form-registry",
+    "word-pdf-report-generation",
     "direct-rpt-reading",
     "legacy-doc-and-xls-reading"
   ]

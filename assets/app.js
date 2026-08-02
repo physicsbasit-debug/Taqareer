@@ -72,7 +72,8 @@
   const state = {
     headers: [], rows: [], sourceName: "", rawText: "", narrativeText: "", delimiter: ",", type: formTypes.at(-1), confidence: 0,
     quality: { blockers: [], warnings: [], info: [], completeness: 0 },
-    analysis: null, sampleMaxScore: null, pendingSource: null, sourceMeta: null, pendingManualFileName: ""
+    analysis: null, aiResult: null, aiError: "", aiUsed: false,
+    sampleMaxScore: null, pendingSource: null, sourceMeta: null, pendingManualFileName: "", pendingVisualPreview: null
   };
 
   const $ = (id) => document.getElementById(id);
@@ -92,6 +93,73 @@
     const el = $(id); el.textContent = text; el.classList.remove("hidden", "error"); if (error) el.classList.add("error");
   }
   function clearMessage(id) { $(id).classList.add("hidden"); }
+
+
+  function aiConfig() {
+    return window.TaqareerAI?.getConfig?.() || { endpoint: "", anonKey: "", enabled: false };
+  }
+
+  function aiReady() {
+    return Boolean(window.TaqareerAI?.isConfigured?.() && aiConfig().enabled);
+  }
+
+  function updateAiStatusUi() {
+    const config = aiConfig();
+    const configured = Boolean(window.TaqareerAI?.isConfigured?.());
+    const enabled = Boolean(config.enabled);
+    const header = $("aiHeaderStatus");
+    const card = $("aiConnectionStatus");
+    const mode = $("aiModeToggle");
+    if (mode) mode.checked = enabled;
+    const text = configured ? (enabled ? "ذكاء اصطناعي حي جاهز" : "الذكاء الاصطناعي متوقف") : "الذكاء الاصطناعي غير مربوط";
+    if (header) {
+      header.textContent = text;
+      header.className = configured && enabled ? "version-badge ai-live" : "version-badge";
+    }
+    if (card) {
+      card.textContent = configured
+        ? `${text}. يبقى التحليل المحلي متاحًا كخطة رجوع.`
+        : "أدخل رابط وظيفة Supabase والمفتاح العام مرة واحدة، ثم يتولى التطبيق بقية العمل.";
+    }
+    const runButton = $("runAnalysisBtn");
+    if (runButton) runButton.textContent = configured && enabled ? "تنفيذ التحليل الذكي" : "تنفيذ التحليل المحلي";
+  }
+
+  function openAiSettings() {
+    const config = aiConfig();
+    $("aiEndpointInput").value = config.endpoint || "";
+    $("aiAnonKeyInput").value = config.anonKey || "";
+    $("aiAccessCodeInput").value = window.TaqareerAI?.getAccessCode?.() || "";
+    $("aiEnabledInput").checked = config.enabled !== false;
+    $("aiSettingsMessage").classList.add("hidden");
+    $("aiSettingsDialog").showModal();
+  }
+
+  async function saveAndTestAiSettings() {
+    const endpoint = $("aiEndpointInput").value.trim();
+    const anonKey = $("aiAnonKeyInput").value.trim();
+    const accessCode = $("aiAccessCodeInput").value.trim();
+    const enabled = $("aiEnabledInput").checked;
+    window.TaqareerAI.saveConfig({ endpoint, anonKey, enabled });
+    window.TaqareerAI.setAccessCode(accessCode);
+    updateAiStatusUi();
+    const message = $("aiSettingsMessage");
+    message.classList.remove("hidden", "error");
+    message.textContent = "جارٍ اختبار الاتصال…";
+    try {
+      const result = await window.TaqareerAI.ping();
+      if (result.aiKeyConfigured === false) {
+        message.textContent = "تم الوصول إلى وظيفة Supabase، لكن سر OPENAI_API_KEY غير مضبوط بعد.";
+        message.classList.add("error");
+        return;
+      }
+      message.textContent = `تم الاتصال بنجاح${result.model ? ` · النموذج ${result.model}` : ""}.`;
+      setTimeout(() => $("aiSettingsDialog").close(), 650);
+    } catch (error) {
+      message.textContent = error.message || "تعذر الاتصال بوظيفة الذكاء الاصطناعي.";
+      message.classList.add("error");
+    }
+  }
 
   function detectDelimiter(text) {
     const first = text.split(/\r?\n/).find(line => line.trim()) || "";
@@ -265,6 +333,70 @@
     }
   }
 
+
+  function normalizeVisionDataset(dataset, index) {
+    const rawHeaders = Array.isArray(dataset?.headers) ? dataset.headers : [];
+    const maxCells = Math.max(0, ...(dataset?.rows || []).map(row => Array.isArray(row?.cells) ? row.cells.length : 0));
+    const headers = (rawHeaders.length ? rawHeaders : Array.from({ length: maxCells || 1 }, (_, i) => `عمود ${i + 1}`))
+      .map((header, i) => String(header || `عمود ${i + 1}`).trim());
+    const rows = (dataset?.rows || []).map(row => {
+      const cells = Array.isArray(row?.cells) ? row.cells : [];
+      return Object.fromEntries(headers.map((header, cellIndex) => [header, cells[cellIndex] ?? ""]));
+    }).filter(row => Object.values(row).some(value => String(value).trim() !== ""));
+    return {
+      id: `ai-vision-${index}`,
+      name: dataset?.name || `جدول مستخرج ${index + 1}`,
+      headers,
+      rows,
+      meta: { sourceType: "ai-vision", mode: "table", extractionMode: "ai-vision" }
+    };
+  }
+
+  function queueVisionResult(fileName, result, sourceKind = "image") {
+    const datasets = (result?.datasets || []).map(normalizeVisionDataset).filter(dataset => dataset.rows.length);
+    const narrative = String(result?.narrativeText || "").trim();
+    if (narrative) {
+      const lines = narrative.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+      datasets.push({
+        id: "ai-vision-narrative",
+        name: "النص السردي المستخرج بالذكاء الاصطناعي",
+        headers: ["م", "القسم", "النص"],
+        rows: lines.map((line, index) => ({ "م": index + 1, "القسم": "نص مستخرج", "النص": line })),
+        rawText: narrative,
+        meta: { sourceType: "ai-vision", mode: "narrative", extractionMode: "ai-vision" }
+      });
+    }
+    if (!datasets.length) throw new Error("لم يرجع الذكاء الاصطناعي نصًا أو جدولًا صالحًا للمراجعة.");
+    state.pendingSource = {
+      name: fileName,
+      kind: sourceKind,
+      datasets: datasets.map(dataset => ({
+        ...dataset,
+        meta: {
+          ...dataset.meta,
+          detectedType: result?.documentType?.nameAr || "غير محدد",
+          detectionConfidence: result?.documentType?.confidence || 0,
+          aiWarnings: result?.warnings || []
+        }
+      }))
+    };
+    queueDatasets(state.pendingSource);
+  }
+
+  async function extractVisualWithAi(fileName, images, sourceKind = "image") {
+    if (!aiReady()) throw new Error("الذكاء الاصطناعي الحي غير مربوط بعد.");
+    setMessage("inputMessage", `جارٍ قراءة ${sourceKind === "pdf" ? "صفحات PDF" : "الصورة"} بصريًا وتحويلها إلى محتوى منظم…`);
+    const payload = {
+      fileName,
+      sourceKind,
+      locale: "ar-OM",
+      images: images.map(image => ({ label: image.label || fileName, dataUrl: image.dataUrl })),
+      knownFormTypes: formTypes.filter(type => type.id !== "unknown").map(type => ({ id: type.id, nameAr: type.name, purpose: type.purpose }))
+    };
+    const result = await window.TaqareerAI.extractVisual(payload);
+    queueVisionResult(fileName, result, sourceKind);
+  }
+
   async function ingestDocument(file, readerName) {
     clearMessage("inputMessage");
     const label = readerName === "readPdf" ? "PDF" : "Word";
@@ -277,7 +409,17 @@
     } catch (err) {
       state.pendingSource = null;
       if (readerName === "readPdf") {
-        openManualExtraction(file.name, err.message || "تعذر استخراج PDF آليًا.", "pdf");
+        if (aiReady() && window.TaqareerDocuments?.renderPdfPages) {
+          try {
+            setMessage("inputMessage", "لم تكفِ طبقة النص. جارٍ تجهيز أول صفحات PDF للقراءة البصرية الذكية…");
+            const rendered = await window.TaqareerDocuments.renderPdfPages(file, 3);
+            await extractVisualWithAi(file.name, rendered.images, "pdf");
+          } catch (visionError) {
+            openManualExtraction(file.name, visionError.message || err.message || "تعذر استخراج PDF آليًا.", "pdf");
+          }
+        } else {
+          openManualExtraction(file.name, err.message || "تعذر استخراج PDF آليًا.", "pdf");
+        }
       } else {
         setMessage("inputMessage", err.message || `تعذر قراءة ${label}.`, true);
       }
@@ -298,12 +440,22 @@
 
   async function ingestImage(file) {
     clearMessage("inputMessage");
-    setMessage("inputMessage", "جارٍ تجهيز الصورة للمراجعة المحلية…");
+    setMessage("inputMessage", aiReady() ? "جارٍ تجهيز الصورة للقراءة البصرية الذكية…" : "جارٍ تجهيز الصورة للمراجعة المحلية…");
     try {
       const preview = await window.TaqareerDocuments.imagePreview(file);
+      state.pendingVisualPreview = preview;
+      if (aiReady()) {
+        try {
+          await extractVisualWithAi(file.name, [{ label: file.name, dataUrl: preview.dataUrl }], "image");
+          return;
+        } catch (aiError) {
+          openManualExtraction(file.name, `تعذرت القراءة البصرية: ${aiError.message}. يمكنك متابعة العمل يدويًا.`, "image", preview.dataUrl);
+          return;
+        }
+      }
       openManualExtraction(
         file.name,
-        "تظهر الصورة الآن للمراجعة. الصق النص أو الجدول المستخرج من الهاتف؛ القراءة البصرية بالذكاء الاصطناعي ستُربط لاحقًا عبر وظيفة خادمية آمنة.",
+        "تظهر الصورة للمراجعة. اربط الذكاء الاصطناعي للقراءة التلقائية، أو الصق النص أو الجدول يدويًا الآن.",
         "image",
         preview.dataUrl
       );
@@ -428,6 +580,7 @@
         : ["تحليل بنية الحقول وأنواع القيم", "استخراج المؤشرات الرقمية المتاحة", "تكوين استنتاجات عامة محدودة", "اقتراح تعريف تحليلي جديد للمراجعة"]
     };
     $("analysisPlan").innerHTML = plans[state.type.id].map(x => `<li>${escapeHtml(x)}</li>`).join("");
+    updateAiStatusUi();
   }
 
   function parseNumber(value) {
@@ -442,42 +595,190 @@
     return n % 2 ? a[(n-1)/2] : (a[n/2-1] + a[n/2]) / 2;
   }
 
-  function runAnalysis() {
-    clearMessage("setupMessage");
 
-    if (isNarrativeMode()) {
-      const text = $("narrativeTextReview").value.trim();
-      if (text.length < 40) return setMessage("setupMessage", "النص قصير جدًا لإنتاج تحليل تربوي مفيد. أضف المحتوى المستخرج أو راجع الملف.", true);
-      state.narrativeText = text;
-      state.analysis = analyzeNarrative(text);
+  function isSensitiveHeader(header) {
+    const value = normalize(header);
+    return /اسم.*طالب|اسم.*معلم|الرقم.*مدني|رقم.*طالب|هاتف|بريد|ايميل|عنوان|بطاقه|هوية|هويه|civil|student.?id|teacher.?id|phone|email/.test(value);
+  }
+
+  function sanitizeRowsForAi(maskPersonalData = true) {
+    const headers = state.headers.slice(0, 35);
+    const sensitive = new Set(headers.filter(isSensitiveHeader));
+    const rows = state.rows.slice(0, 220).map((row, rowIndex) => {
+      const clean = { _evidenceRef: `row:${rowIndex + 1}` };
+      headers.forEach(header => {
+        let value = String(row[header] ?? "").slice(0, 500);
+        if (maskPersonalData && sensitive.has(header)) value = header.includes("اسم") ? `سجل ${rowIndex + 1}` : "[محجوب]";
+        clean[header] = value;
+      });
+      return clean;
+    });
+    return {
+      headers,
+      rows,
+      rowCount: state.rows.length,
+      sentRowCount: rows.length,
+      maskedHeaders: [...sensitive],
+      truncated: state.rows.length > rows.length || state.headers.length > headers.length
+    };
+  }
+
+  function narrativeLinesForAi(maskPersonalData = true) {
+    const source = String(state.narrativeText || state.rawText || "").slice(0, 42000);
+    const lines = source.split(/\r?\n/).map(line => line.trim()).filter(Boolean).slice(0, 450);
+    return lines.map((line, index) => ({
+      ref: `line:${index + 1}`,
+      text: maskPersonalData
+        ? line.replace(/(اسم\s*(?:الطالب|المعلم)?\s*[:：-]?\s*)[^،؛\n]{3,80}/gi, "$1[محجوب]")
+        : line
+    }));
+  }
+
+  function compactDeterministicAnalysis(analysis) {
+    if (!analysis) return null;
+    const copy = JSON.parse(JSON.stringify(analysis));
+    delete copy.localAnalysis;
+    delete copy.ai;
+    if (Array.isArray(copy.bins) && copy.bins.length > 12) copy.bins = copy.bins.slice(0, 12);
+    return copy;
+  }
+
+  function buildEvidenceCatalog(dataset, narrativeLines, deterministicAnalysis) {
+    const refs = [];
+    (dataset?.rows || []).forEach(row => { if (row?._evidenceRef) refs.push(row._evidenceRef); });
+    (narrativeLines || []).forEach(line => { if (line?.ref) refs.push(line.ref); });
+    Object.entries(deterministicAnalysis || {}).forEach(([key, value]) => {
+      if (["string", "number", "boolean"].includes(typeof value) || value === null) refs.push(`metric:${key}`);
+    });
+    return [...new Set(refs)];
+  }
+
+  function buildAiAnalysisPayload(maskPersonalData = true) {
+    const dataset = sanitizeRowsForAi(maskPersonalData);
+    const lines = narrativeLinesForAi(maskPersonalData);
+    const deterministicAnalysis = compactDeterministicAnalysis(state.analysis);
+    return {
+      locale: "ar-OM",
+      appVersion: "0.5.0",
+      source: {
+        name: state.sourceName,
+        meta: state.sourceMeta || {},
+        mode: isNarrativeMode() ? "narrative" : "table"
+      },
+      recognizedType: {
+        id: state.type.id,
+        nameAr: state.type.name,
+        purpose: state.type.purpose,
+        confidence: state.confidence
+      },
+      quality: state.quality,
+      privacy: {
+        personalDataMasked: maskPersonalData,
+        maskedHeaders: dataset.maskedHeaders,
+        note: maskPersonalData ? "أزيلت الحقول المباشرة المعروفة قبل الإرسال. قد تبقى إشارات شخصية داخل النصوص الحرة وتحتاج مراجعة." : "طلب المستخدم إرسال المحتوى دون إخفاء تلقائي."
+      },
+      data: isNarrativeMode()
+        ? { lines, originalLineCount: String(state.narrativeText || state.rawText || "").split(/\r?\n/).length }
+        : dataset,
+      deterministicAnalysis,
+      availableEvidenceRefs: buildEvidenceCatalog(isNarrativeMode() ? null : dataset, isNarrativeMode() ? lines : null, deterministicAnalysis),
+      evidenceReferenceGuide: {
+        rows: "row:N يشير إلى رقم السجل ضمن العينة المرسلة",
+        lines: "line:N يشير إلى السطر النصي المرسل",
+        metrics: "metric:NAME يشير إلى مؤشر محسوب داخل deterministicAnalysis"
+      }
+    };
+  }
+
+  function normalizeAiFinding(item) {
+    return {
+      title: item?.title || "استنتاج تربوي",
+      statement: item?.statement || "",
+      evidence: (item?.evidenceRefs || []).join("، ") || "لم يحدد مرجع دليل واضح.",
+      evidenceRefs: item?.evidenceRefs || [],
+      confidence: item?.confidence || "متوسطة",
+      impact: item?.educationalImpact || "أثر تربوي يحتاج مراجعة.",
+      action: item?.recommendedAction || "مراجعة الاستنتاج وربطه بإجراء قابل للقياس.",
+      limitations: item?.limitations || [],
+      source: "ai"
+    };
+  }
+
+  async function enrichAnalysisWithAi() {
+    if (!aiReady()) return null;
+    const maskPersonalData = $("maskPersonalDataInput")?.checked !== false;
+    const payload = buildAiAnalysisPayload(maskPersonalData);
+    const result = await window.TaqareerAI.analyze(payload);
+    state.aiResult = result;
+    state.aiUsed = true;
+    state.aiError = "";
+    return result;
+  }
+
+  async function runAnalysis() {
+    clearMessage("setupMessage");
+    state.aiResult = null;
+    state.aiError = "";
+    state.aiUsed = false;
+    const runButton = $("runAnalysisBtn");
+    runButton.disabled = true;
+
+    try {
+      if (isNarrativeMode()) {
+        const text = $("narrativeTextReview").value.trim();
+        if (text.length < 40) {
+          setMessage("setupMessage", "النص قصير جدًا لإنتاج تحليل تربوي مفيد. أضف المحتوى المستخرج أو راجع الملف.", true);
+          return;
+        }
+        state.narrativeText = text;
+        state.analysis = analyzeNarrative(text);
+      } else {
+        const scoreColumn = $("scoreColumnSelect").value;
+        const levelColumn = $("levelColumnSelect").value;
+        const maxScore = parseNumber($("maxScoreInput").value);
+        const thresholdPct = parseNumber($("masteryThresholdInput").value);
+        if (!Number.isFinite(thresholdPct) || thresholdPct <= 0 || thresholdPct > 100) {
+          setMessage("setupMessage", "حد الإتقان يجب أن يكون بين 1 و100.", true);
+          return;
+        }
+
+        if (state.type.id === "level_distribution") {
+          state.analysis = analyzeLevelDistribution();
+        } else {
+          const rawValues = scoreColumn ? state.rows.map(r => parseNumber(r[scoreColumn])).filter(Number.isFinite) : [];
+          let excludedOutOfRange = 0;
+          const values = rawValues.filter(v => {
+            if (Number.isFinite(maxScore) && maxScore > 0 && (v < 0 || v > maxScore)) { excludedOutOfRange++; return false; }
+            return true;
+          });
+          if (!values.length) {
+            setMessage("setupMessage", "اختر عمودًا رقميًا صالحًا للتحليل، أو راجع الدرجة الكلية والقيم الخارجة عن نطاقها.", true);
+            return;
+          }
+          state.analysis = analyzeScores(values, scoreColumn, levelColumn, maxScore, thresholdPct);
+          if (excludedOutOfRange > 0) {
+            state.analysis.findings.unshift(finding("استُبعدت قيم خارج النطاق", `استُبعدت ${excludedOutOfRange} قيمة أقل من صفر أو أعلى من الدرجة الكلية المؤكدة (${maxScore}).`, "مرتفعة", "إدخال هذه القيم كان سيشوّه المتوسط ونسبة الإتقان.", "مراجعة السجلات المستبعدة وتصحيحها قبل اعتماد التقرير النهائي."));
+          }
+        }
+      }
+
+      if (aiReady()) {
+        setMessage("setupMessage", "اكتمل التحليل الحتمي. جارٍ تنفيذ القراءة التربوية العميقة وربط الاستنتاجات بالأدلة…");
+        try {
+          await enrichAnalysisWithAi();
+        } catch (error) {
+          state.aiError = error.message || "تعذر التحليل الذكي الحي.";
+          state.aiResult = null;
+          state.aiUsed = false;
+        }
+      }
+
       renderResults();
       showPanel(4);
-      return;
+    } finally {
+      runButton.disabled = false;
+      updateAiStatusUi();
     }
-
-    const scoreColumn = $("scoreColumnSelect").value;
-    const levelColumn = $("levelColumnSelect").value;
-    const maxScore = parseNumber($("maxScoreInput").value);
-    const thresholdPct = parseNumber($("masteryThresholdInput").value);
-    if (!Number.isFinite(thresholdPct) || thresholdPct <= 0 || thresholdPct > 100) return setMessage("setupMessage", "حد الإتقان يجب أن يكون بين 1 و100.", true);
-
-    if (state.type.id === "level_distribution") {
-      state.analysis = analyzeLevelDistribution();
-    } else {
-      const rawValues = scoreColumn ? state.rows.map(r => parseNumber(r[scoreColumn])).filter(Number.isFinite) : [];
-      let excludedOutOfRange = 0;
-      const values = rawValues.filter(v => {
-        if (Number.isFinite(maxScore) && maxScore > 0 && (v < 0 || v > maxScore)) { excludedOutOfRange++; return false; }
-        return true;
-      });
-      if (!values.length) return setMessage("setupMessage", "اختر عمودًا رقميًا صالحًا للتحليل، أو راجع الدرجة الكلية والقيم الخارجة عن نطاقها.", true);
-      state.analysis = analyzeScores(values, scoreColumn, levelColumn, maxScore, thresholdPct);
-      if (excludedOutOfRange > 0) {
-        state.analysis.findings.unshift(finding("استُبعدت قيم خارج النطاق", `استُبعدت ${excludedOutOfRange} قيمة أقل من صفر أو أعلى من الدرجة الكلية المؤكدة (${maxScore}).`, "مرتفعة", "إدخال هذه القيم كان سيشوّه المتوسط ونسبة الإتقان.", "مراجعة السجلات المستبعدة وتصحيحها قبل اعتماد التقرير النهائي."));
-      }
-    }
-    renderResults();
-    showPanel(4);
   }
 
   function analyzeScores(values, scoreColumn, levelColumn, maxScore, thresholdPct) {
@@ -652,6 +953,7 @@
 
   function renderResults() {
     const a = state.analysis;
+    const ai = state.aiResult;
     if (a.kind === "scores") {
       const metrics = [
         ["السجلات الصالحة", a.n, "قيمة رقمية"], ["المتوسط", round(a.mean), a.hasMax ? `من ${a.maxScore}` : "قيمة خام"],
@@ -675,9 +977,69 @@
       $("metrics").innerHTML = metrics.map(m => `<div class="metric"><small>${m[0]}</small><strong>${m[1]}</strong><span>${m[2]}</span></div>`).join("");
       renderBars(a.entries.map(e => ({label:e.label,count:e.count})), "توزيع مستويات الأداء");
     }
-    $("executiveTitle").textContent = a.executiveTitle; $("executiveSummary").textContent = a.executiveSummary;
-    $("findings").innerHTML = a.findings.map((f,i) => `<details class="finding" ${i===0?'open':''}><summary><div class="finding-title"><strong>${escapeHtml(f.title)}</strong><small>${escapeHtml(f.impact)}</small></div><span class="confidence-pill">ثقة ${escapeHtml(f.confidence)}</span></summary><div class="finding-body"><h5>الدليل</h5><p>${escapeHtml(f.evidence)}</p><h5>الإجراء المرتبط</h5><p>${escapeHtml(f.action)}</p></div></details>`).join("");
-    $("actionTitle").textContent = a.action.title; $("actionText").textContent = a.action.text; $("actionPriority").textContent = a.action.priority; $("actionIndicator").textContent = a.action.indicator;
+
+    $("analysisModeChip").textContent = ai ? "تحليل هجين: حتمي + ذكاء اصطناعي" : "تحليل محلي حتمي";
+    $("analysisModeChip").className = ai ? "success-chip ai-result-chip" : "success-chip";
+    const notice = $("aiResultNotice");
+    if (ai) {
+      notice.classList.remove("hidden", "error");
+      notice.innerHTML = `<strong>تمت القراءة التربوية العميقة</strong><span>صاغ الذكاء الاصطناعي الاستنتاجات وربطها بمراجع أدلة، بينما بقيت الحسابات من المحرك الحتمي.</span>`;
+    } else if (state.aiError) {
+      notice.classList.remove("hidden");
+      notice.classList.add("error");
+      notice.innerHTML = `<strong>اكتمل التحليل المحلي</strong><span>تعذر التحليل الذكي الحي: ${escapeHtml(state.aiError)}. لم تُفقد النتائج.</span>`;
+    } else {
+      notice.classList.add("hidden");
+      notice.classList.remove("error");
+    }
+
+    $("executiveTitle").textContent = ai?.executiveTitle || a.executiveTitle;
+    $("executiveSummary").textContent = ai?.executiveSummary || a.executiveSummary;
+
+    const aiFindings = (ai?.findings || []).map(normalizeAiFinding);
+    const localFindings = (a.findings || []).map(item => ({ ...item, source: "deterministic", statement: item.title, limitations: [] }));
+    const allFindings = [...aiFindings, ...localFindings];
+    $("findings").innerHTML = allFindings.map((f,i) => {
+      const sourceLabel = f.source === "ai" ? "تحليل ذكي" : "تحليل حتمي";
+      const limitationHtml = f.limitations?.length
+        ? `<h5>الحدود</h5><p>${f.limitations.map(escapeHtml).join("، ")}</p>` : "";
+      const statementHtml = f.statement && f.statement !== f.title ? `<p class="finding-statement">${escapeHtml(f.statement)}</p>` : "";
+      return `<details class="finding" ${i===0?'open':''}><summary><div class="finding-title"><strong>${escapeHtml(f.title)}</strong><small>${escapeHtml(f.impact)}</small></div><div class="finding-badges"><span class="source-pill ${f.source}">${sourceLabel}</span><span class="confidence-pill">ثقة ${escapeHtml(f.confidence)}</span></div></summary><div class="finding-body">${statementHtml}<h5>الدليل</h5><p>${escapeHtml(f.evidence)}</p><h5>الإجراء المرتبط</h5><p>${escapeHtml(f.action)}</p>${limitationHtml}</div></details>`;
+    }).join("");
+
+    const tools = ai?.qualityTools || [];
+    $("qualityToolsSection").classList.toggle("hidden", !tools.length);
+    $("qualityToolsGrid").innerHTML = tools.map(tool => `<article class="quality-tool-card"><strong>${escapeHtml(tool.name)}</strong><p>${escapeHtml(tool.reason)}</p><span>${tool.conditionsMet ? "الشروط متحققة" : "مقترحة للمراجعة"}</span></article>`).join("");
+
+    const plan = ai?.improvementPlan || [];
+    $("improvementPlanSection").classList.toggle("hidden", !plan.length);
+    $("improvementPlanBody").innerHTML = plan.map(item => `<tr><td>${escapeHtml(item.priority)}</td><td>${escapeHtml(item.action)}</td><td>${escapeHtml(item.responsibleRole)}</td><td>${escapeHtml(item.timeframe)}</td><td>${escapeHtml(item.successIndicator)}</td></tr>`).join("");
+
+    const firstPlan = plan[0];
+    const action = firstPlan ? {
+      title: firstPlan.action,
+      text: `${firstPlan.responsibleRole} · ${firstPlan.timeframe}`,
+      priority: firstPlan.priority,
+      indicator: firstPlan.successIndicator
+    } : a.action;
+    $("actionTitle").textContent = action.title;
+    $("actionText").textContent = action.text;
+    $("actionPriority").textContent = action.priority;
+    $("actionIndicator").textContent = action.indicator;
+
+    const cautions = ai?.cautions || [];
+    $("aiCautions").classList.toggle("hidden", !cautions.length);
+    $("aiCautionsList").innerHTML = cautions.map(item => `<li>${escapeHtml(item)}</li>`).join("");
+
+    const suggested = ai?.suggestedNewType;
+    const showSuggested = Boolean(suggested?.needed);
+    $("aiSuggestedType").classList.toggle("hidden", !showSuggested);
+    if (showSuggested) {
+      $("aiSuggestedTypeName").textContent = suggested.nameAr || "نوع تحليلي جديد";
+      $("aiSuggestedTypePurpose").textContent = suggested.purpose || "يحتاج الغرض التربوي إلى مراجعة المستخدم.";
+      const tags = [...(suggested.requiredFields || []).map(item => `حقل: ${item}`), ...(suggested.analysisFamily || []).map(item => `تحليل: ${item}`)];
+      $("aiSuggestedTypeMeta").innerHTML = tags.map(item => `<span>${escapeHtml(item)}</span>`).join("");
+    }
   }
 
   function renderBars(items, title) {
@@ -688,17 +1050,19 @@
   function exportAnalysis() {
     const payload = {
       app: "تقارير",
-      version: "0.4.0",
+      version: "0.5.0",
       generatedAt: new Date().toISOString(),
       source: state.sourceName,
       sourceMeta: state.sourceMeta,
       recognizedType: { id: state.type.id, name: state.type.name, confidence: state.confidence },
       quality: state.quality,
-      analysis: state.analysis
+      analysis: state.analysis,
+      aiAnalysis: state.aiResult,
+      aiError: state.aiError || null
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v0.4.0.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v0.5.0.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
@@ -709,7 +1073,8 @@
       headers: [], rows: [], sourceName: "", rawText: "", narrativeText: "", delimiter: ",",
       type: formTypes.at(-1), confidence: 0,
       quality: { blockers: [], warnings: [], info: [], completeness: 0 },
-      analysis: null, sampleMaxScore: null, pendingSource: null, sourceMeta: null, pendingManualFileName: ""
+      analysis: null, aiResult: null, aiError: "", aiUsed: false,
+      sampleMaxScore: null, pendingSource: null, sourceMeta: null, pendingManualFileName: "", pendingVisualPreview: null
     });
     $("fileInput").value = ""; $("pasteInput").value = ""; $("manualTextInput").value = "";
     clearMessage("inputMessage"); clearMessage("setupMessage"); showPanel(1);
@@ -743,8 +1108,27 @@
     $("backToReviewBtn").addEventListener("click",()=>showPanel(2));
     $("runAnalysisBtn").addEventListener("click",runAnalysis);
     $("restartBtn").addEventListener("click",reset); $("resetTopBtn").addEventListener("click",reset); $("exportBtn").addEventListener("click",exportAnalysis);
+    $("openAiSettingsBtn").addEventListener("click", openAiSettings);
+    $("openAiSettingsTopBtn").addEventListener("click", openAiSettings);
+    $("saveAiSettingsBtn").addEventListener("click", e => { e.preventDefault(); saveAndTestAiSettings(); });
+    $("clearAiSettingsBtn").addEventListener("click", e => {
+      e.preventDefault();
+      window.TaqareerAI.clearConfig();
+      $("aiEndpointInput").value = "";
+      $("aiAnonKeyInput").value = "";
+      $("aiAccessCodeInput").value = "";
+      updateAiStatusUi();
+      const message = $("aiSettingsMessage");
+      message.classList.remove("hidden", "error");
+      message.textContent = "حُذفت إعدادات الاتصال من هذا المتصفح.";
+    });
+    $("aiModeToggle").addEventListener("change", e => {
+      window.TaqareerAI.saveConfig({ enabled: e.target.checked });
+      updateAiStatusUi();
+    });
     $("changeTypeBtn").addEventListener("click",()=>{ $("typeSelect").value=state.type.id; $("typeDialog").showModal(); });
     $("applyTypeBtn").addEventListener("click", e => { e.preventDefault(); const chosen=formTypes.find(t=>t.id===$("typeSelect").value); if(chosen){state.type=chosen;state.confidence=100;renderReview();} $("typeDialog").close(); });
+    updateAiStatusUi();
   }
   document.addEventListener("DOMContentLoaded", init);
 })();

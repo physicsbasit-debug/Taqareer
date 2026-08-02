@@ -370,6 +370,50 @@
     };
   }
 
+
+  async function renderPdfPages(file, maxPages = 3) {
+    const pdfjs = await loadPdfModule();
+    if (!pdfjs?.getDocument) throw new Error("وحدة PDF المحمّلة لا توفر واجهة العرض المتوقعة.");
+    if (pdfjs.GlobalWorkerOptions) pdfjs.GlobalWorkerOptions.workerSrc = PDF_WORKER_URL;
+
+    const loadingTask = pdfjs.getDocument({
+      data: new Uint8Array(await file.arrayBuffer()),
+      cMapUrl: PDF_CMAP_URL,
+      cMapPacked: true,
+      standardFontDataUrl: PDF_STANDARD_FONTS_URL,
+      useSystemFonts: true
+    });
+    const pdf = await loadingTask.promise;
+    const pageLimit = Math.min(pdf.numPages, Math.max(1, Number(maxPages) || 3));
+    const images = [];
+
+    for (let pageNumber = 1; pageNumber <= pageLimit; pageNumber++) {
+      const page = await pdf.getPage(pageNumber);
+      const baseViewport = page.getViewport({ scale: 1 });
+      const targetWidth = Math.min(1800, Math.max(1100, baseViewport.width * 1.8));
+      const scale = targetWidth / Math.max(1, baseViewport.width);
+      const viewport = page.getViewport({ scale });
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.ceil(viewport.width);
+      canvas.height = Math.ceil(viewport.height);
+      const context = canvas.getContext("2d", { alpha: false });
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      await page.render({ canvasContext: context, viewport }).promise;
+      images.push({
+        page: pageNumber,
+        label: `${file.name} · صفحة ${pageNumber}`,
+        dataUrl: canvas.toDataURL("image/jpeg", 0.86),
+        width: canvas.width,
+        height: canvas.height
+      });
+      canvas.width = 1;
+      canvas.height = 1;
+    }
+
+    return { name: file.name, pageCount: pdf.numPages, renderedPages: images.length, images };
+  }
+
   function imagePreview(file) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -382,6 +426,7 @@
   window.TaqareerDocuments = {
     readDocx,
     readPdf,
+    renderPdfPages,
     imagePreview,
     constants: { PDF_MODULE_URL, PDF_WORKER_URL },
     _test: { matrixToTable, groupPdfItemsIntoLines, paragraphRows, parseWordBody }
