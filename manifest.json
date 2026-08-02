@@ -1,11 +1,13 @@
 {
   "project": "تقارير",
   "phase": "0-C + 1-A prototype",
-  "version": "0.1.0",
-  "status": "interactive-preview",
+  "version": "0.1.1",
+  "status": "interactive-preview-pages-ready",
   "createdAt": "2026-08-02",
   "entry": "index.html",
   "constraintsMode": "soft-by-default",
   "realFileParsing": false,
-  "liveAI": false
+  "liveAI": false,
+  "githubPagesWorkflow": true,
+  "deploymentMode": "github-pages-actions"
 }

@@ -191,7 +191,7 @@ document.querySelectorAll('.step').forEach((el) => {
 document.getElementById('exportJsonBtn').addEventListener('click', () => {
   const payload = {
     app: 'تقارير',
-    previewVersion: '0.1',
+    previewVersion: '0.1.1',
     formType: current.name,
     confidence: current.confidence,
     summary: current.summary,
