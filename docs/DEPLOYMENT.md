@@ -1,35 +1,33 @@
-# نشر معاينة «تقارير» على GitHub Pages
+# نشر «تقارير» على GitHub Pages
 
-## المتطلبات
+## الطريقة الأساسية
 
-- مستودع GitHub يحتوي ملفات المشروع في الجذر.
-- الفرع الافتراضي اسمه `main`.
-- ملف التشغيل موجود في الجذر باسم `index.html`.
-
-## خطوات النشر لأول مرة
-
-1. ارفع جميع ملفات الحزمة إلى جذر المستودع، بما فيها المجلد المخفي `.github` والملف `.nojekyll`.
-2. افتح المستودع في GitHub.
-3. انتقل إلى **Settings → Pages**.
-4. عند **Build and deployment** اختر **GitHub Actions** كمصدر النشر.
-5. افتح تبويب **Actions** وتأكد من تشغيل المسار:
-   `Deploy Taqareer Preview to GitHub Pages`.
-6. بعد نجاحه، يظهر رابط المعاينة داخل خطوة النشر وفي صفحة **Settings → Pages**.
-
-## شكل الرابط المتوقع
+1. ارفع جميع ملفات الحزمة إلى جذر المستودع.
+2. تأكد من وجود:
 
 ```text
-https://USERNAME.github.io/REPOSITORY/
+.github/workflows/deploy.yml
 ```
 
-يتغير `USERNAME` و`REPOSITORY` بحسب اسم الحساب والمستودع.
+3. افتح `Settings → Pages` واختر `GitHub Actions`.
+4. افتح `Actions` وتابع تشغيل `Deploy Taqareer to GitHub Pages`.
 
-## التحديثات اللاحقة
+## عندما يختفي مجلد `.github`
 
-أي رفع أو دمج جديد إلى فرع `main` يعيد نشر المعاينة تلقائيًا. كما يمكن تشغيل النشر يدويًا من تبويب **Actions** بواسطة `Run workflow`.
+استخدم النسخة المرئية:
 
-## ملاحظات
+```text
+GITHUB_WORKFLOW_VISIBLE/deploy.yml
+```
 
-- المسارات داخل التطبيق نسبية، لذلك يعمل من رابط مستودع فرعي على GitHub Pages.
-- لا يحتاج المشروع إلى Node.js أو خطوة build في هذه النسخة؛ فهو موقع ثابت مباشر.
-- لا تحذف `.nojekyll` أو `.github/workflows/deploy.yml`.
+داخل GitHub اختر `Add file → Create new file` واكتب اسم الملف كاملًا:
+
+```text
+.github/workflows/deploy.yml
+```
+
+ثم انسخ المحتوى واحفظه على فرع `main`.
+
+## ملاحظة `.nojekyll`
+
+لا يوجد اعتماد على رفع ملف `.nojekyll` المخفي يدويًا. مسار التشغيل ينشئه تلقائيًا داخل مجلد `_site` قبل النشر.

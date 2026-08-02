@@ -1,13 +1,11 @@
 {
-  "project": "تقارير",
-  "phase": "0-C + 1-A prototype",
-  "version": "0.1.1",
-  "status": "interactive-preview-pages-ready",
-  "createdAt": "2026-08-02",
-  "entry": "index.html",
-  "constraintsMode": "soft-by-default",
-  "realFileParsing": false,
-  "liveAI": false,
-  "githubPagesWorkflow": true,
-  "deploymentMode": "github-pages-actions"
+  "name": "تقارير",
+  "short_name": "تقارير",
+  "version": "0.2.0",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f3f5f9",
+  "theme_color": "#263f8f"
 }

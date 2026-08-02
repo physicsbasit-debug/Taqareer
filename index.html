@@ -4,43 +4,43 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="تقارير - منصة التحليل التربوي الذكي" />
-  <title>تقارير | المعاينة الأولى</title>
+  <title>تقارير | نواة استقبال البيانات v0.2.0</title>
   <link rel="stylesheet" href="assets/styles.css" />
 </head>
 <body>
   <div class="app-shell">
     <header class="topbar">
-      <div class="brand-wrap">
+      <a class="brand-wrap" href="#" aria-label="تقارير">
         <div class="brand-mark" aria-hidden="true">ت</div>
         <div>
           <h1>تقارير</h1>
           <p>التحليل التربوي الذكي للاستبانات والبيانات التعليمية</p>
         </div>
+      </a>
+      <div class="top-actions">
+        <span class="version-badge">نسخة تشغيلية مبكرة v0.2.0</span>
+        <button id="resetTopBtn" class="ghost-button" type="button">بدء تحليل جديد</button>
       </div>
-      <div class="preview-badge">نسخة معاينة v0.1.1</div>
     </header>
 
     <main>
       <section class="hero">
-        <div>
-          <span class="eyebrow">أربع خطوات فقط</span>
-          <h2>ارفع الملف، راجع فهم النظام، ثم احصل على تحليل يناسب نوعه.</h2>
-          <p>
-            لا قالب موحد لكل الاستمارات، ولا قائمة إعدادات تحتاج مترجمًا محلفًا.
-            الذكاء الاصطناعي يفهم البنية، والمحركات الحسابية تتحقق من الأرقام، وأنت تعتمد النتيجة.
-          </p>
+        <div class="hero-copy">
+          <span class="eyebrow">Phase 1-A1 · نواة استقبال البيانات</span>
+          <h2>ارفع البيانات، راجع ما فهمه النظام، ثم حلّلها دون متاهة إعدادات.</h2>
+          <p>تقرأ هذه النسخة CSV وTSV والنصوص الجدولية فعليًا، وتتعرف على بنية البيانات، وتفحص جودتها، ثم تنشئ تحليلًا أوليًا موثقًا. أما PDF وExcel وWord والصور فموجودة في المسار، لكنها لم تُفعّل بعد بدل الادعاء بأنها تعمل بقوة الإرادة.</p>
         </div>
-        <div class="hero-card">
-          <div class="hero-stat"><strong>7</strong><span>أنواع أولية معروفة</span></div>
-          <div class="hero-stat"><strong>مرن</strong><span>يتعلم الأنواع الجديدة</span></div>
-          <div class="hero-stat"><strong>موثّق</strong><span>كل استنتاج مرتبط بدليل</span></div>
+        <div class="hero-kpis">
+          <div><strong>فعلي</strong><span>قراءة CSV وTSV</span></div>
+          <div><strong>مرن</strong><span>تعرف قابل للتوسع</span></div>
+          <div><strong>واضح</strong><span>القيود الحرجة فقط تمنع</span></div>
         </div>
       </section>
 
       <nav class="steps" aria-label="مراحل التحليل">
-        <button class="step active" data-step="1"><span>1</span> رفع الملف</button>
-        <button class="step" data-step="2"><span>2</span> فهم النموذج</button>
-        <button class="step" data-step="3"><span>3</span> خطة التحليل</button>
+        <button class="step active" data-step="1"><span>1</span> إدخال البيانات</button>
+        <button class="step" data-step="2"><span>2</span> مراجعة الفهم</button>
+        <button class="step" data-step="3"><span>3</span> إعداد التحليل</button>
         <button class="step" data-step="4"><span>4</span> النتائج</button>
       </nav>
 
@@ -48,72 +48,95 @@
         <div class="panel-heading">
           <div>
             <span class="eyebrow">الخطوة الأولى</span>
-            <h3>اختر ملفًا أو جرّب نموذجًا جاهزًا</h3>
+            <h3>اختر طريقة إدخال البيانات</h3>
           </div>
-          <span class="subtle">PDF · Excel · Word · صورة</span>
+          <span class="subtle">لا تُرسل الملفات إلى أي خادم في هذه النسخة</span>
         </div>
 
-        <label class="upload-zone" for="fileInput">
-          <input id="fileInput" type="file" accept=".pdf,.xlsx,.xls,.csv,.doc,.docx,.png,.jpg,.jpeg" />
-          <div class="upload-icon">↑</div>
-          <strong>اضغط لاختيار الملف</strong>
-          <span>في النسخة التشغيلية سيُقرأ المحتوى آليًا. في هذه المعاينة نعرض رحلة الاستخدام ومنطق التحليل.</span>
-        </label>
-
-        <div class="section-title-row">
-          <h4>تجربة سريعة بالنماذج المرجعية</h4>
-          <span>بيانات تجريبية دون أسماء طلبة</span>
+        <div class="input-tabs" role="tablist" aria-label="طرق الإدخال">
+          <button class="input-tab active" data-input-mode="file" role="tab">رفع ملف</button>
+          <button class="input-tab" data-input-mode="paste" role="tab">لصق جدول</button>
+          <button class="input-tab" data-input-mode="sample" role="tab">نموذج جاهز</button>
         </div>
-        <div class="sample-grid" id="sampleGrid"></div>
+
+        <div id="input-file" class="input-mode active-input-mode">
+          <label class="upload-zone" id="uploadZone" for="fileInput">
+            <input id="fileInput" type="file" accept=".csv,.tsv,.txt,.pdf,.xlsx,.xls,.doc,.docx,.png,.jpg,.jpeg" />
+            <div class="upload-symbol" aria-hidden="true">↑</div>
+            <strong>اختر ملف البيانات</strong>
+            <span>يُقرأ الآن: CSV وTSV وTXT الجدولي. الصيغ الأخرى تظهر حالتها بوضوح ولا تمرر تحليلًا وهميًا.</span>
+          </label>
+          <div class="format-grid">
+            <div class="format-card ready"><strong>CSV / TSV</strong><span>يعمل فعليًا</span></div>
+            <div class="format-card queued"><strong>Excel</strong><span>المرحلة التالية</span></div>
+            <div class="format-card queued"><strong>PDF / Word</strong><span>المرحلة التالية</span></div>
+            <div class="format-card queued"><strong>الصور</strong><span>بعد طبقة الاستخراج</span></div>
+          </div>
+        </div>
+
+        <div id="input-paste" class="input-mode">
+          <label class="field-label" for="pasteInput">الصق جدولًا من Excel أو أي نظام</label>
+          <textarea id="pasteInput" rows="12" placeholder="اسم الطالب\tالدرجة\tالمستوى\nطالب 1\t78\tج\nطالب 2\t91\tأ"></textarea>
+          <div class="actions"><button id="parsePasteBtn" class="primary" type="button">قراءة الجدول</button></div>
+        </div>
+
+        <div id="input-sample" class="input-mode">
+          <div class="sample-grid" id="sampleGrid"></div>
+        </div>
+
+        <div id="inputMessage" class="inline-message hidden" role="status"></div>
       </section>
 
       <section id="panel-2" class="panel">
         <div class="panel-heading">
           <div>
             <span class="eyebrow">الخطوة الثانية</span>
-            <h3>هذا ما فهمه «تقارير» من الملف</h3>
+            <h3>راجع ما فهمه «تقارير»</h3>
           </div>
-          <button class="text-button" id="backToUpload">تغيير الملف</button>
+          <button class="text-button" id="backToInputBtn" type="button">تغيير البيانات</button>
         </div>
 
-        <div class="recognition-layout">
+        <div class="recognition-grid">
           <article class="card recognition-card">
-            <div class="card-topline">
-              <span class="status-dot"></span>
-              <span>التصنيف المقترح</span>
-            </div>
-            <h4 id="recognizedName">نتائج الطلبة في مادة واحدة</h4>
+            <div class="card-kicker"><span class="status-dot"></span> النوع المقترح</div>
+            <h4 id="recognizedType">غير محدد</h4>
             <p id="recognizedPurpose"></p>
             <div class="confidence-row">
-              <div>
-                <small>درجة الثقة</small>
-                <strong id="confidenceValue">94%</strong>
-              </div>
-              <div class="confidence-track"><span id="confidenceBar" style="width:94%"></span></div>
+              <div><small>درجة الثقة</small><strong id="recognitionConfidence">0%</strong></div>
+              <div class="confidence-track"><span id="recognitionBar"></span></div>
             </div>
+            <button id="changeTypeBtn" class="secondary compact" type="button">تعديل النوع</button>
           </article>
 
           <article class="card">
-            <h4>البيانات المكتشفة</h4>
-            <div id="detectedFields" class="tag-list"></div>
+            <h4>ملخص البيانات</h4>
+            <dl class="data-summary">
+              <div><dt>السجلات</dt><dd id="rowCount">0</dd></div>
+              <div><dt>الأعمدة</dt><dd id="columnCount">0</dd></div>
+              <div><dt>اكتمال البيانات</dt><dd id="completenessValue">0%</dd></div>
+              <div><dt>المصدر</dt><dd id="sourceName">—</dd></div>
+            </dl>
           </article>
         </div>
 
-        <article class="card soft-rules">
-          <div>
-            <h4>فحص الجودة بدون تعقيد</h4>
-            <p>نمنع التحليل فقط عندما تكون النتيجة معرضة للفساد فعليًا. بقية المشكلات تظهر كتنبيهات قابلة للمراجعة.</p>
+        <article class="card table-card">
+          <div class="card-heading-inline">
+            <div><h4>معاينة البيانات</h4><p>أول 8 سجلات فقط. البيانات الأصلية تبقى في متصفحك.</p></div>
+            <div id="headerTags" class="tag-list"></div>
           </div>
-          <div class="rule-list">
-            <div><span class="rule-icon stop">!</span><strong>مانع حقيقي:</strong> ملف غير مقروء أو غياب البيانات الأساسية.</div>
-            <div><span class="rule-icon warn">•</span><strong>تنبيه فقط:</strong> خلايا ناقصة محدودة أو اختلاف بسيط في الأسماء.</div>
-            <div><span class="rule-icon go">✓</span><strong>يستمر التحليل:</strong> مع توضيح حدود الثقة بدل إغلاق الطريق.</div>
+          <div class="table-scroll"><table id="previewTable"></table></div>
+        </article>
+
+        <article class="card quality-card">
+          <div class="quality-heading">
+            <div><h4>فحص جودة البيانات</h4><p>المانع يوقف التحليل فقط عندما لا يمكن إنتاج نتيجة سليمة.</p></div>
+            <span id="qualityStatus" class="quality-status">قيد الفحص</span>
           </div>
+          <div id="qualityIssues" class="issue-list"></div>
         </article>
 
         <div class="actions">
-          <button class="secondary" id="changeTypeBtn">مراجعة النوع</button>
-          <button class="primary" id="toPlanBtn">اعتماد ومتابعة</button>
+          <button id="toSetupBtn" class="primary" type="button">متابعة إلى إعداد التحليل</button>
         </div>
       </section>
 
@@ -121,43 +144,44 @@
         <div class="panel-heading">
           <div>
             <span class="eyebrow">الخطوة الثالثة</span>
-            <h3>خطة تحليل متكيفة مع هذا النموذج</h3>
+            <h3>أكمل الإعدادات الضرورية فقط</h3>
           </div>
-          <span class="ai-chip">مدعومة بالذكاء الاصطناعي</span>
+          <span class="ai-chip">خطة تحليل متكيفة</span>
         </div>
 
-        <div class="plan-grid">
+        <div class="setup-grid">
           <article class="card">
-            <h4>ما الذي سيحلله النظام؟</h4>
+            <h4>إعدادات القياس</h4>
+            <div class="form-grid">
+              <label><span>عمود الدرجة</span><select id="scoreColumnSelect"></select></label>
+              <label><span>الدرجة الكلية</span><input id="maxScoreInput" type="number" min="0.01" step="0.5" placeholder="مثال: 100 أو 40" /></label>
+              <label><span>حد الإتقان (%)</span><input id="masteryThresholdInput" type="number" min="1" max="100" step="1" value="60" /></label>
+              <label><span>عمود المستوى، إن وُجد</span><select id="levelColumnSelect"></select></label>
+            </div>
+            <div class="soft-note">لا يفترض النظام الدرجة الكلية من أعلى درجة ظهرت. أكّدها فقط عند رغبتك في حساب النسب والإتقان.</div>
+          </article>
+
+          <article class="card">
+            <h4>خطة التحليل المقترحة</h4>
             <ul id="analysisPlan" class="clean-list"></ul>
           </article>
-          <article class="card">
-            <h4>أدوات الجودة المختارة</h4>
-            <div id="qualityTools" class="tool-list"></div>
+
+          <article class="card ai-card">
+            <div class="card-heading-inline"><h4>طبقة الذكاء الاصطناعي</h4><span class="mode-pill">وضع محلي آمن</span></div>
+            <p>تعمل هذه النسخة بمحرك استدلال محلي قابل للمراجعة. الربط الحي سيأتي عبر وظيفة خادمية آمنة، لا بوضع مفتاح API داخل المتصفح كمن يترك مفتاح البيت تحت السجادة ثم يعلن عن ابتكار أمني.</p>
+            <ul class="clean-list"><li>فهم النوع والبنية.</li><li>صياغة استنتاجات من المؤشرات المحسوبة.</li><li>ربط كل استنتاج بأدلة رقمية واضحة.</li><li>إظهار حدود الثقة بدل إخفائها.</li></ul>
           </article>
-          <article class="card ai-role-card">
-            <h4>دور الذكاء الاصطناعي</h4>
-            <ul class="clean-list">
-              <li>فهم السياق التربوي وبنية النموذج.</li>
-              <li>اكتشاف الأنماط وتفسيرها بلغة واضحة.</li>
-              <li>صياغة استنتاجات مرتبطة بالأدلة.</li>
-              <li>اقتراح تدخلات قابلة للتنفيذ.</li>
-            </ul>
-          </article>
+
           <article class="card deterministic-card">
-            <h4>ما يبقى حتميًا؟</h4>
-            <ul class="clean-list">
-              <li>الحسابات والنسب والإحصاءات.</li>
-              <li>فحص القيم والنطاقات والتكرار.</li>
-              <li>مطابقة السجلات وتوثيق مصادر الأدلة.</li>
-              <li>منع الاستنتاجات التي لا تدعمها البيانات.</li>
-            </ul>
+            <h4>المحرك الحتمي</h4>
+            <ul class="clean-list"><li>العد والمتوسط والوسيط والمدى.</li><li>نسبة اكتمال البيانات والقيم المفقودة.</li><li>نسبة الإتقان عند تأكيد الدرجة الكلية.</li><li>اكتشاف التكرارات والقيم غير الرقمية.</li></ul>
           </article>
         </div>
 
+        <div id="setupMessage" class="inline-message hidden"></div>
         <div class="actions">
-          <button class="secondary" id="backToRecognition">رجوع</button>
-          <button class="primary" id="runAnalysisBtn">ابدأ التحليل</button>
+          <button id="backToReviewBtn" class="secondary" type="button">رجوع</button>
+          <button id="runAnalysisBtn" class="primary" type="button">تنفيذ التحليل</button>
         </div>
       </section>
 
@@ -165,81 +189,59 @@
         <div class="panel-heading">
           <div>
             <span class="eyebrow">الخطوة الرابعة</span>
-            <h3>نتائج تربوية مرتبطة بالأدلة</h3>
+            <h3>نتائج أولية قابلة للمراجعة</h3>
           </div>
-          <span class="success-chip">تحليل تجريبي مكتمل</span>
+          <span class="success-chip">تحليل محلي مكتمل</span>
         </div>
 
-        <div class="metrics" id="metrics"></div>
+        <div id="metrics" class="metrics"></div>
 
         <div class="results-grid">
           <article class="card chart-card">
-            <div class="card-heading-inline">
-              <h4>الصورة العامة</h4>
-              <span id="chartLabel">توزيع مستويات الأداء</span>
-            </div>
-            <div id="miniChart" class="mini-chart"></div>
+            <div class="card-heading-inline"><h4 id="chartTitle">توزيع الدرجات</h4><span id="chartMeta"></span></div>
+            <div id="chartArea" class="chart-area"></div>
           </article>
-
-          <article class="card summary-card">
-            <h4>الخلاصة التنفيذية</h4>
+          <article class="card executive-card">
+            <span class="eyebrow light">الخلاصة التنفيذية</span>
+            <h4 id="executiveTitle"></h4>
             <p id="executiveSummary"></p>
           </article>
         </div>
 
-        <div class="section-title-row">
-          <h4>الاستنتاجات ذات الأولوية</h4>
-          <span>افتح أي استنتاج لرؤية دليله</span>
-        </div>
+        <div class="section-title-row"><h4>الاستنتاجات</h4><span>كل استنتاج يعرض دليله وحدوده</span></div>
         <div id="findings" class="finding-list"></div>
 
-        <article class="card next-action-card">
-          <div>
-            <span class="eyebrow">الإجراء الأول المقترح</span>
-            <h4 id="nextActionTitle"></h4>
-            <p id="nextActionText"></p>
-          </div>
-          <div class="action-meta">
-            <span><small>الفترة</small><strong id="actionPeriod"></strong></span>
-            <span><small>مؤشر النجاح</small><strong id="actionIndicator"></strong></span>
-          </div>
+        <article class="card action-card">
+          <div><span class="eyebrow">الإجراء الأول المقترح</span><h4 id="actionTitle"></h4><p id="actionText"></p></div>
+          <div class="action-meta"><span><small>الأولوية</small><strong id="actionPriority"></strong></span><span><small>مؤشر النجاح</small><strong id="actionIndicator"></strong></span></div>
         </article>
 
         <div class="actions wrap-actions">
-          <button class="secondary" id="restartBtn">تحليل نموذج آخر</button>
-          <button class="secondary" id="exportJsonBtn">تصدير ملخص JSON</button>
-          <button class="primary" onclick="window.print()">طباعة المعاينة</button>
+          <button id="restartBtn" class="secondary" type="button">تحليل جديد</button>
+          <button id="exportBtn" class="secondary" type="button">تصدير JSON</button>
+          <button class="primary" type="button" onclick="window.print()">طباعة النتائج</button>
         </div>
       </section>
 
       <section class="status-section">
-        <div>
-          <span class="eyebrow">حالة هذه النسخة</span>
-          <h3>ما يعمل الآن وما يزال تجريبيًا</h3>
-        </div>
+        <div><span class="eyebrow light">شفافية التطوير</span><h3>ما يعمل الآن وما يأتي لاحقًا</h3></div>
         <div class="status-grid">
-          <div class="status-card working"><strong>يعمل</strong><span>رحلة المستخدم، تصنيف نماذج تجريبية، خطة تحليل متكيفة، عرض نتائج وأدلة.</span></div>
-          <div class="status-card experimental"><strong>تجريبي</strong><span>النتائج الحالية بيانات محاكاة لتقييم الواجهة والمنطق، وليست تحليلًا حيًا للملفات.</span></div>
-          <div class="status-card next"><strong>التالي</strong><span>قراءة Excel وPDF فعلية، سجل الأنواع، وربط محرك ذكاء اصطناعي حي. النشر الآلي على GitHub Pages جاهز.</span></div>
+          <div><strong>يعمل فعليًا</strong><span>CSV وTSV، لصق الجداول، التعرف الأولي، فحص الجودة، التحليل الوصفي، الإتقان، التصدير والطباعة.</span></div>
+          <div><strong>قيد التطوير</strong><span>قراءة Excel وPDF وWord والصور، ومطابقة القوالب المؤسسية المعقدة.</span></div>
+          <div><strong>الربط الذكي القادم</strong><span>وظيفة خادمية آمنة للذكاء الاصطناعي، وتحليل نصي متعمق، وحفظ المشاريع والتقارير.</span></div>
         </div>
       </section>
     </main>
 
-    <footer>
-      <span>تقارير · نسخة المعاينة v0.1.1</span>
-      <span>واجهة بسيطة، تحليل عميق، وقيود أقل عبثًا.</span>
-    </footer>
+    <footer><span>تقارير · v0.2.0</span><span>واجهة بسيطة فوق محركات يمكن تدقيقها.</span></footer>
   </div>
 
   <dialog id="typeDialog">
     <form method="dialog" class="dialog-card">
-      <h3>مراجعة نوع النموذج</h3>
-      <p>اختر أقرب نوع. سيبقى النظام قادرًا على إنشاء نوع جديد لاحقًا.</p>
+      <h3>تعديل نوع البيانات</h3>
+      <p>اختر الأقرب. الأنواع الجديدة ستُحفظ لاحقًا في السجل الديناميكي.</p>
       <select id="typeSelect"></select>
-      <div class="actions">
-        <button class="secondary" value="cancel">إلغاء</button>
-        <button class="primary" id="confirmTypeBtn" value="default">اعتماد</button>
-      </div>
+      <div class="actions"><button class="secondary" value="cancel">إلغاء</button><button id="applyTypeBtn" class="primary" value="default">اعتماد</button></div>
     </form>
   </dialog>
 
