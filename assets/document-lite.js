@@ -161,6 +161,7 @@
       /جوانب.*الاجاده|جوانب.*الايجابيه|مواطن القوه/i,
       /الجوانب.*تحتاج.*تطوير|اولويات التطوير|فرص التحسين/i,
       /الدعم المقدم/i,
+      /مداوله اشرافيه|مداولة إشرافية/i,
       /التوصيات/i,
       /الملاحظات/i,
       /النتائج|الخلاصه/i
@@ -218,13 +219,20 @@
     }));
 
     if (paragraphs.length) {
+      const narrativeRows = paragraphRows(paragraphs);
+      const reportTitle = paragraphs.find(text => /التقرير التجميعي|الزيارة الإشرافية|الزياره الاشرافيه/i.test(text)) || paragraphs.find(text => /تقرير|استماره|استمارة/i.test(text)) || "";
+      const sectionCounts = narrativeRows.reduce((output, row) => {
+        const section = row["القسم"] || "النص العام";
+        output[section] = (output[section] || 0) + 1;
+        return output;
+      }, {});
       datasets.push({
         id: "docx-narrative",
         name: "النص السردي الكامل",
         headers: ["م", "القسم", "النص"],
-        rows: paragraphRows(paragraphs),
+        rows: narrativeRows,
         rawText: paragraphs.join("\n"),
-        meta: { sourceType: "docx", mode: "narrative", paragraphCount: paragraphs.length }
+        meta: { sourceType: "docx", mode: "narrative", paragraphCount: paragraphs.length, reportTitle, sectionCounts }
       });
     }
     if (!datasets.length) throw new Error("ملف Word لا يحتوي نصًا أو جدولًا واضحًا قابلًا للتحليل.");

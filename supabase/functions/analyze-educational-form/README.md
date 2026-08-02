@@ -1,31 +1,21 @@
 # analyze-educational-form
 
-وظيفة Supabase Edge Function للتحليل التربوي والقراءة البصرية في «تقارير».
+وظيفة Supabase Edge Function التي تربط «تقارير» بـGoogle Gemini API.
 
-## الأسرار المطلوبة
+## الأسرار
 
 ```text
-OPENAI_API_KEY
+GEMINI_API_KEY
+GEMINI_MODEL=gemini-2.5-flash
 TAQAREER_ACCESS_CODE
 TAQAREER_ALLOWED_ORIGINS
 ```
 
-اختياري:
-
-```text
-OPENAI_MODEL=gpt-4o-mini
-```
-
-## العمليات المدعومة
+## العمليات
 
 - `ping`
+- `classify`
 - `analyze`
 - `vision_extract`
 
-## النشر
-
-يمكن نشر الملف من محرر Supabase Dashboard أو باستخدام Supabase CLI. لا يحتاج تطبيق GitHub Pages إلى مفتاح OpenAI.
-
-## تنبيه
-
-رمز الوصول المشترك حماية انتقالية، وليس نظام هوية وصلاحيات كاملًا.
+انسخ `index.ts` إلى محرر الوظيفة في Supabase ثم اضغط Deploy function. لا يلزم تغيير الأسرار عند الانتقال من v0.5.0 إلى v0.5.1.

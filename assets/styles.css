@@ -249,3 +249,24 @@ dialog::backdrop { background: rgba(12,22,42,.5); backdrop-filter: blur(3px); }
 .suggested-type-card { border: 1px solid #c9d7ff; background: linear-gradient(135deg, #f5f8ff, #ffffff); }
 .suggested-type-card h4 { margin: .35rem 0; }
 .suggested-type-card .tag-list { margin: .8rem 0; }
+
+/* Phase 1-B1 Fix 1: recognition provenance */
+.recognition-source {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  margin: .15rem 0 .35rem;
+  padding: .35rem .65rem;
+  border-radius: 999px;
+  background: #e8f7f3;
+  color: #126a5c;
+  font-size: .82rem;
+  font-weight: 700;
+}
+.recognition-rationale {
+  min-height: 1.3em;
+  margin: 0 0 .65rem;
+  color: var(--muted, #64748b);
+  font-size: .88rem;
+  line-height: 1.65;
+}

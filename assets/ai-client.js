@@ -109,8 +109,13 @@
     return response.result;
   }
 
+  async function classify(payload) {
+    const response = await invoke("classify", payload);
+    return response.result;
+  }
+
   async function ping() {
-    const response = await invoke("ping", { clientVersion: "0.5.0" });
+    const response = await invoke("ping", { clientVersion: "0.5.1" });
     return response;
   }
 
@@ -123,6 +128,7 @@
     getAccessCode,
     analyze,
     extractVisual,
+    classify,
     ping
   };
 })();

@@ -1,91 +1,45 @@
-# إعداد الذكاء الاصطناعي في «تقارير»
+# إعداد Gemini لتطبيق تقارير v0.5.1
 
-الإعداد يتم مرة واحدة، ثم يبقى استخدام التطبيق بسيطًا.
-
-## المتطلبات
-
-- مشروع Supabase.
-- مفتاح OpenAI API صالح.
-- رابط GitHub Pages لتطبيق «تقارير».
-
-## 1. إنشاء وظيفة Supabase
-
-من لوحة Supabase:
-
-1. افتح **Edge Functions**.
-2. أنشئ وظيفة باسم:
+## الأسرار المطلوبة في Supabase
 
 ```text
-analyze-educational-form
+GEMINI_API_KEY
+GEMINI_MODEL=gemini-2.5-flash
+TAQAREER_ACCESS_CODE
+TAQAREER_ALLOWED_ORIGINS
 ```
 
-3. انسخ محتوى الملف:
+لا يوضع مفتاح Gemini في GitHub أو داخل المتصفح.
 
-```text
-supabase/functions/analyze-educational-form/index.ts
+## تحديث الوظيفة
+
+1. افتح `Edge Functions`.
+2. افتح `analyze-educational-form`.
+3. افتح محرر الكود.
+4. استبدل الكود كاملًا بمحتوى:
+   `supabase/functions/analyze-educational-form/index.ts`
+5. اضغط `Deploy function`.
+6. لا تغيّر الأسرار الحالية.
+
+## العمليات المدعومة
+
+- `ping`: اختبار الاتصال.
+- `classify`: التحقق الدلالي السريع من نوع الملف.
+- `analyze`: التحليل التربوي العميق.
+- `vision_extract`: قراءة الصور وPDF الممسوح.
+
+## اختبار ping
+
+```json
+{
+  "operation": "ping",
+  "payload": { "clientVersion": "0.5.1" }
+}
 ```
 
-4. انشر الوظيفة.
+الهيدرز:
 
-## 2. ضبط الأسرار
-
-أضف الأسرار الآتية إلى وظيفة Supabase:
-
-```text
-OPENAI_API_KEY=مفتاح_OpenAI
-OPENAI_MODEL=gpt-4o-mini
-TAQAREER_ACCESS_CODE=رمز_قوي_خاص_بالمدرسة
-TAQAREER_ALLOWED_ORIGINS=https://اسم-الحساب.github.io/اسم-المستودع
-```
-
-### ملاحظات
-
-- `OPENAI_MODEL` اختياري، ويمكن تغييره إلى نموذج يدعم الصور والمخرجات المنظمة.
-- افصل عدة نطاقات داخل `TAQAREER_ALLOWED_ORIGINS` بفاصلة.
-- لا تضع علامة `/` في نهاية رابط النطاق.
-- لا تضع `OPENAI_API_KEY` في `runtime-config.js` أو GitHub Secrets الخاصة بصفحة الويب.
-
-## 3. إعداد التطبيق
-
-داخل «تقارير»:
-
-1. اضغط **إعداد الذكاء الاصطناعي**.
-2. أدخل رابط الوظيفة، وعادة يكون بالنمط:
-
-```text
-https://PROJECT_REF.supabase.co/functions/v1/analyze-educational-form
-```
-
-3. أدخل مفتاح Supabase العام `anon` أو `publishable`.
-4. أدخل رمز الوصول المدرسي نفسه.
-5. اضغط **حفظ واختبار**.
-
-عند نجاح الاتصال يظهر: **ذكاء اصطناعي حي جاهز**.
-
-## 4. اختبار القبول
-
-نفذ الاختبارات الآتية بعد النشر:
-
-1. افتح نموذج «نتائج مادة واحدة» وشغّل التحليل.
-2. تحقق من ظهور عبارة **تحليل هجين: حتمي + ذكاء اصطناعي**.
-3. ارفع صورة جدول واضحة وتحقق من ظهور البيانات في شاشة المراجعة.
-4. افصل الاتصال مؤقتًا وتأكد أن التحليل المحلي يستمر ولا تضيع النتائج.
-5. راجع أن الاستنتاجات تعرض مراجع أدلة وحدودًا واضحة.
-
-## أعطال شائعة
-
-### تم الوصول إلى Supabase لكن المفتاح غير مضبوط
-
-اضبط `OPENAI_API_KEY` في أسرار الوظيفة ثم أعد نشرها.
-
-### خطأ CORS أو النطاق غير مسموح
-
-راجع `TAQAREER_ALLOWED_ORIGINS` واكتب رابط GitHub Pages بدقة دون مسار صفحة فرعية أو شرطة نهائية.
-
-### رمز الوصول غير صحيح
-
-يجب أن يطابق الرمز المحفوظ في سر `TAQAREER_ACCESS_CODE` حرفيًا.
-
-### الصورة كبيرة جدًا
-
-قلل الدقة أو عدد الصفحات. الحد الحالي أربع صور، ويستخدم التطبيق أول ثلاث صفحات من PDF الممسوح.
+| Key | Value |
+|---|---|
+| `Content-Type` | `application/json` |
+| `x-taqareer-access-code` | رمز الوصول الفعلي |

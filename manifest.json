@@ -1,16 +1,44 @@
 {
   "app": "تقارير",
-  "version": "0.5.0",
-  "phase": "1-B1",
-  "releaseName": "AI Analysis Gateway and Visual Intake",
+  "version": "0.5.1",
+  "phase": "1-B1 Fix 1",
+  "releaseName": "Ministry Excel Normalization and Hybrid Form Recognition",
   "buildType": "static-github-pages-plus-supabase-edge-function",
   "supportedInputs": {
-    "table": ["csv", "tsv", "txt", "xlsx", "xlsm"],
-    "document": ["docx", "pdf-text-layer"],
-    "aiVisual": ["png", "jpg", "jpeg", "webp", "scanned-pdf-first-pages"],
-    "manualFallback": ["image", "scanned-pdf"]
+    "table": [
+      "csv",
+      "tsv",
+      "txt",
+      "xlsx",
+      "xlsm"
+    ],
+    "document": [
+      "docx",
+      "pdf-text-layer"
+    ],
+    "aiVisual": [
+      "png",
+      "jpg",
+      "jpeg",
+      "webp",
+      "scanned-pdf-first-pages"
+    ],
+    "manualFallback": [
+      "image",
+      "scanned-pdf"
+    ]
   },
   "features": [
+    "ministry-excel-normalization-engine",
+    "merged-cell-aware-header-reconstruction",
+    "spacer-row-and-column-removal",
+    "multi-row-header-detection",
+    "rtl-logical-column-reordering",
+    "report-metadata-separation",
+    "required-field-completeness",
+    "local-semantic-form-recognition",
+    "gemini-hybrid-form-verification",
+    "classification-provenance",
     "deterministic-local-analysis",
     "live-ai-educational-interpretation",
     "vision-table-and-narrative-extraction",
@@ -18,27 +46,27 @@
     "server-side-evidence-reference-validation",
     "quality-tool-selection",
     "measurable-improvement-plan",
-    "dynamic-form-type-suggestion",
     "personal-field-masking-before-ai",
     "local-analysis-fallback",
-    "supabase-edge-function-gateway",
-    "openai-responses-structured-output",
     "json-export",
     "print-results"
   ],
   "runtime": {
     "frontend": "GitHub Pages static site",
     "aiGateway": "Supabase Edge Function",
-    "aiProvider": "OpenAI Responses API",
-    "defaultModel": "gpt-4o-mini",
+    "aiProvider": "Google Gemini API",
+    "defaultModel": "gemini-2.5-flash",
     "pdfjs": "6.2.108 via jsDelivr, loaded only when PDF is opened"
   },
   "security": {
-    "openAiKeyInBrowser": false,
+    "geminiKeyInBrowser": false,
     "originAllowlist": true,
     "sharedAccessCode": true,
-    "aiRequestsStoredByProvider": false,
     "personalFieldMaskingDefault": true
+  },
+  "acceptanceFixtures": {
+    "ministryExcel": "aaaa.xlsx analyzed as 268 records and 5 logical fields",
+    "supervisionDocx": "1111111.docx analyzed as supervision narrative"
   },
   "notYetEnabled": [
     "cloud-project-storage",

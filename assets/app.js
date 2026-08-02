@@ -73,6 +73,7 @@
     headers: [], rows: [], sourceName: "", rawText: "", narrativeText: "", delimiter: ",", type: formTypes.at(-1), confidence: 0,
     quality: { blockers: [], warnings: [], info: [], completeness: 0 },
     analysis: null, aiResult: null, aiError: "", aiUsed: false,
+    localRecognition: null, aiRecognition: null, recognitionStatus: "محلي", recognitionRequestId: 0,
     sampleMaxScore: null, pendingSource: null, sourceMeta: null, pendingManualFileName: "", pendingVisualPreview: null
   };
 
@@ -149,7 +150,7 @@
     try {
       const result = await window.TaqareerAI.ping();
       if (result.aiKeyConfigured === false) {
-        message.textContent = "تم الوصول إلى وظيفة Supabase، لكن سر OPENAI_API_KEY غير مضبوط بعد.";
+        message.textContent = "تم الوصول إلى وظيفة Supabase، لكن سر GEMINI_API_KEY غير مضبوط بعد.";
         message.classList.add("error");
         return;
       }
@@ -195,35 +196,210 @@
     return { headers, rows, delimiter };
   }
 
-  function classify(headers, rows) {
-    const sampleText = normalize(headers.join(" ") + " " + rows.slice(0, 12).map(r => Object.values(r).join(" ")).join(" "));
-    let best = formTypes.at(-1), bestScore = 0;
-    formTypes.slice(0, -1).forEach(type => {
-      const matches = type.keywords.filter(k => sampleText.includes(normalize(k))).length;
-      const score = type.keywords.length ? matches / type.keywords.length : 0;
-      if (matches >= type.min && score > bestScore) { best = type; bestScore = score; }
-    });
-    if (best.id === "unknown") return { type: best, confidence: 48 };
-    const confidence = Math.min(97, Math.round(60 + bestScore * 38));
-    return { type: best, confidence };
+  const REQUIRED_FIELDS = {
+    single_subject: [["اسم الطالب", "الطالب"], ["الدرجة", "المجموع"]],
+    assessment_component: [["اسم الطالب", "الطالب"], ["عنصر المادة", "عنصر التقويم"], ["درجة عنصر المادة", "درجة العنصر", "الدرجة"]],
+    level_distribution: [["الصف", "البيان"], ["المجموع"]],
+    cross_subject: [["اسم الطالب", "الطالب"]],
+    supervision_indicator: [["بنود التقويم", "البند"], ["المتوسط"]],
+    student_work: [["بنود التقويم", "البند"], ["المتوسط"]],
+    supervision_narrative: [["النص"]]
+  };
+
+  function normalizedHeaders(headers) {
+    return headers.map(header => ({ original: header, normalized: normalize(header) }));
   }
 
-  function assessQuality(headers, rows) {
+  function findHeader(headers, aliases) {
+    const candidates = normalizedHeaders(headers);
+    return candidates.find(item => aliases.some(alias => item.normalized === normalize(alias) || item.normalized.includes(normalize(alias))))?.original || "";
+  }
+
+  function exactHeader(headers, aliases) {
+    const normalizedAliases = aliases.map(normalize);
+    return normalizedHeaders(headers).some(item => normalizedAliases.includes(item.normalized));
+  }
+
+  function typeById(id) {
+    return formTypes.find(type => type.id === id) || null;
+  }
+
+  function classify(headers, rows, sourceMeta = {}, rawText = "") {
+    const headerText = normalize(headers.join(" | "));
+    const titleText = normalize(sourceMeta?.reportTitle || sourceMeta?.metadata?.title || sourceMeta?.title || "");
+    const tableSample = normalize(rows.slice(0, 45).map(row => Object.values(row).join(" ")).join(" "));
+    const narrativeSample = normalize(String(rawText || "").slice(0, 50000));
+    const allText = `${titleText} ${headerText} ${tableSample} ${narrativeSample}`;
+    const scores = new Map(formTypes.slice(0, -1).map(type => [type.id, { score: 0, reasons: [] }]));
+    const add = (id, points, reason) => {
+      const target = scores.get(id); if (!target || !points) return;
+      target.score += points; if (reason) target.reasons.push(reason);
+    };
+    const has = phrase => allText.includes(normalize(phrase));
+    const headerHas = phrase => headerText.includes(normalize(phrase));
+
+    if (exactHeader(headers, ["عنصر المادة", "عنصر التقويم"])) add("assessment_component", 34, "وجود حقل عنصر المادة");
+    if (exactHeader(headers, ["درجة عنصر المادة", "درجة العنصر"])) add("assessment_component", 38, "وجود حقل درجة عنصر المادة");
+    if (has("التقويم المستمر") || has("اختبار")) add("assessment_component", 14, "ظهور اسم مكوّن تقويمي");
+    if (has("كشف مراجعة إدخال الدرجات")) add("assessment_component", 20, "عنوان كشف مراجعة الدرجات");
+
+    if (exactHeader(headers, ["اسم الطالب"])) add("single_subject", 22, "وجود اسم الطالب");
+    if (exactHeader(headers, ["الدرجة", "المجموع"])) add("single_subject", 20, "وجود درجة كلية");
+    if (exactHeader(headers, ["المستوى", "حالة القيد"])) add("single_subject", 16, "وجود مستوى أو حالة قيد");
+    if (has("كشف نتائج الطلب") && !has("عنصر المادة")) add("single_subject", 20, "عنوان كشف نتائج مادة");
+
+    const levelLabels = ["أ", "ا", "ب", "ج", "د", "هـ", "ه"].filter(label => exactHeader(headers, [label])).length;
+    if (levelLabels >= 3) add("level_distribution", 48 + levelLabels * 4, `وجود ${levelLabels} أعمدة مستويات صريحة`);
+    if (levelLabels >= 3 && exactHeader(headers, ["المجموع"])) add("level_distribution", 20, "وجود مجموع مع مستويات الأداء");
+    if (has("احصائية بنسب مستويات") || has("إحصائية بنسب مستويات")) add("level_distribution", 22, "عنوان توزيع مستويات الأداء");
+
+    const subjects = ["اللغه العربيه", "اللغه الانجليزيه", "الرياضيات", "العلوم", "الدراسات الاجتماعيه", "التربيه الاسلاميه"];
+    const subjectHits = subjects.filter(subject => headerText.includes(normalize(subject))).length;
+    if (subjectHits >= 3) add("cross_subject", 45 + subjectHits * 5, `وجود ${subjectHits} مواد دراسية`);
+
+    if (headerHas("بنود التقويم") && headerHas("المتوسط")) add("supervision_indicator", 44, "وجود بنود تقويم ومتوسطات");
+    if (has("الزياره الاشرافيه") && !has("الدعم المقدم")) add("supervision_indicator", 24, "عنوان زيارة إشرافية رقمية");
+    if (has("تخطيط") && has("اداره الصف") && has("استراتيجيات التدريس")) add("supervision_indicator", 18, "مجالات أداء إشرافي");
+
+    if (has("فحص اعمال الطلبه") || has("فحص أعمال الطلبة")) add("student_work", 52, "عنوان فحص أعمال الطلبة");
+    if (has("التغذيه الراجعه") && has("التمايز") && has("الانشطه")) add("student_work", 24, "مؤشرات أعمال الطلبة");
+    if (headerHas("الاكثر تكرارا") || headerHas("الأكثر تكرارا")) add("student_work", 18, "وجود المنوال أو الأكثر تكرارًا");
+
+    if (sourceMeta?.mode === "narrative") add("supervision_narrative", 18, "المصدر نص سردي");
+    if (has("التقرير التجميعي") && has("الزياره الاشرافيه")) add("supervision_narrative", 58, "عنوان تقرير تجميعي للزيارة الإشرافية");
+    if (has("جوانب الاجاده") || has("جوانب الإجادة")) add("supervision_narrative", 24, "قسم جوانب الإجادة");
+    if (has("الجوانب التي تحتاج الي تطوير") || has("الجوانب التى تحتاج إلى تطوير") || has("اولويات التطوير")) add("supervision_narrative", 22, "قسم جوانب التطوير");
+    if (has("الدعم المقدم")) add("supervision_narrative", 20, "قسم الدعم المقدم");
+    if (has("مداوله اشرافيه") || has("مداولة إشرافية")) add("supervision_narrative", 12, "قسم المداولة الإشرافية");
+    if (has("التوصيات")) add("supervision_narrative", 18, "قسم التوصيات");
+
+    const ranked = [...scores.entries()].sort((a, b) => b[1].score - a[1].score);
+    const [bestId, bestResult] = ranked[0] || ["unknown", { score: 0, reasons: [] }];
+    const secondScore = ranked[1]?.[1]?.score || 0;
+    if (!bestResult.score || bestResult.score < 28) {
+      return { type: formTypes.at(-1), confidence: 48, rationale: "لم تتجمع إشارات كافية لنوع معروف.", source: "local" };
+    }
+    const margin = Math.max(0, bestResult.score - secondScore);
+    const confidence = Math.min(98, Math.max(62, Math.round(65 + bestResult.score * 0.24 + margin * 0.18)));
+    return {
+      type: typeById(bestId) || formTypes.at(-1),
+      confidence,
+      rationale: bestResult.reasons.slice(0, 4).join("، ") || "مطابقة بنية الحقول والمحتوى.",
+      source: "local"
+    };
+  }
+
+  function assessQuality(headers, rows, type, sourceMeta = {}) {
     const blockers = [], warnings = [], info = [];
     if (!headers.length) blockers.push({ title: "لا توجد عناوين أعمدة", detail: "لا يمكن فهم بنية البيانات دون عناوين." });
     if (!rows.length) blockers.push({ title: "لا توجد سجلات", detail: "الملف لا يحتوي بيانات بعد صف العناوين." });
-    const total = Math.max(1, headers.length * rows.length);
-    let missing = 0;
-    rows.forEach(r => headers.forEach(h => { if (String(r[h] ?? "").trim() === "") missing++; }));
-    const completeness = Math.round((1 - missing / total) * 1000) / 10;
-    if (missing > 0) warnings.push({ title: `${missing} قيمة مفقودة`, detail: `اكتمال البيانات ${completeness}%. سيستمر التحليل مع توضيح أثر النقص.` });
-    else info.push({ title: "لا توجد قيم مفقودة", detail: "جميع الخلايا في نطاق الجدول المرفوع مكتملة." });
 
-    const signatures = rows.map(r => headers.map(h => normalize(r[h])).join("|"));
+    const requirements = REQUIRED_FIELDS[type?.id] || [];
+    const requiredHeaders = requirements.map(aliases => findHeader(headers, aliases)).filter(Boolean);
+    const activeHeaders = headers.filter(header => rows.some(row => String(row[header] ?? "").trim() !== ""));
+    const basisHeaders = requiredHeaders.length ? [...new Set(requiredHeaders)] : activeHeaders;
+    const denominator = Math.max(1, basisHeaders.length * rows.length);
+    let missing = 0;
+    rows.forEach(row => basisHeaders.forEach(header => { if (String(row[header] ?? "").trim() === "") missing++; }));
+    const completeness = Math.round((1 - missing / denominator) * 1000) / 10;
+
+    const missingRequirements = requirements.filter(aliases => !findHeader(headers, aliases));
+    if (missingRequirements.length) {
+      warnings.push({
+        title: `${missingRequirements.length} حقل أساسي غير مؤكد`,
+        detail: `لم يُعثر بوضوح على: ${missingRequirements.map(aliases => aliases[0]).join("، ")}. سيستمر التحليل ضمن حدود البيانات المتاحة.`
+      });
+    }
+    if (missing > 0) warnings.push({ title: `${missing} قيمة مفقودة في الحقول الأساسية`, detail: `اكتمال الحقول اللازمة للتحليل ${completeness}%.` });
+    else if (basisHeaders.length) info.push({ title: "الحقول الأساسية مكتملة", detail: `اكتملت الحقول المستخدمة في هذا النوع بنسبة ${completeness}%. الحقول الاختيارية الفارغة لا تخفض النسبة.` });
+
+    const signatureHeaders = basisHeaders.length ? basisHeaders : headers;
+    const signatures = rows.map(row => signatureHeaders.map(header => normalize(row[header])).join("|"));
     const duplicates = signatures.length - new Set(signatures).size;
     if (duplicates > 0) warnings.push({ title: `${duplicates} سجل مكرر`, detail: "لم تُحذف السجلات تلقائيًا. راجعها قبل الاعتماد النهائي." });
     if (headers.length > 30) info.push({ title: "عدد كبير من الأعمدة", detail: "قد يمثل الملف أداءً متعدد المواد أو أداة مركبة." });
-    return { blockers, warnings, info, completeness };
+
+    const normalization = sourceMeta?.normalization;
+    if (normalization?.applied) {
+      info.unshift({
+        title: "تم تطبيع ملف Excel الطباعي تلقائيًا",
+        detail: `حوّل محرك ملفات الوزارة ${normalization.originalColumns} عمودًا ماديًا إلى ${normalization.logicalColumns} حقول منطقية، واحتفظ بـ${normalization.retainedRows} سجلًا، مع معالجة ${normalization.mergeCount} خلية مدمجة.`
+      });
+      if (normalization.reportTitle) info.unshift({ title: "تم فصل عنوان التقرير عن الجدول", detail: normalization.reportTitle });
+    }
+    return { blockers, warnings, info, completeness, basisHeaders, missingRequirements: missingRequirements.map(item => item[0]) };
+  }
+
+  function redactRecognitionText(value) {
+    return String(value || "")
+      .replace(/\b\d{8,}\b/g, "[رقم محجوب]")
+      .replace(/(الأستاذ|الاستاذ)\s+[\u0600-\u06ff]+(?:\s+[\u0600-\u06ff]+){1,4}/g, "$1 [اسم محجوب]")
+      .slice(0, 16000);
+  }
+
+  function buildRecognitionPayload() {
+    const maskedRows = state.rows.slice(0, 35).map((row, rowIndex) => {
+      const output = {};
+      state.headers.slice(0, 30).forEach(header => {
+        const value = isSensitiveHeader(header) ? `سجل ${rowIndex + 1}` : String(row[header] ?? "").slice(0, 240);
+        output[header] = value;
+      });
+      return output;
+    });
+    return {
+      locale: "ar-OM",
+      appVersion: "0.5.1",
+      source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
+      localClassification: state.localRecognition ? {
+        id: state.localRecognition.type.id,
+        nameAr: state.localRecognition.type.name,
+        confidence: state.localRecognition.confidence,
+        rationale: state.localRecognition.rationale
+      } : null,
+      headers: state.headers.slice(0, 40),
+      sampleRows: maskedRows,
+      narrativeExcerpt: redactRecognitionText(state.narrativeText || state.rawText),
+      knownFormTypes: formTypes.filter(type => type.id !== "unknown").map(type => ({ id: type.id, nameAr: type.name, purpose: type.purpose }))
+    };
+  }
+
+  async function maybeVerifyRecognition(requestId) {
+    const shouldVerify = aiReady() && (state.type.id === "unknown" || state.confidence < 90 || state.sourceMeta?.mode === "narrative" || state.sourceMeta?.normalization?.applied);
+    if (!shouldVerify || !window.TaqareerAI?.classify) return;
+    state.recognitionStatus = "جارٍ التحقق دلاليًا بواسطة Gemini…";
+    renderReview();
+    try {
+      const result = await window.TaqareerAI.classify(buildRecognitionPayload());
+      if (requestId !== state.recognitionRequestId) return;
+      const classification = result?.classification || result;
+      const known = typeById(String(classification?.id || ""));
+      state.aiRecognition = classification || null;
+      const aiConfidence = Math.max(0, Math.min(100, Math.round(Number(classification?.confidence) || 0)));
+      const adopt = known && known.id !== "unknown" && (
+        state.type.id === "unknown" || state.confidence < 85 || aiConfidence >= state.confidence + 8 ||
+        (state.sourceMeta?.mode === "narrative" && known.id === "supervision_narrative")
+      );
+      if (adopt) {
+        state.type = known;
+        state.confidence = Math.max(state.confidence, aiConfidence);
+        state.quality = assessQuality(state.headers, state.rows, state.type, state.sourceMeta);
+      }
+      state.recognitionStatus = known
+        ? `تحقق هجين: المحرك المحلي + Gemini${adopt ? " · تم اعتماد التصنيف الدلالي" : " · التصنيف المحلي متسق"}`
+        : "تحقق Gemini اقترح نوعًا جديدًا للمراجعة";
+      state.quality.info = state.quality.info.filter(item => item.title !== "تحقق دلالي من النوع");
+      state.quality.info.unshift({
+        title: "تحقق دلالي من النوع",
+        detail: `${classification?.nameAr || "نوع غير محدد"} (${aiConfidence}%). ${classification?.rationale || ""}`.trim()
+      });
+      renderReview();
+    } catch (error) {
+      if (requestId !== state.recognitionRequestId) return;
+      state.recognitionStatus = "اكتمل التصنيف المحلي؛ تعذر التحقق الدلالي دون تعطيل العمل";
+      state.quality.info = state.quality.info.filter(item => item.title !== "تعذر التحقق الدلالي");
+      state.quality.info.push({ title: "تعذر التحقق الدلالي", detail: error.message || "استمر التطبيق بالتصنيف المحلي." });
+      renderReview();
+    }
   }
 
   function ingestTable(headers, rows, sourceName, sampleMaxScore = null, sourceMeta = null, rawText = "") {
@@ -236,10 +412,14 @@
     state.narrativeText = sourceMeta?.mode === "narrative"
       ? (rawText || rows.map(row => row["النص"] ?? Object.values(row).join(" ")).join("\n"))
       : "";
-    const recognized = classify(state.headers, state.rows);
+    const recognized = classify(state.headers, state.rows, sourceMeta || {}, state.rawText);
+    state.localRecognition = recognized;
+    state.aiRecognition = null;
+    state.recognitionStatus = `تصنيف محلي: ${recognized.rationale}`;
     state.type = recognized.type;
     state.confidence = recognized.confidence;
-    state.quality = assessQuality(state.headers, state.rows);
+    state.quality = assessQuality(state.headers, state.rows, state.type, sourceMeta || {});
+    const recognitionRequestId = ++state.recognitionRequestId;
     if (sourceMeta?.headerRow) {
       state.quality.info.unshift({
         title: `تم اكتشاف صف العناوين في الصف ${sourceMeta.headerRow}`,
@@ -260,6 +440,7 @@
     }
     renderReview();
     showPanel(2);
+    maybeVerifyRecognition(recognitionRequestId);
   }
 
   function ingest(text, sourceName, sampleMaxScore = null) {
@@ -324,7 +505,12 @@
           name: sheet.name,
           headers: sheet.headers,
           rows: sheet.rows,
-          meta: { sourceType: "xlsx", mode: "table", sheetName: sheet.name, headerRow: sheet.headerRow, sheetCount: workbook.sheets.length }
+          meta: {
+            sourceType: "xlsx", mode: "table", sheetName: sheet.name, headerRow: sheet.headerRow,
+            headerEndRow: sheet.headerEndRow, sheetCount: workbook.sheets.length,
+            reportTitle: sheet.metadata?.title || "", preamble: sheet.metadata?.preamble || [],
+            normalization: sheet.normalization || null
+          }
         }))
       });
     } catch (err) {
@@ -506,6 +692,10 @@
   function renderReview() {
     $("recognizedType").textContent = state.type.name;
     $("recognizedPurpose").textContent = state.type.purpose;
+    const recognitionSource = $("recognitionSource");
+    if (recognitionSource) recognitionSource.textContent = state.recognitionStatus || "تصنيف محلي";
+    const recognitionRationale = $("recognitionRationale");
+    if (recognitionRationale) recognitionRationale.textContent = state.aiRecognition?.rationale || state.localRecognition?.rationale || "";
     $("recognitionConfidence").textContent = `${state.confidence}%`;
     $("recognitionBar").style.width = `${state.confidence}%`;
     $("rowCount").textContent = state.rows.length.toLocaleString("ar");
@@ -659,7 +849,7 @@
     const deterministicAnalysis = compactDeterministicAnalysis(state.analysis);
     return {
       locale: "ar-OM",
-      appVersion: "0.5.0",
+      appVersion: "0.5.1",
       source: {
         name: state.sourceName,
         meta: state.sourceMeta || {},
@@ -1050,7 +1240,7 @@
   function exportAnalysis() {
     const payload = {
       app: "تقارير",
-      version: "0.5.0",
+      version: "0.5.1",
       generatedAt: new Date().toISOString(),
       source: state.sourceName,
       sourceMeta: state.sourceMeta,
@@ -1062,7 +1252,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v0.5.0.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v0.5.1.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
@@ -1074,6 +1264,7 @@
       type: formTypes.at(-1), confidence: 0,
       quality: { blockers: [], warnings: [], info: [], completeness: 0 },
       analysis: null, aiResult: null, aiError: "", aiUsed: false,
+      localRecognition: null, aiRecognition: null, recognitionStatus: "محلي", recognitionRequestId: state.recognitionRequestId + 1,
       sampleMaxScore: null, pendingSource: null, sourceMeta: null, pendingManualFileName: "", pendingVisualPreview: null
     });
     $("fileInput").value = ""; $("pasteInput").value = ""; $("manualTextInput").value = "";
@@ -1127,7 +1318,7 @@
       updateAiStatusUi();
     });
     $("changeTypeBtn").addEventListener("click",()=>{ $("typeSelect").value=state.type.id; $("typeDialog").showModal(); });
-    $("applyTypeBtn").addEventListener("click", e => { e.preventDefault(); const chosen=formTypes.find(t=>t.id===$("typeSelect").value); if(chosen){state.type=chosen;state.confidence=100;renderReview();} $("typeDialog").close(); });
+    $("applyTypeBtn").addEventListener("click", e => { e.preventDefault(); const chosen=formTypes.find(t=>t.id===$("typeSelect").value); if(chosen){state.type=chosen;state.confidence=100;state.recognitionStatus="اعتماد يدوي من المستخدم";state.quality=assessQuality(state.headers,state.rows,state.type,state.sourceMeta||{});renderReview();} $("typeDialog").close(); });
     updateAiStatusUi();
   }
   document.addEventListener("DOMContentLoaded", init);

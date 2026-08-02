@@ -1,5 +1,5 @@
-const OPENAI_URL = "https://api.openai.com/v1/responses";
-const DEFAULT_MODEL = "gpt-4o-mini";
+const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
+const DEFAULT_MODEL = "gemini-2.5-flash";
 const MAX_REQUEST_BYTES = 9_000_000;
 const MAX_IMAGE_COUNT = 4;
 const MAX_IMAGE_DATA_URL_LENGTH = 2_800_000;
@@ -82,6 +82,35 @@ const ANALYSIS_SCHEMA = {
     }
   },
   required: ["classification", "executiveTitle", "executiveSummary", "findings", "qualityTools", "improvementPlan", "cautions", "suggestedNewType"]
+};
+
+const CLASSIFICATION_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    classification: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        id: { type: "string" },
+        nameAr: { type: "string" },
+        confidence: { type: "number" },
+        rationale: { type: "string" }
+      },
+      required: ["id", "nameAr", "confidence", "rationale"]
+    },
+    suggestedNewType: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        needed: { type: "boolean" },
+        nameAr: { type: "string" },
+        purpose: { type: "string" }
+      },
+      required: ["needed", "nameAr", "purpose"]
+    }
+  },
+  required: ["classification", "suggestedNewType"]
 };
 
 const VISION_SCHEMA = {
@@ -185,21 +214,106 @@ async function secureEqual(a: string, b: string): Promise<boolean> {
   return diff === 0;
 }
 
-function outputText(response: Record<string, unknown>): string {
-  if (typeof response.output_text === "string" && response.output_text.trim()) return response.output_text;
-  const output = Array.isArray(response.output) ? response.output : [];
-  const chunks: string[] = [];
-  for (const item of output) {
-    if (!item || typeof item !== "object") continue;
-    const content = Array.isArray((item as Record<string, unknown>).content)
-      ? (item as Record<string, unknown>).content as Array<Record<string, unknown>>
-      : [];
-    for (const part of content) {
-      if (part?.type === "output_text" && typeof part.text === "string") chunks.push(part.text);
-      if (part?.type === "refusal" && typeof part.refusal === "string") throw new Error(part.refusal);
-    }
+function normalizeModelName(value: string): string {
+  return String(value || DEFAULT_MODEL)
+    .trim()
+    .replace(/^models\//, "") || DEFAULT_MODEL;
+}
+
+function geminiOutputText(response: Record<string, unknown>): string {
+  const candidates = Array.isArray(response.candidates)
+    ? response.candidates as Array<Record<string, unknown>>
+    : [];
+
+  const first = candidates[0];
+  if (!first) {
+    const feedback = response.promptFeedback as Record<string, unknown> | undefined;
+    const blockReason = String(feedback?.blockReason || "");
+    if (blockReason) throw new Error(`حظر Gemini الطلب: ${blockReason}.`);
+    throw new Error("لم يرجع Gemini أي نتيجة.");
   }
-  return chunks.join("\n").trim();
+
+  const finishReason = String(first.finishReason || "");
+  if (finishReason && !["STOP", "MAX_TOKENS"].includes(finishReason)) {
+    throw new Error(`توقف Gemini قبل إكمال النتيجة: ${finishReason}.`);
+  }
+
+  const content = first.content && typeof first.content === "object"
+    ? first.content as Record<string, unknown>
+    : {};
+  const parts = Array.isArray(content.parts)
+    ? content.parts as Array<Record<string, unknown>>
+    : [];
+
+  return parts
+    .map((part) => typeof part.text === "string" ? part.text : "")
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+}
+
+function parseImageDataUrl(dataUrl: string): { mimeType: string; data: string } {
+  const match = /^data:(image\/(?:png|jpeg|jpg|webp));base64,(.+)$/i.exec(dataUrl);
+  if (!match) throw new Error("صيغة الصورة غير صالحة.");
+  const mimeType = match[1].toLowerCase() === "image/jpg" ? "image/jpeg" : match[1].toLowerCase();
+  return { mimeType, data: match[2] };
+}
+
+function shouldRetryGemini(status: number): boolean {
+  return status === 408 || status === 429 || status >= 500;
+}
+
+async function wait(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function geminiRequest(
+  model: string,
+  requestBody: Record<string, unknown>,
+): Promise<{ raw: Record<string, unknown>; requestId: string | null }> {
+  const apiKey = Deno.env.get("GEMINI_API_KEY");
+  if (!apiKey) throw new Error("سر GEMINI_API_KEY غير مضبوط في Supabase.");
+
+  const url = `${GEMINI_BASE_URL}/${encodeURIComponent(normalizeModelName(model))}:generateContent`;
+  let lastMessage = "تعذر الاتصال بـGemini.";
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": apiKey,
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    const requestId = response.headers.get("x-request-id") ||
+      response.headers.get("x-goog-request-id");
+    const rawText = await response.text();
+
+    let raw: Record<string, unknown> = {};
+    try {
+      raw = rawText ? JSON.parse(rawText) as Record<string, unknown> : {};
+    } catch {
+      raw = { error: { message: rawText || "استجابة غير مفهومة من Gemini." } };
+    }
+
+    if (response.ok) return { raw, requestId };
+
+    const errorObject = raw.error && typeof raw.error === "object"
+      ? raw.error as Record<string, unknown>
+      : {};
+    lastMessage = String(errorObject.message || `فشل Gemini برمز ${response.status}.`);
+
+    if (!shouldRetryGemini(response.status) || attempt === 2) {
+      throw new Error(lastMessage);
+    }
+
+    const jitter = Math.floor(Math.random() * 250);
+    await wait((2 ** attempt) * 900 + jitter);
+  }
+
+  throw new Error(lastMessage);
 }
 
 function validateVisualPayload(payload: Record<string, unknown>): Array<{ label: string; dataUrl: string }> {
@@ -271,6 +385,20 @@ function validateEvidenceReferences(result: unknown, payload: Record<string, unk
   return output;
 }
 
+function classificationInstructions(): string {
+  return `أنت مصنف مستندات تربوية عربية. مهمتك تحديد نوع النموذج فقط، دون إجراء تحليل تربوي أو حساب نتائج.
+القواعد:
+1) استخدم معرفًا من knownFormTypes إذا كان النوع منطبقًا بوضوح.
+2) أعطِ أولوية لعنوان التقرير، وأسماء الحقول، وعناوين الأقسام، لا للتنسيق الطباعي أو الأعمدة الفارغة.
+3) ملفات Excel الوزارية قد تحتوي خلايا مدمجة وصفوفًا وأعمدة فاصلة؛ لا تعتبرها حقولًا حقيقية.
+4) لا تصنف توزيع مستويات الأداء لمجرد ظهور حروف أ أو ب أو ج داخل نص سردي؛ يجب أن تكون أعمدة مستويات صريحة.
+5) التقرير الذي يضم جوانب الإجادة، وجوانب التطوير، والدعم المقدم، والمداولة الإشرافية أو التوصيات هو تقرير إشرافي سردي.
+6) كشف يحتوي اسم الطالب وعنصر المادة ودرجة عنصر المادة هو درجات مكوّن تقويمي.
+7) إذا لم ينطبق نوع معروف، استخدم id بقيمة unknown واقترح اسمًا وغرضًا مختصرين.
+8) لا تذكر أسماء أشخاص في rationale، واكتب بالعربية الواضحة.
+9) confidence رقم من 0 إلى 100.`;
+}
+
 function visionInstructions(): string {
   return `أنت قارئ مستندات تربوية عربية عالي الدقة. استخرج المحتوى من الصور كما هو، دون اختراع أو تصحيح صامت.
 المطلوب:
@@ -284,62 +412,117 @@ function visionInstructions(): string {
 8) استخدم knownFormTypes للمطابقة، واقترح معرفًا وصفيًا جديدًا إذا لم ينطبق أي نوع.`;
 }
 
-async function callOpenAI(operation: "analyze" | "vision_extract", payload: Record<string, unknown>) {
-  const apiKey = Deno.env.get("OPENAI_API_KEY");
-  if (!apiKey) throw new Error("سر OPENAI_API_KEY غير مضبوط في Supabase.");
-  const model = Deno.env.get("OPENAI_MODEL") || DEFAULT_MODEL;
+async function callGemini(operation: "analyze" | "vision_extract" | "classify", payload: Record<string, unknown>) {
+  const model = normalizeModelName(Deno.env.get("GEMINI_MODEL") || DEFAULT_MODEL);
 
   let instructions: string;
   let schema: Record<string, unknown>;
-  let input: unknown;
-  let schemaName: string;
+  let userParts: Array<Record<string, unknown>>;
+  let maxOutputTokens: number;
 
   if (operation === "vision_extract") {
     const images = validateVisualPayload(payload);
     instructions = visionInstructions();
     schema = VISION_SCHEMA;
-    schemaName = "taqareer_visual_extraction";
-    input = [{
-      role: "user",
-      content: [
-        { type: "input_text", text: `اقرأ المستندات المصورة التالية. سياق الطلب:\n${JSON.stringify({ fileName: payload.fileName, sourceKind: payload.sourceKind, locale: payload.locale, knownFormTypes: payload.knownFormTypes })}` },
-        ...images.map((image) => ({ type: "input_image", image_url: image.dataUrl, detail: "high" }))
-      ]
-    }];
+    maxOutputTokens = 7000;
+    userParts = [
+      {
+        text: `اقرأ المستندات المصورة التالية. سياق الطلب:\n${
+          JSON.stringify({
+            fileName: payload.fileName,
+            sourceKind: payload.sourceKind,
+            locale: payload.locale,
+            knownFormTypes: payload.knownFormTypes,
+          })
+        }`,
+      },
+      ...images.map((image) => {
+        const parsed = parseImageDataUrl(image.dataUrl);
+        return {
+          inlineData: {
+            mimeType: parsed.mimeType,
+            data: parsed.data,
+          },
+        };
+      }),
+    ];
+  } else if (operation === "classify") {
+    instructions = classificationInstructions();
+    schema = CLASSIFICATION_SCHEMA;
+    maxOutputTokens = 1400;
+    userParts = [{ text: JSON.stringify(payload) }];
   } else {
     instructions = analysisInstructions();
     schema = ANALYSIS_SCHEMA;
-    schemaName = "taqareer_educational_analysis";
-    input = [{ role: "user", content: [{ type: "input_text", text: JSON.stringify(payload) }] }];
+    maxOutputTokens = 6000;
+    userParts = [{ text: JSON.stringify(payload) }];
   }
 
-  const response = await fetch(OPENAI_URL, {
-    method: "POST",
-    headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model,
-      instructions,
-      input,
-      text: { format: { type: "json_schema", name: schemaName, strict: true, schema } },
-      max_output_tokens: operation === "vision_extract" ? 7000 : 6000,
-      store: false,
-      truncation: "auto"
-    })
+  const { raw, requestId } = await geminiRequest(model, {
+    systemInstruction: {
+      parts: [{ text: instructions }],
+    },
+    contents: [{
+      role: "user",
+      parts: userParts,
+    }],
+    generationConfig: {
+      responseMimeType: "application/json",
+      responseJsonSchema: schema,
+      maxOutputTokens,
+      candidateCount: 1,
+    },
   });
 
-  const raw = await response.json();
-  if (!response.ok) {
-    const message = raw?.error?.message || `فشل مزود الذكاء الاصطناعي برمز ${response.status}.`;
-    throw new Error(message);
-  }
-  if (raw?.status === "incomplete") throw new Error("لم يكتمل رد الذكاء الاصطناعي. قلل حجم الملف أو أعد المحاولة.");
-  const text = outputText(raw);
-  if (!text) throw new Error("لم يرجع مزود الذكاء الاصطناعي محتوى قابلًا للقراءة.");
+  const text = geminiOutputText(raw);
+  if (!text) throw new Error("لم يرجع Gemini محتوى قابلًا للقراءة.");
+
   let result: unknown;
-  try { result = JSON.parse(text); }
-  catch { throw new Error("رجع مزود الذكاء الاصطناعي محتوى غير مطابق للعقد المتوقع."); }
+  try {
+    result = JSON.parse(text);
+  } catch {
+    throw new Error("رجع Gemini محتوى غير مطابق لعقد JSON المتوقع.");
+  }
+
   if (operation === "analyze") result = validateEvidenceReferences(result, payload);
-  return { result, model: raw?.model || model, usage: raw?.usage || null, requestId: raw?.id || null };
+
+  return {
+    result,
+    model: String(raw.modelVersion || model),
+    usage: raw.usageMetadata || null,
+    requestId,
+    provider: "gemini",
+  };
+}
+
+async function pingGemini(): Promise<Record<string, unknown>> {
+  const model = normalizeModelName(Deno.env.get("GEMINI_MODEL") || DEFAULT_MODEL);
+  const { raw, requestId } = await geminiRequest(model, {
+    contents: [{
+      role: "user",
+      parts: [{ text: "أجب بكلمة READY فقط دون أي شرح." }],
+    }],
+    generationConfig: {
+      // اختبار الاتصال لا يحتاج عقد JSON كاملًا. رفع الميزانية يمنع استهلاكها
+      // بواسطة تفكير Gemini قبل إنتاج الرد النهائي القصير.
+      maxOutputTokens: 512,
+      candidateCount: 1,
+    },
+  });
+
+  const text = geminiOutputText(raw).trim();
+  if (!/ready/i.test(text)) {
+    const preview = text.slice(0, 120) || "[استجابة فارغة]";
+    throw new Error(`اتصلت الوظيفة بـGemini، لكن رد اختبار الاتصال كان غير متوقع: ${preview}`);
+  }
+
+  return {
+    result: { status: "ready" },
+    model: String(raw.modelVersion || model),
+    usage: raw.usageMetadata || null,
+    requestId,
+    provider: "gemini",
+  };
 }
 
 Deno.serve(async (req: Request) => {
@@ -374,13 +557,14 @@ Deno.serve(async (req: Request) => {
     const payload = body?.payload && typeof body.payload === "object" ? body.payload as Record<string, unknown> : {};
 
     if (operation === "ping") {
-      return jsonResponse({ ok: true, operation, model: Deno.env.get("OPENAI_MODEL") || DEFAULT_MODEL, aiKeyConfigured: Boolean(Deno.env.get("OPENAI_API_KEY")) }, 200, origin);
+      const ai = await pingGemini();
+      return jsonResponse({ ok: true, operation, aiKeyConfigured: Boolean(Deno.env.get("GEMINI_API_KEY")), ...ai }, 200, origin);
     }
-    if (operation !== "analyze" && operation !== "vision_extract") {
+    if (operation !== "analyze" && operation !== "vision_extract" && operation !== "classify") {
       return jsonResponse({ ok: false, error: "العملية المطلوبة غير مدعومة." }, 400, origin);
     }
 
-    const ai = await callOpenAI(operation, payload);
+    const ai = await callGemini(operation as "analyze" | "vision_extract" | "classify", payload);
     return jsonResponse({ ok: true, operation, ...ai }, 200, origin);
   } catch (error) {
     console.error("taqareer-ai-error", error);
