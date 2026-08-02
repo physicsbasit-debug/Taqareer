@@ -1,20 +1,11 @@
 {
-  "phase": "0-B2",
-  "name": "Detailed Analysis Contracts & AI Architecture",
-  "version": "1.0.0",
-  "created": "2026-08-02",
-  "status": "completed-draft",
-  "files": [
-    "README.md",
-    "docs/AI_ANALYSIS_ARCHITECTURE.md",
-    "docs/DATA_QUALITY_AND_VALIDATION.md",
-    "docs/EDUCATIONAL_REASONING_RULES.md",
-    "docs/FINDINGS_AND_EVIDENCE_CONTRACT.md",
-    "docs/FORM_TYPE_REGISTRY.md",
-    "docs/QUALITY_TOOLS_RULES.md",
-    "docs/REPORT_OUTPUT_CONTRACT.md",
-    "registry/form_type_registry.v1.json",
-    "src-contracts/analysis-contracts.ts",
-    "tests/ACCEPTANCE_SCENARIOS.md"
-  ]
+  "project": "تقارير",
+  "phase": "0-C + 1-A prototype",
+  "version": "0.1.0",
+  "status": "interactive-preview",
+  "createdAt": "2026-08-02",
+  "entry": "index.html",
+  "constraintsMode": "soft-by-default",
+  "realFileParsing": false,
+  "liveAI": false
 }
