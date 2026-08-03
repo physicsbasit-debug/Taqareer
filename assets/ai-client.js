@@ -23,7 +23,7 @@
       endpoint: normalizeEndpoint(stored.endpoint || defaults.aiEndpoint || ""),
       anonKey: String(stored.anonKey || defaults.supabaseAnonKey || "").trim(),
       enabled: stored.enabled !== undefined ? Boolean(stored.enabled) : defaults.aiEnabledByDefault !== false,
-      timeoutMs: Number(stored.timeoutMs || defaults.requestTimeoutMs || 90000)
+      timeoutMs: Number(stored.timeoutMs || defaults.requestTimeoutMs || 120000)
     };
   }
 
@@ -115,7 +115,7 @@
   }
 
   async function ping() {
-    const response = await invoke("ping", { clientVersion: "0.6.1" });
+    const response = await invoke("ping", { clientVersion: "0.7.0" });
     return response;
   }
 

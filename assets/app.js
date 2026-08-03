@@ -9,7 +9,11 @@
     { id: "supervision_indicator", name: "ملخص مؤشرات زيارة إشرافية", purpose: "تحليل مؤشرات الأداء الإشرافي ومواطن القوة وأولويات التطوير.", keywords: ["بنود التقويم", "المتوسط", "التخطيط", "إدارة الصف", "استراتيجيات التدريس"], min: 2 },
     { id: "student_work", name: "ملخص فحص أعمال الطلبة", purpose: "تحليل جودة أعمال الطلبة والتغذية الراجعة والتمايز والتقدم.", keywords: ["أعمال الطلبة", "الأكثر تكرارا", "التغذية الراجعة", "التمايز", "الأنشطة"], min: 2 },
     { id: "supervision_narrative", name: "تقرير إشرافي سردي", purpose: "تحليل الأدلة السردية وربط جوانب الإجادة والتطوير بالدعم والتوصيات.", keywords: ["جوانب الإجادة", "أدلتها", "الدعم المقدم", "التوصيات", "الجوانب التي تحتاج"], min: 2 },
-    { id: "unknown", name: "نوع جديد غير مسجل", purpose: "سيُبنى له تعريف تحليلي مخصص بعد مراجعة المستخدم.", keywords: [], min: 0 }
+    { id: "survey", name: "استبانة اتجاهات أو رضا", purpose: "تحليل توزيع الاستجابات والاتجاه العام والبنود ذات الأولوية وجودة المقياس عند تحقق شروطها.", keywords: ["أوافق بشدة", "محايد", "الرضا", "الاستبانة", "المتوسط"], min: 2 },
+    { id: "training_needs", name: "استمارة احتياجات تدريبية", purpose: "تحليل أهمية الكفايات وفجوة الأداء وترتيب الأولويات وقياس أثر التدريب.", keywords: ["الكفاية", "الأهمية", "المستوى الحالي", "المستوى المستهدف", "الاحتياج التدريبي"], min: 2 },
+    { id: "program_evaluation", name: "تقييم برنامج أو مبادرة", purpose: "تحليل التنفيذ والمخرجات والنتائج والأثر والفجوات والاستدامة.", keywords: ["نسبة التنفيذ", "الهدف", "المؤشر", "الأثر", "المستهدف"], min: 2 },
+    { id: "behavior_attendance", name: "سلوك وغياب وانضباط", purpose: "تحليل التكرارات والاتجاهات الزمنية والحالات المتكررة وأولويات الوقاية والمتابعة.", keywords: ["الغياب", "السلوك", "المخالفة", "التاريخ", "التكرار"], min: 2 },
+    { id: "unknown", name: "نوع جديد غير مسجل", purpose: "سيُبنى له تعريف تحليلي تكيفي خاص دون فرض قالب معروف.", keywords: [], min: 0 }
   ];
 
   const samples = [
@@ -203,7 +207,11 @@
     cross_subject: [["اسم الطالب", "الطالب"]],
     supervision_indicator: [["بنود التقويم", "البند"], ["المتوسط"]],
     student_work: [["بنود التقويم", "البند"], ["المتوسط"]],
-    supervision_narrative: [["النص"]]
+    supervision_narrative: [["النص"]],
+    survey: [["البند", "السؤال", "العبارة", "المجال"]],
+    training_needs: [["الكفاية", "المهارة", "الاحتياج", "المجال"], ["المستوى الحالي", "الأداء الحالي", "الدرجة الحالية"]],
+    program_evaluation: [["الهدف", "المؤشر", "النشاط", "المخرج"]],
+    behavior_attendance: [["السلوك", "نوع الحالة", "المخالفة", "سبب الغياب", "التاريخ"]]
   };
 
   function normalizedHeaders(headers) {
@@ -264,6 +272,23 @@
     if (has("فحص اعمال الطلبه") || has("فحص أعمال الطلبة")) add("student_work", 52, "عنوان فحص أعمال الطلبة");
     if (has("التغذيه الراجعه") && has("التمايز") && has("الانشطه")) add("student_work", 24, "مؤشرات أعمال الطلبة");
     if (headerHas("الاكثر تكرارا") || headerHas("الأكثر تكرارا")) add("student_work", 18, "وجود المنوال أو الأكثر تكرارًا");
+
+    const likertLabels = ["اوافق بشده", "اوافق", "محايد", "لا اوافق", "لا اوافق بشده"].filter(label => has(label)).length;
+    if (likertLabels >= 3) add("survey", 58, `وجود ${likertLabels} فئات ليكرت`);
+    if (has("استبانه") || has("استبانة") || has("رضا المستفيدين") || has("اتجاهات")) add("survey", 28, "عنوان أو سياق استبانة");
+    if (headerHas("البند") && (headerHas("المتوسط") || headerHas("نسبه الاتفاق") || headerHas("نسبة الاتفاق"))) add("survey", 24, "بنود ومتوسطات استبانة");
+
+    if ((headerHas("الكفايه") || headerHas("الكفاية") || headerHas("المهاره") || headerHas("المهارة")) && (headerHas("المستوي الحالي") || headerHas("المستوى الحالي"))) add("training_needs", 58, "كفايات ومستوى حالي");
+    if (has("الاحتياجات التدريبيه") || has("الاحتياجات التدريبية") || has("اولوية التدريب") || has("أولوية التدريب")) add("training_needs", 34, "سياق احتياجات تدريبية");
+    if (headerHas("الاهميه") || headerHas("الأهمية")) add("training_needs", 16, "وجود درجة أهمية");
+
+    if ((headerHas("الهدف") || headerHas("المؤشر") || headerHas("النشاط")) && (headerHas("نسبه التنفيذ") || headerHas("نسبة التنفيذ") || headerHas("الاثر") || headerHas("الأثر"))) add("program_evaluation", 54, "أهداف أو مؤشرات مع تنفيذ أو أثر");
+    if (has("تقييم برنامج") || has("تقييم مبادره") || has("تقييم مبادرة") || has("تحقق الاهداف") || has("تحقق الأهداف")) add("program_evaluation", 34, "سياق تقويم برنامج أو مبادرة");
+    if (headerHas("المستهدف") && (headerHas("النتيجه") || headerHas("النتيجة") || headerHas("الفعلي"))) add("program_evaluation", 22, "مستهدف ونتيجة فعلية");
+
+    if (has("الغياب") || has("المخالفات السلوكيه") || has("المخالفات السلوكية") || has("السلوك والانضباط")) add("behavior_attendance", 40, "سياق غياب أو سلوك");
+    if ((headerHas("السلوك") || headerHas("نوع الحاله") || headerHas("نوع الحالة") || headerHas("المخالفه") || headerHas("المخالفة")) && (headerHas("التاريخ") || headerHas("التكرار") || headerHas("العدد"))) add("behavior_attendance", 52, "نوع حالة مع تاريخ أو تكرار");
+    if (headerHas("ايام الغياب") || headerHas("أيام الغياب")) add("behavior_attendance", 36, "حقل أيام الغياب");
 
     if (sourceMeta?.mode === "narrative") add("supervision_narrative", 18, "المصدر نص سردي");
     if (has("التقرير التجميعي") && has("الزياره الاشرافيه")) add("supervision_narrative", 58, "عنوان تقرير تجميعي للزيارة الإشرافية");
@@ -348,7 +373,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "0.6.1",
+      appVersion: "0.7.0",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -758,17 +783,22 @@
     $("maxScoreInput").value = state.sampleMaxScore ?? "";
 
     const plans = {
-      single_subject: ["تحليل الدرجات والمؤشرات الوصفية", "حساب الإتقان بعد تأكيد الدرجة الكلية", "اكتشاف التشتت والقيم المفقودة", "اقتراح أولوية علاجية أولية"],
-      assessment_component: ["تحليل مكوّن التقويم", "تحديد التفاوت بين الطلبة", "تهيئة البيانات للمقارنة مع مكوّن آخر لاحقًا", "رصد الحالات التي تحتاج مراجعة"],
-      level_distribution: ["حساب نسب مستويات الأداء", "مقارنة الصفوف أو المجموعات", "تحديد المستويات الأكثر انتشارًا", "إنشاء قراءة تربوية دون افتراض درجات فردية"],
-      cross_subject: ["تحليل الأداء عبر المواد", "تحديد المواد الأقوى والأضعف", "اكتشاف التفاوت داخل ملف الطالب", "تحديد التدخل الشامل أو التخصصي"],
-      supervision_indicator: ["تحليل متوسطات المؤشرات", "ترتيب مواطن القوة وأولويات التطوير", "تحليل الفجوة عند تأكيد المقياس", "صياغة إجراءات تطوير قابلة للمتابعة"],
-      student_work: ["تحليل جودة أعمال الطلبة", "تحديد أثر التغذية الراجعة والتمايز", "ترتيب البنود منخفضة الأداء", "اقتراح خطة تحسين للأعمال"],
-      supervision_narrative: ["تصنيف الأحكام والأدلة", "ربط جوانب التطوير بالدعم والتوصيات", "فحص قوة الدليل واتساقه", "تحويل التوصيات إلى خطة نمو قابلة للمتابعة"],
+      single_subject: ["تحليل وصفي متقدم: الربيعات والمئينات والالتواء والتشتت", "تحليل الإتقان وحساسية المعيار وفئات التدخل", "اكتشاف القيم المتطرفة وبناء خط أساس", "أدوات جودة وخطة علاج وإثراء وإعادة قياس"],
+      assessment_component: ["تحليل عميق لمكوّن التقويم وتوزيع الدرجات", "فئات القرب من الإتقان والتعثر الشديد", "مراجعة القيم المتطرفة واتساق الحكم", "خطة تدخل متعددة المستويات قابلة للمقارنة لاحقًا"],
+      level_distribution: ["تحليل المستويات العليا والدنيا ومركز التوزيع", "مقارنة الصفوف أو الشعب وترتيب الأولوية", "مصفوفة فجوة وانتقال المستويات", "خطة تدخل جماعي وفردي وإثرائي"],
+      cross_subject: ["ترتيب المواد ونسب الإتقان والتفاوت", "تمييز التعثر الشامل من التعثر التخصصي", "تحليل العلاقات الوصفية بين المواد", "خريطة تدخل مشتركة ومتابعة متعددة التخصصات"],
+      supervision_indicator: ["تجميع المؤشرات في مجالات إشرافية", "رادار الأداء وتحليل الفجوة وباريتو الأولويات", "مصفوفة أولوية الأثر والجهد", "خطة نمو مهني ودورة PDCA وإعادة ملاحظة"],
+      student_work: ["تحليل جودة الإنجاز والتغذية الراجعة والتمايز", "رادار المجالات وفجوات الأعمال والأنشطة", "باريتو البنود ذات الأثر الأعلى", "خطة تحسين للأعمال ومؤشرات متابعة قبل/بعد"],
+      supervision_narrative: ["تحليل أقسام الإجادة والتطوير والدعم والتوصيات", "مصفوفة الحكم والدليل والأثر", "اكتشاف التكرار والتعارض ومشكلات التواريخ", "فحص قابلية التوصيات للقياس وبناء خطة متابعة"],
+      survey: ["تحليل ليكرت والاتجاه العام وتوزيع الاستجابات", "ترتيب البنود وفجوات الرضا أو الاتفاق", "فحص الاتساق الداخلي عند تحقق شروطه", "باريتو الأولويات وخطة استجابة وإعادة قياس"],
+      training_needs: ["حساب فجوة الكفايات وأهمية الاحتياج", "ترتيب الأولوية حسب الفجوة والأهمية وحجم الفئة", "اختيار نوع التدخل: تدريب أو توجيه أو تعلم ذاتي", "قياس قبلي وبعدي ونقل أثر التدريب"],
+      program_evaluation: ["فصل التنفيذ عن النتائج والأثر", "نموذج منطق البرنامج وتحليل فجوات الأهداف", "باريتو الاختناقات ودورة PDCA", "قرار الاستمرار أو التعديل وخطة قياس الاستدامة"],
+      behavior_attendance: ["باريتو أنواع الحالات والغياب", "الاتجاه الزمني والحالات المتكررة", "مؤشرات إنذار مبكر مع حماية الخصوصية", "تدخل وقائي وفردي وقياس أثر"],
       unknown: narrativeMode
-        ? ["اكتشاف الأقسام والموضوعات المتكررة", "تمييز الحكم من الدليل", "تقدير قوة الأدلة وحدودها", "اقتراح تعريف تحليلي جديد للمراجعة"]
-        : ["تحليل بنية الحقول وأنواع القيم", "استخراج المؤشرات الرقمية المتاحة", "تكوين استنتاجات عامة محدودة", "اقتراح تعريف تحليلي جديد للمراجعة"]
+        ? ["تحليل بنيوي للنص والأقسام", "تحقق دلالي عبر Gemini لتحديد النوع", "بناء عقد تحليل جديد بدل فرض قالب معروف", "تحديد الأدلة والأدوات والحدود المناسبة للنوع"]
+        : ["ملف تعريف للحقول الرقمية والفئوية", "تحقق دلالي عبر Gemini لتحديد الهدف", "بناء خطة تحليل متخصصة جديدة", "حفظ النوع لاحقًا في السجل الديناميكي"]
     };
+
     $("analysisPlan").innerHTML = plans[state.type.id].map(x => `<li>${escapeHtml(x)}</li>`).join("");
     updateAiStatusUi();
   }
@@ -779,12 +809,6 @@
     const normalized = String(value).replace(/[٠-٩٫٬]/g, ch => map[ch]).replace(/%/g, "").trim();
     const n = Number(normalized); return Number.isFinite(n) ? n : NaN;
   }
-
-  function median(values) {
-    const a = [...values].sort((x,y) => x-y); const n = a.length; if (!n) return NaN;
-    return n % 2 ? a[(n-1)/2] : (a[n/2-1] + a[n/2]) / 2;
-  }
-
 
   function isSensitiveHeader(header) {
     const value = normalize(header);
@@ -829,7 +853,25 @@
     const copy = JSON.parse(JSON.stringify(analysis));
     delete copy.localAnalysis;
     delete copy.ai;
-    if (Array.isArray(copy.bins) && copy.bins.length > 12) copy.bins = copy.bins.slice(0, 12);
+    delete copy.rows;
+    delete copy.studentProfiles;
+    delete copy.sections;
+    delete copy.items;
+    delete copy.evidenceMap;
+    if (Array.isArray(copy.bins)) copy.bins = copy.bins.slice(0, 14);
+    if (Array.isArray(copy.charts)) copy.charts = copy.charts.slice(0, 8).map(chart => ({
+      ...chart,
+      data: Array.isArray(chart.data) ? chart.data.slice(0, 40) : chart.data
+    }));
+    if (Array.isArray(copy.findings)) copy.findings = copy.findings.slice(0, 12);
+    if (Array.isArray(copy.qualityTools)) copy.qualityTools = copy.qualityTools.slice(0, 8).map(tool => ({
+      ...tool,
+      output: Array.isArray(tool.output) ? tool.output.slice(0, 30) : tool.output
+    }));
+    if (Array.isArray(copy.improvementPlan)) copy.improvementPlan = copy.improvementPlan.slice(0, 8);
+    if (Array.isArray(copy.monitoringPlan)) copy.monitoringPlan = copy.monitoringPlan.slice(0, 8);
+    if (Array.isArray(copy.duplicates)) copy.duplicates = copy.duplicates.slice(0, 12);
+    if (Array.isArray(copy.correlations)) copy.correlations = copy.correlations.slice(0, 12);
     return copy;
   }
 
@@ -837,6 +879,7 @@
     const refs = [];
     (dataset?.rows || []).forEach(row => { if (row?._evidenceRef) refs.push(row._evidenceRef); });
     (narrativeLines || []).forEach(line => { if (line?.ref) refs.push(line.ref); });
+    (deterministicAnalysis?.evidenceCatalog || []).forEach(item => { if (item?.ref) refs.push(item.ref); });
     Object.entries(deterministicAnalysis || {}).forEach(([key, value]) => {
       if (["string", "number", "boolean"].includes(typeof value) || value === null) refs.push(`metric:${key}`);
     });
@@ -849,7 +892,7 @@
     const deterministicAnalysis = compactDeterministicAnalysis(state.analysis);
     return {
       locale: "ar-OM",
-      appVersion: "0.6.1",
+      appVersion: "0.7.0",
       source: {
         name: state.sourceName,
         meta: state.sourceMeta || {},
@@ -905,8 +948,10 @@
   }
 
   function humanizeEvidenceRefs(refs) {
+    const evidenceMap = state.analysis?.evidenceMap || {};
     const items = (Array.isArray(refs) ? refs : []).map(ref => {
       const value = String(ref || "");
+      if (evidenceMap[value]) return evidenceMap[value];
       if (value.startsWith("metric:")) {
         const key = value.slice(7);
         return `${evidenceMetricLabels[key] || "مؤشر محسوب"}: ${formatEvidenceMetric(key)}`;
@@ -952,46 +997,41 @@
     runButton.disabled = true;
 
     try {
-      if (isNarrativeMode()) {
-        const text = $("narrativeTextReview").value.trim();
-        if (text.length < 40) {
-          setMessage("setupMessage", "النص قصير جدًا لإنتاج تحليل تربوي مفيد. أضف المحتوى المستخرج أو راجع الملف.", true);
-          return;
-        }
-        state.narrativeText = text;
-        state.analysis = analyzeNarrative(text);
-      } else {
-        const scoreColumn = $("scoreColumnSelect").value;
-        const levelColumn = $("levelColumnSelect").value;
-        const maxScore = parseNumber($("maxScoreInput").value);
-        const thresholdPct = parseNumber($("masteryThresholdInput").value);
-        if (!Number.isFinite(thresholdPct) || thresholdPct <= 0 || thresholdPct > 100) {
-          setMessage("setupMessage", "حد الإتقان يجب أن يكون بين 1 و100.", true);
-          return;
-        }
+      const narrativeMode = isNarrativeMode();
+      const narrativeText = narrativeMode ? $("narrativeTextReview").value.trim() : "";
+      if (narrativeMode && narrativeText.length < 40) {
+        setMessage("setupMessage", "النص قصير جدًا لإنتاج تحليل تربوي عميق. راجع المحتوى المستخرج.", true);
+        return;
+      }
+      if (narrativeMode) state.narrativeText = narrativeText;
 
-        if (state.type.id === "level_distribution") {
-          state.analysis = analyzeLevelDistribution();
-        } else {
-          const rawValues = scoreColumn ? state.rows.map(r => parseNumber(r[scoreColumn])).filter(Number.isFinite) : [];
-          let excludedOutOfRange = 0;
-          const values = rawValues.filter(v => {
-            if (Number.isFinite(maxScore) && maxScore > 0 && (v < 0 || v > maxScore)) { excludedOutOfRange++; return false; }
-            return true;
-          });
-          if (!values.length) {
-            setMessage("setupMessage", "اختر عمودًا رقميًا صالحًا للتحليل، أو راجع الدرجة الكلية والقيم الخارجة عن نطاقها.", true);
-            return;
-          }
-          state.analysis = analyzeScores(values, scoreColumn, levelColumn, maxScore, thresholdPct);
-          if (excludedOutOfRange > 0) {
-            state.analysis.findings.unshift(finding("استُبعدت قيم خارج النطاق", `استُبعدت ${excludedOutOfRange} قيمة أقل من صفر أو أعلى من الدرجة الكلية المؤكدة (${maxScore}).`, "مرتفعة", "إدخال هذه القيم كان سيشوّه المتوسط ونسبة الإتقان.", "مراجعة السجلات المستبعدة وتصحيحها قبل اعتماد التقرير النهائي."));
-          }
-        }
+      const scoreColumn = $("scoreColumnSelect").value;
+      const levelColumn = $("levelColumnSelect").value;
+      const maxScore = parseNumber($("maxScoreInput").value);
+      const thresholdPct = parseNumber($("masteryThresholdInput").value);
+      if (!narrativeMode && (!Number.isFinite(thresholdPct) || thresholdPct <= 0 || thresholdPct > 100)) {
+        setMessage("setupMessage", "حد الإتقان يجب أن يكون بين 1 و100.", true);
+        return;
+      }
+      if (!window.TaqareerDeepAnalytics?.analyze) {
+        throw new Error("محرك التحليل العميق غير محمل. أعد تحميل الصفحة بعد تحديث الملفات.");
       }
 
+      state.analysis = window.TaqareerDeepAnalytics.analyze({
+        typeId: state.type.id,
+        headers: state.headers,
+        rows: state.rows,
+        sourceMeta: state.sourceMeta,
+        narrativeText,
+        scoreColumn,
+        levelColumn,
+        maxScore,
+        thresholdPct,
+        quality: state.quality
+      });
+
       if (aiReady()) {
-        setMessage("setupMessage", "اكتمل التحليل الحتمي. جارٍ تنفيذ القراءة التربوية العميقة وربط الاستنتاجات بالأدلة…");
+        setMessage("setupMessage", "اكتمل التحليل المتخصص الحتمي. جارٍ تنفيذ القراءة التربوية العميقة عبر Gemini وربطها بالأدلة…");
         try {
           await enrichAnalysisWithAi();
         } catch (error) {
@@ -1003,276 +1043,203 @@
 
       renderResults();
       showPanel(4);
+    } catch (error) {
+      setMessage("setupMessage", error.message || "تعذر تنفيذ التحليل العميق.", true);
     } finally {
       runButton.disabled = false;
       updateAiStatusUi();
     }
   }
 
-  function analyzeScores(values, scoreColumn, levelColumn, maxScore, thresholdPct) {
-    const n = values.length, sum = values.reduce((a,b) => a+b,0), mean = sum/n, med = median(values), min = Math.min(...values), max = Math.max(...values);
-    const variance = values.reduce((a,v) => a + (v-mean)**2, 0) / n; const sd = Math.sqrt(variance);
-    const hasMax = Number.isFinite(maxScore) && maxScore > 0;
-    const masteryCut = hasMax ? maxScore * thresholdPct / 100 : NaN;
-    const masteryCount = hasMax ? values.filter(v => v >= masteryCut).length : null;
-    const masteryPct = hasMax ? masteryCount / n * 100 : null;
-    const bins = buildBins(values, hasMax ? maxScore : null);
-    const findings = [];
-
-    if (state.quality.completeness < 90) findings.push(finding("اكتمال البيانات يحتاج حذرًا", `بلغ اكتمال الجدول ${state.quality.completeness}%.`, "متوسطة", "قد تؤثر القيم الناقصة في تمثيل الصورة العامة.", "مراجعة السجلات الناقصة قبل اعتماد التقرير النهائي."));
-    if (hasMax) {
-      if (masteryPct < 50) findings.push(finding("الإتقان منخفض ويستدعي تدخلًا", `حقق ${masteryCount} من أصل ${n} الحد المحدد (${thresholdPct}%).`, "مرتفعة", "أكثر من نصف الحالات لم تبلغ الحد المعتمد.", "تكوين مجموعة علاجية مركزة على المهارات أو الموضوعات المسببة للضعف."));
-      else if (masteryPct < 75) findings.push(finding("الإتقان متوسط مع حاجة إلى دعم موجّه", `بلغت نسبة الإتقان ${round(masteryPct)}%.`, "مرتفعة", "توجد كتلة معتبرة تحتاج دعمًا دون أن يكون الضعف عامًا.", "تقسيم الطلبة إلى مجموعات دعم قصيرة وإثراء للمجيدين."));
-      else findings.push(finding("مستوى الإتقان العام جيد", `بلغت نسبة الإتقان ${round(masteryPct)}%.`, "مرتفعة", "الغالبية بلغت الحد المحدد مع بقاء حالات فردية تحتاج متابعة.", "استمرار الممارسات الناجحة مع تدخل فردي للحالات الأقل أداءً."));
-    } else findings.push(finding("لا يمكن حساب الإتقان بعد", "لم تُؤكّد الدرجة الكلية للمكوّن.", "مرتفعة", "المتوسطات الخام صالحة، لكن تحويلها إلى نسب أو مستويات سيكون تخمينًا.", "إدخال الدرجة الكلية قبل اعتماد حكم الإتقان."));
-
-    const spreadRatio = hasMax ? sd / maxScore : sd / Math.max(1, Math.abs(mean));
-    if (spreadRatio >= .18) findings.push(finding("تفاوت واضح في الأداء", `الانحراف المعياري ${round(sd)} والمدى ${round(max-min)}.`, "مرتفعة", "الصف أو المجموعة ليست متجانسة، والتدخل الموحد قد لا يخدم الجميع.", "استخدام تدخلات متدرجة بحسب مستوى الاحتياج."));
-    else findings.push(finding("الأداء متقارب نسبيًا", `الانحراف المعياري ${round(sd)} والمدى ${round(max-min)}.`, "متوسطة", "الدرجات متقاربة نسبيًا داخل المجموعة.", "تنفيذ تدخل جماعي قصير مع متابعة الحالات الطرفية."));
-
-    if (levelColumn) {
-      const counts = {}; state.rows.forEach(r => { const level = String(r[levelColumn] ?? "").trim(); if (level) counts[level] = (counts[level]||0)+1; });
-      if (Object.keys(counts).length) findings.push(finding("توزيع المستويات متاح للمقارنة", Object.entries(counts).map(([k,v]) => `${k}: ${v}`).join("، "), "مرتفعة", "يمكن استخدام المستويات الرسمية دون إعادة اشتقاقها من الدرجات.", "مراجعة الفئات الأدنى وربطها بأسماء الطلبة في التقرير المقيد."));
-    }
-
-    return { kind: "scores", n, mean, med, min, max, sd, hasMax, maxScore, thresholdPct, masteryPct, bins, findings,
-      executiveTitle: hasMax ? `نسبة الإتقان ${round(masteryPct)}%` : "تحليل وصفي مكتمل",
-      executiveSummary: hasMax ? `أظهر التحليل أن ${round(masteryPct)}% من السجلات ذات الدرجات الصالحة بلغت حد الإتقان المحدد. بلغ المتوسط ${round(mean)} من ${maxScore}، مع ${spreadRatio >= .18 ? "تفاوت واضح" : "تقارب نسبي"} بين الحالات.` : `تم تحليل ${n} قيمة رقمية في عمود «${scoreColumn}». بلغ المتوسط ${round(mean)} والوسيط ${round(med)}. لم يُحسب الإتقان لأن الدرجة الكلية لم تُؤكّد.`,
-      action: hasMax && masteryPct < 75 ? { title: "بناء تدخل علاجي متدرج", text: "قسّم الحالات إلى ثلاث مجموعات بحسب قربها من حد الإتقان، وحدد لكل مجموعة نشاطًا قصيرًا ومؤشر متابعة أسبوعيًا.", priority: masteryPct < 50 ? "عالية" : "متوسطة", indicator: `ارتفاع الإتقان إلى ${Math.min(100, Math.ceil(masteryPct/5)*5 + 10)}% أو أكثر` } : { title: "متابعة الحالات الأقل أداءً", text: "حافظ على الممارسات الحالية، وحدد الحالات الواقعة في الربع الأدنى لتدخل فردي قصير.", priority: "محددة", indicator: "انخفاض عدد الحالات في الربع الأدنى في القياس التالي" }
-    };
-  }
-
-  function analyzeLevelDistribution() {
-    const levelHeaders = state.headers.filter(h => ["ا","أ","ب","ج","د","ه","هـ"].includes(normalize(h)));
-    const totals = {}; levelHeaders.forEach(h => totals[h] = state.rows.reduce((s,r) => s + (parseNumber(r[h])||0), 0));
-    const total = Object.values(totals).reduce((a,b) => a+b,0);
-    const entries = Object.entries(totals).map(([label,count]) => ({ label, count, pct: total ? count/total*100 : 0 }));
-    const sorted = [...entries].sort((a,b) => b.count-a.count); const top = sorted[0];
-    const lower = entries.filter(e => ["د","ه","هـ"].includes(normalize(e.label))).reduce((s,e) => s+e.count,0);
-    const lowerPct = total ? lower/total*100 : 0;
-    const findings = [finding("المستوى الأكثر انتشارًا", `${top?.label || "—"}: ${top?.count || 0} طالبًا (${round(top?.pct || 0)}%).`, "مرتفعة", "يوضح مركز التوزيع العام دون الحكم على أسباب الأداء.", "ربط المستوى الأكثر انتشارًا ببيانات المهارات أو المفردات عند توفرها.")];
-    if (lowerPct >= 30) findings.push(finding("كتلة منخفضة الأداء تستحق الأولوية", `تمثل المستويات الدنيا ${round(lowerPct)}% من الإجمالي.`, "مرتفعة", "النسبة كافية لتبرير تدخل جماعي منظم.", "بناء خطة علاجية على مستوى الصف أو المادة، ثم تحليل المهارات لتحديد المحتوى."));
-    else findings.push(finding("المستويات الدنيا محدودة نسبيًا", `تمثل المستويات الدنيا ${round(lowerPct)}% من الإجمالي.`, "مرتفعة", "التدخل الفردي أو المجموعات الصغيرة أنسب من برنامج عام واسع.", "تحديد أسماء الحالات الأقل أداءً من كشف الدرجات الفردي."));
-    return { kind: "levels", total, entries, findings, executiveTitle: `أكبر فئة: المستوى ${top?.label || "—"}`, executiveSummary: `يشمل التقرير ${total} طالبًا. المستوى الأكثر انتشارًا هو ${top?.label || "—"} بنسبة ${round(top?.pct || 0)}%، بينما تمثل المستويات الدنيا ${round(lowerPct)}% من الإجمالي.`, action: { title: lowerPct >= 30 ? "تحليل المهارات المسببة للضعف" : "متابعة الحالات الفردية", text: lowerPct >= 30 ? "اربط هذا التوزيع بنتائج المهارات أو مفردات الاختبار لتحديد المحتوى الذي يحتاج تدخلاً، لأن المستوى وحده يصف النتيجة ولا يشرح سببها." : "استخدم كشف النتائج الفردي لاستخراج الحالات في المستويات الدنيا وتصميم متابعة قصيرة لها.", priority: lowerPct >= 30 ? "عالية" : "محددة", indicator: "انخفاض نسبة المستويات الدنيا في القياس التالي" } };
-  }
-
-  function splitNarrativeSentences(text) {
-    return String(text || "")
-      .split(/\n+|(?<=[.!؟؛])\s+/)
-      .map(sentence => sentence.trim())
-      .filter(sentence => sentence.length >= 12);
-  }
-
-  function analyzeNarrative(text) {
-    const sentences = splitNarrativeSentences(text);
-    const lines = String(text).split(/\r?\n/).map(line => line.trim()).filter(Boolean);
-    const themes = [
-      { id: "student-learning", label: "تعلم الطلبة", keys: ["الطلبه", "تحصيل", "فهم", "تعلم", "تقدم", "استيعاب", "مهارات"] },
-      { id: "planning", label: "التخطيط", keys: ["تخطيط", "نواتج", "اهداف", "الخطة", "تسلسل"] },
-      { id: "instruction", label: "التدريس", keys: ["استراتيجيات", "تدريس", "استقصاء", "تعلم نشط", "نشاط", "شرح"] },
-      { id: "assessment", label: "التقويم", keys: ["تقويم", "تغذيه راجعه", "تقييم", "اسئله", "قياس"] },
-      { id: "classroom", label: "إدارة الصف", keys: ["اداره الصف", "زمن", "سلوك", "دافعيه", "مشاركه"] },
-      { id: "technology", label: "التقنية والموارد", keys: ["تقنيه", "رقمي", "محاكاه", "موارد", "عرض", "مختبر"] },
-      { id: "differentiation", label: "التمايز والدعم", keys: ["تمايز", "فروق فرديه", "دعم", "علاجي", "اثراء", "فئه"] }
-    ];
-    const themeEntries = themes.map(theme => ({
-      ...theme,
-      count: sentences.filter(sentence => theme.keys.some(key => normalize(sentence).includes(key))).length
-    })).filter(theme => theme.count > 0).sort((a, b) => b.count - a.count);
-
-    const evidenceMarkers = ["من خلال", "حيث", "يظهر", "يتضح", "مما", "نتيجه", "استنادا", "اعتمادا", "%"];
-    const evidenceSentences = sentences.filter(sentence => evidenceMarkers.some(marker => normalize(sentence).includes(normalize(marker))) || /\d/.test(sentence));
-    const recommendationMarkers = ["يوصي", "اوصي", "اعداد", "تفعيل", "تعزيز", "متابعه", "تزويد", "تصميم", "توجيه", "تنفيذ", "مناقشه"];
-    const recommendations = sentences.filter(sentence => recommendationMarkers.some(marker => normalize(sentence).includes(marker)));
-    const developmentSentences = sentences.filter(sentence => /تحتاج|بحاجه|تحسين|تطوير|ضعف|محدود|تحديات/.test(normalize(sentence)));
-    const strengthSentences = sentences.filter(sentence => /اجاده|قوه|متميز|فعال|فاعله|جيد|تحسن|اتقان/.test(normalize(sentence)));
-    const evidenceRatio = sentences.length ? evidenceSentences.length / sentences.length * 100 : 0;
-    const topTheme = themeEntries[0] || { label: "غير محدد", count: 0 };
-    const findings = [];
-
-    findings.push(finding(
-      "المجال الأكثر حضورًا في التقرير",
-      `${topTheme.label}: ظهر في ${topTheme.count} جملة من أصل ${sentences.length} جملة تحليلية.`,
-      topTheme.count >= 3 ? "مرتفعة" : "متوسطة",
-      "يوضح المجال الذي يستحوذ على معظم الأحكام والملاحظات، لكنه لا يثبت وحده أنه الأهم فعليًا.",
-      "مقارنة حضور هذا المجال بأهداف الزيارة أو الاستمارة للتأكد من توازن التغطية."
-    ));
-
-    if (evidenceRatio >= 35) {
-      findings.push(finding(
-        "ربط مقبول بين الأحكام والأدلة",
-        `احتوت ${evidenceSentences.length} جملة (${round(evidenceRatio)}%) على مؤشرات دليل مباشر أو وصف للممارسة والأثر.`,
-        "متوسطة",
-        "التقرير يتجاوز الأحكام العامة في جزء معتبر من محتواه، مع بقاء الحاجة إلى مراجعة بشرية لجودة كل دليل.",
-        "اعتماد صيغة ثابتة: ممارسة محددة + دليل ملاحظ + أثر على تعلم الطلبة."
-      ));
-    } else {
-      findings.push(finding(
-        "الأدلة المباشرة محدودة",
-        `لم يظهر مؤشر دليل واضح إلا في ${evidenceSentences.length} جملة (${round(evidenceRatio)}%).`,
-        "متوسطة",
-        "قد تكون بعض الأحكام صحيحة، لكن صياغتها الحالية لا تكفي لتتبعها أو الدفاع عنها مهنيًا.",
-        "إعادة صياغة الأحكام العامة بإضافة ما شوهد أو قيس والفئة المتأثرة والأثر الناتج."
-      ));
-    }
-
-    if (recommendations.length) {
-      const actionable = recommendations.filter(sentence => /اسبوع|شهر|مره|مؤشر|بنسبه|خلال|كل|فئه|نشاط|ورقه|جلسه/.test(normalize(sentence))).length;
-      findings.push(finding(
-        "التوصيات موجودة وتحتاج ضبط قابلية القياس",
-        `اكتُشفت ${recommendations.length} توصية أو إجراء، منها ${actionable} تتضمن عنصرًا تنفيذيًا أو زمنيًا أو مؤشرًا قابلًا للتتبع.`,
-        actionable >= Math.max(1, recommendations.length / 2) ? "مرتفعة" : "متوسطة",
-        "وجود التوصية لا يكفي؛ قيمتها ترتفع عندما تحدد الفئة والزمن والمسؤول ومؤشر النجاح.",
-        "تحويل التوصيات المختارة إلى جدول تنفيذ: الإجراء، المسؤول، الزمن، الدليل، مؤشر النجاح."
-      ));
-    } else {
-      findings.push(finding(
-        "لا توجد توصيات تنفيذية واضحة",
-        "لم يكتشف المحرك أفعالًا إجرائية صريحة في النص.",
-        "متوسطة",
-        "قد يبقى التقرير وصفيًا دون أن يقود إلى تحسين قابل للمتابعة.",
-        "إضافة إجراء واحد على الأقل لكل جانب تطوير، مع مسؤول وزمن ومؤشر نجاح."
-      ));
-    }
-
-    if (developmentSentences.length && !recommendations.length) {
-      findings.push(finding(
-        "جوانب التطوير غير مرتبطة بإجراء",
-        `ظهر ${developmentSentences.length} وصفًا لحاجة أو فرصة تحسين دون توصية تنفيذية مقابلة.`,
-        "متوسطة",
-        "الفجوة بين التشخيص والإجراء تقلل قيمة التقرير في المتابعة.",
-        "ربط كل جانب تطوير بإجراء واحد محدد على الأقل."
-      ));
-    }
-
-    const action = evidenceRatio < 35
-      ? { title: "تقوية سلسلة الحكم والدليل", text: "اختر أهم ثلاثة أحكام في التقرير وأعد صياغة كل واحد بصيغة: الممارسة، الدليل المشاهد، الفئة المتأثرة، الأثر، ثم الإجراء التالي.", priority: "عالية", indicator: "ارتباط كل حكم رئيس بدليل مباشر قابل للمراجعة" }
-      : { title: "تحويل التوصيات إلى خطة متابعة", text: "اعتمد التوصيات الأعلى أثرًا وحولها إلى إجراءات لها مسؤول وزمن ومؤشر نجاح، ثم اربطها بالزيارة أو القياس اللاحق.", priority: recommendations.length ? "متوسطة" : "عالية", indicator: "وجود مؤشر متابعة واضح لكل توصية معتمدة" };
-
-    return {
-      kind: "narrative",
-      sentenceCount: sentences.length,
-      lineCount: lines.length,
-      evidenceCount: evidenceSentences.length,
-      recommendationCount: recommendations.length,
-      strengthCount: strengthSentences.length,
-      developmentCount: developmentSentences.length,
-      evidenceRatio,
-      themes: themeEntries.slice(0, 7),
-      findings,
-      executiveTitle: evidenceRatio >= 35 ? "تقرير غني نسبيًا بالأدلة" : "التقرير يحتاج تقوية الأدلة",
-      executiveSummary: `تم تحليل ${sentences.length} جملة. برز مجال «${topTheme.label}» أكثر من غيره، وظهرت مؤشرات دليل مباشر في ${round(evidenceRatio)}% من الجمل، مع ${recommendations.length} توصية أو إجراء مكتشف. هذه قراءة لغوية تربوية أولية وليست اعتمادًا نهائيًا للحكم.`,
-      action
-    };
-  }
-
-  function buildBins(values, maxScore) {
-    const min = Math.min(...values), max = Math.max(...values);
-    const start = maxScore ? 0 : min; const end = maxScore || max; const steps = 5; const width = (end-start)/steps || 1;
-    return Array.from({length: steps}, (_,i) => {
-      const lo = start + i*width, hi = i===steps-1 ? end : start+(i+1)*width;
-      const count = values.filter(v => v >= lo && (i===steps-1 ? v <= hi : v < hi)).length;
-      return { label: `${round(lo)}–${round(hi)}`, count };
-    });
-  }
-
-  function finding(title, evidence, confidence, impact, action) { return { title, evidence, confidence, impact, action }; }
   function round(v) { return Number.isFinite(v) ? Math.round(v*10)/10 : "—"; }
+
+  function formatMetricValue(item) {
+    if (item?.value === null || item?.value === undefined || item?.value === "") return "—";
+    if (item.format === "percent") return `${round(Number(item.value))}%`;
+    return typeof item.value === "number" ? round(item.value) : String(item.value);
+  }
+
+  function chartValue(item, key) {
+    const value = Number(item?.[key]);
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  function renderBarChart(chart, compact = false) {
+    const data = Array.isArray(chart.data) ? chart.data : [];
+    const xKey = chart.xKey || "label";
+    const yKey = chart.yKey || "count";
+    const max = Math.max(1, ...data.map(item => chartValue(item, yKey)));
+    return `<div class="deep-bar-list">${data.slice(0, compact ? 8 : 20).map(item => {
+      const value = chartValue(item, yKey);
+      const label = item?.[xKey] ?? item?.label ?? "—";
+      const suffix = chart.valueSuffix || "";
+      return `<div class="deep-bar-row"><span class="deep-bar-label" title="${escapeAttr(label)}">${escapeHtml(label)}</span><div class="deep-bar-track"><span style="width:${Math.max(2, value / max * 100)}%"></span></div><strong class="deep-bar-value">${round(value)}${escapeHtml(suffix)}</strong></div>`;
+    }).join("")}</div>`;
+  }
+
+  function renderLineChart(chart) {
+    const data = Array.isArray(chart.data) ? chart.data : [];
+    const xKey = chart.xKey || "label", yKey = chart.yKey || "value";
+    const values = data.map(item => chartValue(item, yKey));
+    const min = Math.min(...values, 0), max = Math.max(...values, 1), width = 640, height = 210, pad = 28;
+    const points = data.map((item, index) => {
+      const x = pad + (data.length <= 1 ? 0 : index / (data.length - 1) * (width - pad * 2));
+      const y = height - pad - ((chartValue(item, yKey) - min) / Math.max(1e-9, max - min)) * (height - pad * 2);
+      return { x, y, label: item?.[xKey] ?? index + 1, value: chartValue(item, yKey) };
+    });
+    return `<div class="deep-line-chart"><svg viewBox="0 0 ${width} ${height}" role="img"><line class="axis" x1="${pad}" y1="${height-pad}" x2="${width-pad}" y2="${height-pad}"/><line class="axis" x1="${pad}" y1="${pad}" x2="${pad}" y2="${height-pad}"/><polyline class="series" points="${points.map(p=>`${p.x},${p.y}`).join(" ")}"/>${points.map(p=>`<circle class="point" cx="${p.x}" cy="${p.y}" r="4"><title>${escapeHtml(p.label)}: ${round(p.value)}${escapeHtml(chart.valueSuffix||"")}</title></circle><text x="${p.x}" y="${height-8}" font-size="10" text-anchor="middle">${escapeHtml(p.label)}${escapeHtml(chart.xSuffix||"")}</text>`).join("")}</svg></div>`;
+  }
+
+  function renderRadarChart(chart) {
+    const data = Array.isArray(chart.data) ? chart.data : [];
+    const width = 420, height = 250, cx = width/2, cy = height/2+6, radius = 88, max = chart.max || 100;
+    if (data.length < 3) return renderBarChart({ ...chart, xKey: "label", yKey: "value" });
+    const angle = index => -Math.PI/2 + index * Math.PI * 2 / data.length;
+    const point = (value, index, r=radius) => [cx + Math.cos(angle(index)) * r * (value/max), cy + Math.sin(angle(index)) * r * (value/max)];
+    const outer = data.map((_,i)=>point(max,i)).map(p=>p.join(",")).join(" ");
+    const values = data.map((item,i)=>point(Number(item.value ?? item.mean ?? 0),i)).map(p=>p.join(",")).join(" ");
+    return `<div class="deep-radar-chart"><svg viewBox="0 0 ${width} ${height}"><polygon points="${outer}" fill="none" stroke="#cdd5e2"/><polygon points="${values}" fill="rgba(36,71,150,.18)" stroke="#244796" stroke-width="2"/>${data.map((item,i)=>{const [x,y]=point(max,i,radius+22);const [px,py]=point(Number(item.value ?? item.mean ?? 0),i);return `<line class="axis" x1="${cx}" y1="${cy}" x2="${point(max,i)[0]}" y2="${point(max,i)[1]}"/><circle class="point" cx="${px}" cy="${py}" r="3"/><text x="${x}" y="${y}" font-size="10" text-anchor="middle">${escapeHtml(item.label||item.domain||"")}</text>`}).join("")}</svg></div>`;
+  }
+
+  function renderBoxChart(chart) {
+    const item = Array.isArray(chart.data) ? chart.data[0] : null;
+    if (!item) return "";
+    const values = [item.min,item.q1,item.median,item.q3,item.max].map(Number); const min=Math.min(...values), max=Math.max(...values); const width=640, height=150, pad=45;
+    const x = value => pad + (value-min)/Math.max(1e-9,max-min)*(width-pad*2);
+    return `<div class="deep-box-chart"><svg viewBox="0 0 ${width} ${height}"><line class="axis" x1="${x(item.min)}" y1="75" x2="${x(item.max)}" y2="75"/><line stroke="#244796" stroke-width="3" x1="${x(item.min)}" y1="60" x2="${x(item.min)}" y2="90"/><line stroke="#244796" stroke-width="3" x1="${x(item.max)}" y1="60" x2="${x(item.max)}" y2="90"/><rect x="${x(item.q1)}" y="48" width="${Math.max(2,x(item.q3)-x(item.q1))}" height="54" fill="rgba(22,135,126,.2)" stroke="#16877e" stroke-width="2"/><line stroke="#244796" stroke-width="4" x1="${x(item.median)}" y1="48" x2="${x(item.median)}" y2="102"/>${[['الأدنى',item.min],['ر1',item.q1],['الوسيط',item.median],['ر3',item.q3],['الأعلى',item.max]].map(([label,value])=>`<text x="${x(value)}" y="125" font-size="10" text-anchor="middle">${label} ${round(Number(value))}</text>`).join("")}</svg><p>القيم المتطرفة المكتشفة: ${Number(item.outlierCount||0)}</p></div>`;
+  }
+
+  function renderHeatmap(chart) {
+    const data = Array.isArray(chart.data) ? chart.data : [];
+    const columns = chart.columns || ["strengths","development","support","recommendations"];
+    const labels = {strengths:"الإجادة",development:"التطوير",support:"الدعم",recommendations:"التوصيات"};
+    const max = Math.max(1,...data.flatMap(row=>columns.map(c=>Number(row[c]||0))));
+    return `<div class="deep-heatmap"><table><thead><tr><th>المجال</th>${columns.map(c=>`<th>${labels[c]||escapeHtml(c)}</th>`).join("")}<th>الاتساق</th></tr></thead><tbody>${data.map(row=>`<tr><th>${escapeHtml(row.theme||row.label||row.group||"")}</th>${columns.map(c=>{const v=Number(row[c]||0);const level=Math.min(5,Math.ceil(v/max*5));return `<td class="heat-${level}">${v}</td>`}).join("")}<td>${row.alignment!==undefined?`${round(Number(row.alignment))}%`:"—"}</td></tr>`).join("")}</tbody></table></div>`;
+  }
+
+  function renderTableChart(chart) {
+    const data = Array.isArray(chart.data) ? chart.data : [];
+    if (!data.length) return "";
+    const keys = Object.keys(data[0]).slice(0,6);
+    return `<div class="deep-heatmap"><table class="deep-chart-table"><thead><tr>${keys.map(k=>`<th>${escapeHtml(k)}</th>`).join("")}</tr></thead><tbody>${data.slice(0,12).map(row=>`<tr>${keys.map(k=>`<td>${escapeHtml(row[k]??"—")}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+  }
+
+  function renderChartContent(chart, compact = false) {
+    if (!chart) return "";
+    if (chart.type === "line") return renderLineChart(chart);
+    if (chart.type === "radar") return renderRadarChart(chart);
+    if (chart.type === "box") return renderBoxChart(chart);
+    if (chart.type === "heatmap") return renderHeatmap(chart);
+    if (chart.type === "table") return renderTableChart(chart);
+    if (chart.type === "stacked") return renderHeatmap({ ...chart, columns: chart.series || [] });
+    if (chart.type === "pareto") return renderBarChart({ ...chart, yKey: chart.yKey || "gap" }, compact);
+    return renderBarChart(chart, compact);
+  }
+
+  function mergeUnique(items, keyFn) {
+    const seen = new Set();
+    return items.filter(item => { const key = keyFn(item); if (!key || seen.has(key)) return false; seen.add(key); return true; });
+  }
 
   function renderResults() {
     const a = state.analysis;
     const ai = state.aiResult;
-    if (a.kind === "scores") {
-      const metrics = [
-        ["السجلات الصالحة", a.n, "قيمة رقمية"], ["المتوسط", round(a.mean), a.hasMax ? `من ${a.maxScore}` : "قيمة خام"],
-        ["الوسيط", round(a.med), "منتصف التوزيع"], [a.hasMax ? "الإتقان" : "المدى", a.hasMax ? `${round(a.masteryPct)}%` : round(a.max-a.min), a.hasMax ? `حد ${a.thresholdPct}%` : "أعلى - أدنى"]
-      ];
-      $("metrics").innerHTML = metrics.map(m => `<div class="metric"><small>${m[0]}</small><strong>${m[1]}</strong><span>${m[2]}</span></div>`).join("");
-      renderBars(a.bins.map(b => ({label:b.label,count:b.count})), "توزيع الدرجات");
-    } else if (a.kind === "narrative") {
-      const metrics = [
-        ["الجمل المحللة", a.sentenceCount, "جملة ذات معنى"],
-        ["جمل الأدلة", a.evidenceCount, `${round(a.evidenceRatio)}% من النص`],
-        ["التوصيات", a.recommendationCount, "إجراء مكتشف"],
-        ["جوانب التطوير", a.developmentCount, "حاجة أو فرصة تحسين"]
-      ];
-      $("metrics").innerHTML = metrics.map(m => `<div class="metric"><small>${m[0]}</small><strong>${m[1]}</strong><span>${m[2]}</span></div>`).join("");
-      const themeItems = a.themes.length ? a.themes.map(theme => ({ label: theme.label, count: theme.count })) : [{ label: "النص العام", count: a.sentenceCount }];
-      renderBars(themeItems, "الموضوعات التربوية الأكثر حضورًا");
-    } else {
-      const top = [...a.entries].sort((x,y)=>y.count-x.count)[0];
-      const metrics = [["إجمالي الطلبة", a.total, "كل المستويات"], ["عدد المستويات", a.entries.length, "فئات مكتشفة"], ["الفئة الأكبر", top?.label||"—", `${top?.count||0} طالبًا`], ["نسبتها", `${round(top?.pct||0)}%`, "من الإجمالي"]];
-      $("metrics").innerHTML = metrics.map(m => `<div class="metric"><small>${m[0]}</small><strong>${m[1]}</strong><span>${m[2]}</span></div>`).join("");
-      renderBars(a.entries.map(e => ({label:e.label,count:e.count})), "توزيع مستويات الأداء");
-    }
+    const metrics = (a.metrics || []).slice(0, 8);
+    $("metrics").innerHTML = metrics.map(item => `<div class="metric"><small>${escapeHtml(item.label)}</small><strong>${escapeHtml(formatMetricValue(item))}</strong><span>${escapeHtml(item.note || "")}</span></div>`).join("");
 
-    $("analysisModeChip").textContent = ai ? "تحليل هجين: حتمي + ذكاء اصطناعي" : "تحليل محلي حتمي";
+    const charts = a.charts || [];
+    const primary = charts[0];
+    $("chartTitle").textContent = primary?.title || "التحليل البصري";
+    $("chartMeta").textContent = primary?.description || "";
+    $("chartArea").innerHTML = primary ? renderChartContent(primary, true) : `<div class="soft-note">لا يوجد رسم مناسب لهذا النوع من البيانات.</div>`;
+
+    const extraCharts = charts.slice(1);
+    $("deepChartsSection").classList.toggle("hidden", !extraCharts.length);
+    $("deepChartsGrid").innerHTML = extraCharts.map((chart,index)=>`<article class="deep-chart-card ${chart.type==='heatmap'||chart.type==='table'?'wide':''}"><h5>${escapeHtml(chart.title)}</h5><p>${escapeHtml(chart.description||"")}</p>${renderChartContent(chart)}</article>`).join("");
+
+    const profile = a.analysisProfile || {};
+    const aiProfile = ai?.analysisProfile || {};
+    const profileDimensions = mergeUnique([...(profile.dimensions || []), ...(aiProfile.dimensions || [])], item => normalize(item));
+    const decisionUses = mergeUnique([...(profile.decisionUse || []), ...(aiProfile.decisionUses || [])], item => normalize(item));
+    const profileCards = [
+      { title:"عائلة التحليل", value:aiProfile.method || profile.purpose || a.kind, items:profileDimensions },
+      { title:"كفاية البيانات", value:aiProfile.dataAdequacy || profile.dataSufficiency || "غير محددة", items:profile.assumptions || [] },
+      { title:"القرارات التي يدعمها", value:`${decisionUses.length} استخدامات`, items:decisionUses },
+      { title:"نطاق التحليل", value:state.type.name, items:[`المصدر: ${state.sourceName}`,`الثقة في النوع: ${state.confidence}%`,`طريقة التصنيف: ${state.recognitionStatus}`] }
+    ];
+    $("diagnosticProfileSection").classList.toggle("hidden", !profileCards.length);
+    $("diagnosticProfileGrid").innerHTML = profileCards.map(card=>`<article class="diagnostic-card"><h5>${escapeHtml(card.title)}</h5><strong>${escapeHtml(card.value)}</strong><ul>${card.items.map(item=>`<li>${escapeHtml(item)}</li>`).join("")}</ul></article>`).join("");
+
+    const localSections = (a.diagnosticSections || []).map(item => ({ ...item, source: "محرك متخصص" }));
+    const aiSections = (ai?.diagnosticSections || []).map(item => ({ ...item, source: "Gemini" }));
+    const diagnosticSections = mergeUnique([...aiSections, ...localSections], item => normalize(item.title)).slice(0, 10);
+    $("diagnosticSectionsSection").classList.toggle("hidden", !diagnosticSections.length);
+    $("diagnosticSectionsGrid").innerHTML = diagnosticSections.map(section => {
+      const evidence = humanizeEvidenceRefs(section.evidenceRefs || []);
+      const implications = Array.isArray(section.implications) ? section.implications : [];
+      return `<article class="diagnostic-section-card"><div class="diagnostic-section-meta"><span>${escapeHtml(section.source || "تحليل متخصص")}</span><span>ثقة ${escapeHtml(section.confidence || "متوسطة")}</span></div><h5>${escapeHtml(section.title || "قراءة تفسيرية")}</h5><p>${escapeHtml(section.analysis || "")}</p>${evidence && evidence !== "لم يحدد مرجع دليل واضح." ? `<div class="soft-note">الدليل: ${escapeHtml(evidence)}</div>` : ""}${implications.length ? `<ul>${implications.map(item=>`<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}</article>`;
+    }).join("");
+
+    $("analysisModeChip").textContent = ai ? "تحليل متخصص حتمي + تفسير عميق عبر Gemini" : "تحليل متخصص حتمي عميق";
     $("analysisModeChip").className = ai ? "success-chip ai-result-chip" : "success-chip";
     const notice = $("aiResultNotice");
     if (ai) {
       notice.classList.remove("hidden", "error");
-      notice.innerHTML = `<strong>تمت القراءة التربوية العميقة</strong><span>صاغ الذكاء الاصطناعي الاستنتاجات وربطها بمراجع أدلة، بينما بقيت الحسابات من المحرك الحتمي.</span>`;
+      notice.innerHTML = `<strong>اكتملت القراءة التربوية المتخصصة</strong><span>استخدم Gemini خطة التحليل الخاصة بهذا النوع، بينما بقيت الإحصاءات وأدوات الجودة الأساسية محسوبة حتميًا.</span>`;
     } else if (state.aiError) {
-      notice.classList.remove("hidden");
-      notice.classList.add("error");
-      notice.innerHTML = `<strong>اكتمل التحليل المحلي</strong><span>تعذر التحليل الذكي الحي: ${escapeHtml(state.aiError)}. لم تُفقد النتائج.</span>`;
-    } else {
-      notice.classList.add("hidden");
-      notice.classList.remove("error");
-    }
+      notice.classList.remove("hidden"); notice.classList.add("error");
+      notice.innerHTML = `<strong>اكتمل المحرك المتخصص المحلي</strong><span>تعذر التفسير الذكي الحي: ${escapeHtml(state.aiError)}. لم تُفقد النتائج أو أدوات الجودة.</span>`;
+    } else { notice.classList.add("hidden"); notice.classList.remove("error"); }
 
     $("executiveTitle").textContent = ai?.executiveTitle || a.executiveTitle;
     $("executiveSummary").textContent = ai?.executiveSummary || a.executiveSummary;
 
     const aiFindings = (ai?.findings || []).map(normalizeAiFinding);
-    const localFindings = (a.findings || []).map(item => ({ ...item, source: "deterministic", statement: item.title, limitations: [] }));
-    const allFindings = [...aiFindings, ...localFindings];
-    $("findings").innerHTML = allFindings.map((f,i) => {
-      const sourceLabel = f.source === "ai" ? "تحليل ذكي" : "تحليل حتمي";
-      const limitationHtml = f.limitations?.length
-        ? `<h5>الحدود</h5><p>${f.limitations.map(escapeHtml).join("، ")}</p>` : "";
-      const statementHtml = f.statement && f.statement !== f.title ? `<p class="finding-statement">${escapeHtml(f.statement)}</p>` : "";
-      return `<details class="finding" ${i===0?'open':''}><summary><div class="finding-title"><strong>${escapeHtml(f.title)}</strong><small>${escapeHtml(f.impact)}</small></div><div class="finding-badges"><span class="source-pill ${f.source}">${sourceLabel}</span><span class="confidence-pill">ثقة ${escapeHtml(f.confidence)}</span></div></summary><div class="finding-body">${statementHtml}<h5>الدليل</h5><p>${escapeHtml(f.evidence)}</p><h5>الإجراء المرتبط</h5><p>${escapeHtml(f.action)}</p>${limitationHtml}</div></details>`;
+    const localFindings = (a.findings || []).map(item => ({ ...item, source:"deterministic", statement:item.title, limitations:item.limitations||[] }));
+    const allFindings = mergeUnique([...aiFindings,...localFindings], item=>normalize(item.title)).slice(0,18);
+    $("findings").innerHTML = allFindings.map((f,i)=>{
+      const sourceLabel=f.source==="ai"?"تفسير ذكي":"محرك متخصص";
+      const severity=f.severity||"medium";
+      const limitationHtml=f.limitations?.length?`<h5>الحدود</h5><p>${f.limitations.map(escapeHtml).join("، ")}</p>`:"";
+      const statementHtml=f.statement&&f.statement!==f.title?`<p class="finding-statement">${escapeHtml(f.statement)}</p>`:"";
+      return `<details class="finding" ${i<2?'open':''}><summary><div class="finding-title"><strong>${escapeHtml(f.title)}</strong><small>${escapeHtml(f.impact)}</small></div><div class="finding-badges"><span class="source-pill ${f.source}">${sourceLabel}</span><span class="confidence-pill severity-${severity}">ثقة ${escapeHtml(f.confidence)}</span></div></summary><div class="finding-body">${statementHtml}<h5>الدليل</h5><p>${escapeHtml(f.evidence)}</p><h5>الإجراء المرتبط</h5><p>${escapeHtml(f.action)}</p>${limitationHtml}</div></details>`;
     }).join("");
 
-    const tools = ai?.qualityTools || [];
-    $("qualityToolsSection").classList.toggle("hidden", !tools.length);
-    $("qualityToolsGrid").innerHTML = tools.map(tool => `<article class="quality-tool-card"><strong>${escapeHtml(tool.name)}</strong><p>${escapeHtml(tool.reason)}</p><span>${tool.conditionsMet ? "الشروط متحققة" : "مقترحة للمراجعة"}</span></article>`).join("");
+    const localTools=(a.qualityTools||[]).filter(tool=>tool.conditionsMet!==false);
+    const aiTools=(ai?.qualityTools||[]).filter(tool=>tool.conditionsMet!==false);
+    const tools=mergeUnique([...localTools,...aiTools],tool=>normalize(tool.id||tool.name)).slice(0,12);
+    $("qualityToolsSection").classList.toggle("hidden",!tools.length);
+    $("qualityToolsGrid").innerHTML=tools.map(tool=>`<article class="quality-tool-card"><strong>${escapeHtml(tool.name)}</strong><p>${escapeHtml(tool.reason||"")}</p><span>${tool.conditionsMet===false?"غير منطبقة":"مطبقة فعليًا"}</span>${tool.interpretation?`<div class="tool-output">${escapeHtml(tool.interpretation)}</div>`:""}</article>`).join("");
 
-    const plan = ai?.improvementPlan || [];
-    $("improvementPlanSection").classList.toggle("hidden", !plan.length);
-    $("improvementPlanBody").innerHTML = plan.map(item => `<tr><td>${escapeHtml(item.priority)}</td><td>${escapeHtml(item.action)}</td><td>${escapeHtml(item.responsibleRole)}</td><td>${escapeHtml(item.timeframe)}</td><td>${escapeHtml(item.successIndicator)}</td></tr>`).join("");
+    const normalizePlan=item=>({
+      priority:item.priority||"متوسطة", issue:item.issue||"أولوية تحسين", targetGroup:item.targetGroup||"الفئة المستهدفة", action:item.action||"", responsibleRole:item.responsibleRole||"يحدد لاحقًا", timeframe:item.timeframe||"يحدد لاحقًا", successIndicator:item.successIndicator||"مؤشر قابل للقياس", monitoringMethod:item.monitoringMethod||"متابعة دورية", contingency:item.contingency||"مراجعة التدخل عند ضعف الاستجابة"
+    });
+    const plans=mergeUnique([...(a.improvementPlan||[]).map(normalizePlan),...(ai?.improvementPlan||[]).map(normalizePlan)],item=>normalize(item.action)).slice(0,10);
+    $("improvementPlanSection").classList.toggle("hidden",!plans.length);
+    $("improvementPlanBody").innerHTML=plans.map(item=>`<tr><td>${escapeHtml(item.priority)}</td><td><strong>${escapeHtml(item.issue)}</strong><small>${escapeHtml(item.targetGroup)}</small></td><td>${escapeHtml(item.action)}<small>بديل عند عدم التحسن: ${escapeHtml(item.contingency)}</small></td><td>${escapeHtml(item.responsibleRole)}<small>${escapeHtml(item.timeframe)}</small></td><td>${escapeHtml(item.successIndicator)}<small>${escapeHtml(item.monitoringMethod)}</small></td></tr>`).join("");
 
-    const firstPlan = plan[0];
-    const action = firstPlan ? {
-      title: firstPlan.action,
-      text: `${firstPlan.responsibleRole} · ${firstPlan.timeframe}`,
-      priority: firstPlan.priority,
-      indicator: firstPlan.successIndicator
-    } : a.action;
-    $("actionTitle").textContent = action.title;
-    $("actionText").textContent = action.text;
-    $("actionPriority").textContent = action.priority;
-    $("actionIndicator").textContent = action.indicator;
+    const monitoring=mergeUnique([...(a.monitoringPlan||[]),...(ai?.monitoringPlan||[])],item=>normalize(`${item.stage||""}|${item.timing||""}`)).slice(0,8);
+    $("monitoringPlanSection").classList.toggle("hidden",!monitoring.length);
+    $("monitoringPlanGrid").innerHTML=monitoring.map(item=>`<article class="monitoring-card"><small>${escapeHtml(item.timing||"")}</small><h5>${escapeHtml(item.stage||"")}</h5><p>${escapeHtml(item.measure||"")}</p><p class="owner">${escapeHtml(item.owner||"")}</p></article>`).join("");
 
-    const cautions = ai?.cautions || [];
-    $("aiCautions").classList.toggle("hidden", !cautions.length);
-    $("aiCautionsList").innerHTML = cautions.map(item => `<li>${escapeHtml(item)}</li>`).join("");
+    const limitations=mergeUnique([...(a.limitations||[]),...(ai?.dataRequests||[]).map(item=>`بيانات إضافية مطلوبة: ${item}`)],item=>normalize(item));
+    $("analysisLimitations").classList.toggle("hidden",!limitations.length);
+    $("analysisLimitationsList").innerHTML=limitations.map(item=>`<li>${escapeHtml(item)}</li>`).join("");
 
-    const suggested = ai?.suggestedNewType;
-    const showSuggested = Boolean(suggested?.needed);
-    $("aiSuggestedType").classList.toggle("hidden", !showSuggested);
-    if (showSuggested) {
-      $("aiSuggestedTypeName").textContent = suggested.nameAr || "نوع تحليلي جديد";
-      $("aiSuggestedTypePurpose").textContent = suggested.purpose || "يحتاج الغرض التربوي إلى مراجعة المستخدم.";
-      const tags = [...(suggested.requiredFields || []).map(item => `حقل: ${item}`), ...(suggested.analysisFamily || []).map(item => `تحليل: ${item}`)];
-      $("aiSuggestedTypeMeta").innerHTML = tags.map(item => `<span>${escapeHtml(item)}</span>`).join("");
-    }
-  }
+    const firstPlan=plans[0];
+    const action=firstPlan?{title:firstPlan.action,text:`${firstPlan.responsibleRole} · ${firstPlan.timeframe}`,priority:firstPlan.priority,indicator:firstPlan.successIndicator}:a.action;
+    $("actionTitle").textContent=action?.title||"مراجعة النتائج";
+    $("actionText").textContent=action?.text||"";
+    $("actionPriority").textContent=action?.priority||"متوسطة";
+    $("actionIndicator").textContent=action?.indicator||"مؤشر متابعة";
 
-  function renderBars(items, title) {
-    $("chartTitle").textContent = title; const max = Math.max(1, ...items.map(x=>x.count)); $("chartMeta").textContent = `${items.reduce((s,x)=>s+x.count,0)} سجل`;
-    $("chartArea").innerHTML = items.map(x => `<div class="bar-wrap"><div class="bar" style="height:${Math.max(5, x.count/max*180)}px" title="${x.count}"></div><strong>${escapeHtml(x.label)}</strong><span>${x.count}</span></div>`).join("");
+    const cautions=ai?.cautions||[];
+    $("aiCautions").classList.toggle("hidden",!cautions.length);
+    $("aiCautionsList").innerHTML=cautions.map(item=>`<li>${escapeHtml(item)}</li>`).join("");
+
+    const suggested=ai?.suggestedNewType; const showSuggested=Boolean(suggested?.needed);
+    $("aiSuggestedType").classList.toggle("hidden",!showSuggested);
+    if(showSuggested){$("aiSuggestedTypeName").textContent=suggested.nameAr||"نوع تحليلي جديد";$("aiSuggestedTypePurpose").textContent=suggested.purpose||"يحتاج الغرض التربوي إلى مراجعة المستخدم.";const tags=[...(suggested.requiredFields||[]).map(item=>`حقل: ${item}`),...(suggested.analysisFamily||[]).map(item=>`تحليل: ${item}`)];$("aiSuggestedTypeMeta").innerHTML=tags.map(item=>`<span>${escapeHtml(item)}</span>`).join("");}
   }
 
   function openOfficialReport() {
@@ -1302,7 +1269,7 @@
   function exportAnalysis() {
     const payload = {
       app: "تقارير",
-      version: "0.6.1",
+      version: "0.7.0",
       generatedAt: new Date().toISOString(),
       source: state.sourceName,
       sourceMeta: state.sourceMeta,
@@ -1314,7 +1281,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v0.6.1.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v0.7.0.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
