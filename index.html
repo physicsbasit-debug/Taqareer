@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="تقارير - منصة التحليل التربوي الذكي للبيانات والاستمارات التعليمية" />
-  <title>تقارير | التحليل التربوي الذكي والتقارير الرسمية v0.6.1</title>
+  <title>تقارير | التحليل التربوي التكيفي العميق v0.7.0</title>
   <link rel="stylesheet" href="assets/styles.css" />
 </head>
 <body>
@@ -18,7 +18,7 @@
         </div>
       </a>
       <div class="top-actions">
-        <span class="version-badge">نسخة تشغيلية v0.6.1</span>
+        <span class="version-badge">نسخة تشغيلية v0.7.0</span>
         <span id="aiHeaderStatus" class="version-badge">الذكاء الاصطناعي غير مربوط</span>
         <button id="openAiSettingsTopBtn" class="ghost-button" type="button">إعداد الذكاء الاصطناعي</button>
         <button id="resetTopBtn" class="ghost-button" type="button">بدء تحليل جديد</button>
@@ -28,9 +28,9 @@
     <main>
       <section class="hero">
         <div class="hero-copy">
-          <span class="eyebrow">Phase 1-B2 Fix 1 · التقرير الرسمي المكثف بصريًا</span>
+          <span class="eyebrow">Phase 1-C1 · محرك التحليل التربوي التكيفي العميق</span>
           <h2>ارفع الملف، ودع «تقارير» يفهمه ويحلله تربويًا مع بقاء الأدلة والحسابات قابلة للمراجعة.</h2>
-          <p>تضيف هذه النسخة نظامًا مستقلًا لبناء التقرير الرسمي بمقاس A4، منفصلًا تمامًا عن واجهة التطبيق. تبقى الواجهة للمراجعة والتفاعل، بينما يُنشأ التقرير بهوية مهنية، ورسوم واضحة، واستنتاجات مرتبة، وخطة تحسين قابلة للطباعة دون أزرار أو رموز تقنية أو مساحات مهدرة.</p>
+          <p>تضيف هذه النسخة محركات تحليل مستقلة بحسب نوع الاستمارة، ورسومًا وأدوات جودة وتشخيصًا وخطط متابعة تتغير مع طبيعة البيانات. لا تُعامل نتائج الطلبة والزيارة الإشرافية وأعمال الطلبة والتقارير السردية بالطريقة نفسها؛ كل نوع يمر بعقد تحليل خاص، ثم يضيف Gemini قراءة تربوية موثقة بالأدلة.</p>
         </div>
         <div class="hero-kpis">
           <div><strong>رؤية بصرية</strong><span>صور وPDF ممسوح عند ربط الذكاء الاصطناعي</span></div>
@@ -211,7 +211,7 @@
         <div class="panel-heading">
           <div>
             <span class="eyebrow">الخطوة الرابعة</span>
-            <h3>نتائج أولية قابلة للمراجعة</h3>
+            <h3>تحليل تربوي عميق قابل للمراجعة</h3>
           </div>
           <span id="analysisModeChip" class="success-chip">تحليل محلي مكتمل</span>
         </div>
@@ -221,7 +221,7 @@
 
         <div class="results-grid">
           <article class="card chart-card">
-            <div class="card-heading-inline"><h4 id="chartTitle">توزيع الدرجات</h4><span id="chartMeta"></span></div>
+            <div class="card-heading-inline"><h4 id="chartTitle">الرسم الرئيس</h4><span id="chartMeta"></span></div>
             <div id="chartArea" class="chart-area"></div>
           </article>
           <article class="card executive-card">
@@ -231,7 +231,22 @@
           </article>
         </div>
 
-        <div class="section-title-row"><h4>الاستنتاجات</h4><span>كل استنتاج يعرض دليله وحدوده</span></div>
+
+        <section id="deepChartsSection" class="result-section hidden">
+          <div class="section-title-row"><h4>الرسوم والتحليلات البصرية</h4><span>تتغير بحسب نوع الاستمارة ولا تُحشر في قالب واحد</span></div>
+          <div id="deepChartsGrid" class="deep-charts-grid"></div>
+        </section>
+
+        <section id="diagnosticProfileSection" class="result-section hidden">
+          <div class="section-title-row"><h4>الملف التشخيصي ومنهج التحليل</h4><span>ما الذي فُحص؟ وما القرارات التي يدعمها؟</span></div>
+          <div id="diagnosticProfileGrid" class="diagnostic-profile-grid"></div>
+        </section>
+
+        <section id="diagnosticSectionsSection" class="result-section hidden">
+          <div class="section-title-row"><h4>القراءة التفسيرية المتخصصة</h4><span>تفسير متعمق لأبعاد الاستمارة دون إعادة الخلاصة أو توحيد المنهج</span></div>
+          <div id="diagnosticSectionsGrid" class="diagnostic-section-grid"></div>
+        </section>
+        <div class="section-title-row"><h4>الاستنتاجات التشخيصية</h4><span>كل استنتاج يعرض الدليل والأثر والحدود والإجراء المرتبط</span></div>
         <div id="findings" class="finding-list"></div>
 
         <section id="qualityToolsSection" class="result-section hidden">
@@ -241,9 +256,15 @@
 
         <section id="improvementPlanSection" class="result-section hidden">
           <div class="section-title-row"><h4>خطة التحسين المقترحة</h4><span>إجراءات قابلة للتنفيذ والمراجعة</span></div>
-          <div class="table-scroll"><table class="plan-table"><thead><tr><th>الأولوية</th><th>الإجراء</th><th>المسؤول</th><th>الزمن</th><th>مؤشر النجاح</th></tr></thead><tbody id="improvementPlanBody"></tbody></table></div>
+          <div class="table-scroll"><table class="plan-table"><thead><tr><th>الأولوية</th><th>المشكلة والفئة</th><th>الإجراء</th><th>المسؤول والزمن</th><th>مؤشر النجاح والمتابعة</th></tr></thead><tbody id="improvementPlanBody"></tbody></table></div>
         </section>
 
+        <section id="monitoringPlanSection" class="result-section hidden">
+          <div class="section-title-row"><h4>خطة المتابعة وإعادة القياس</h4><span>من التحليل إلى دورة تحسين قابلة للتتبع</span></div>
+          <div id="monitoringPlanGrid" class="monitoring-plan-grid"></div>
+        </section>
+
+        <article id="analysisLimitations" class="card caution-card hidden"><h4>حدود التحليل وما يلزم جمعه لاحقًا</h4><ul id="analysisLimitationsList" class="clean-list"></ul></article>
         <article id="aiCautions" class="card caution-card hidden"><h4>تنبيهات وحدود التحليل الذكي</h4><ul id="aiCautionsList" class="clean-list"></ul></article>
 
         <article id="aiSuggestedType" class="card suggested-type-card hidden"><span class="eyebrow">نوع جديد مقترح</span><h4 id="aiSuggestedTypeName"></h4><p id="aiSuggestedTypePurpose"></p><div id="aiSuggestedTypeMeta" class="tag-list"></div><div class="soft-note">هذا اقتراح تحليلي للمراجعة، ولا يُضاف إلى سجل الأنواع تلقائيًا في هذه المرحلة.</div></article>
@@ -270,7 +291,7 @@
       </section>
     </main>
 
-    <footer><span>تقارير · v0.6.1</span><span>ذكاء اصطناعي قوي، وحسابات لا تفاوض الواقع.</span></footer>
+    <footer><span>تقارير · v0.7.0</span><span>ذكاء اصطناعي قوي، وحسابات لا تفاوض الواقع.</span></footer>
   </div>
 
   <dialog id="sheetDialog">
@@ -327,6 +348,7 @@
   <script src="assets/xlsx-lite.js"></script>
   <script src="assets/document-lite.js"></script>
   <script src="assets/ai-client.js"></script>
+  <script src="assets/deep-analysis.js"></script>
   <script src="assets/report-system.js"></script>
   <script src="assets/app.js"></script>
 </body>

@@ -1,8 +1,8 @@
 {
   "app": "تقارير",
-  "version": "0.6.1",
-  "phase": "1-B2 Fix 1",
-  "releaseName": "Compact Visual Official Report System",
+  "version": "0.7.0",
+  "phase": "1-C1",
+  "releaseName": "Adaptive Deep Educational Analytics Engine",
   "buildType": "static-github-pages-plus-supabase-edge-function",
   "supportedInputs": {
     "table": [
@@ -28,37 +28,57 @@
       "scanned-pdf"
     ]
   },
+  "analysisArchitecture": {
+    "sharedInfrastructure": [
+      "document-ingestion",
+      "ministry-excel-normalization",
+      "data-quality-validation",
+      "form-recognition",
+      "evidence-contract",
+      "report-rendering"
+    ],
+    "specializedAnalyzers": [
+      "single-subject-results",
+      "assessment-component-results",
+      "level-distribution",
+      "cross-subject-profile",
+      "supervision-indicators",
+      "student-work-indicators",
+      "supervision-narrative",
+      "survey-and-attitudes",
+      "training-needs",
+      "program-and-initiative-evaluation",
+      "behavior-attendance-and-discipline",
+      "adaptive-new-form-contract"
+    ],
+    "routingRule": "form-type-routes-to-its-own-analysis-family-without-forcing-a-unified-procedure"
+  },
   "features": [
+    "adaptive-analysis-router",
+    "specialized-form-analyzers",
+    "deep-descriptive-statistics",
+    "quartiles-percentiles-and-outlier-analysis",
+    "distribution-shape-skewness-kurtosis-and-variation",
+    "mastery-sensitivity-and-intervention-segmentation",
+    "cross-group-and-cross-subject-comparison",
+    "radar-pareto-gap-priority-and-pdca-tools",
+    "narrative-evidence-quality-analysis",
+    "section-alignment-duplication-contradiction-and-date-checks",
+    "type-specific-diagnostic-sections",
+    "multi-layer-evidence-linked-findings",
+    "multi-action-improvement-plan",
+    "baseline-follow-up-remeasurement-monitoring-cycle",
+    "additional-data-requests",
+    "dynamic-new-form-contract-proposal",
+    "gemini-deep-type-aware-analysis",
+    "server-side-evidence-reference-validation",
+    "independent-deep-official-report",
+    "multiple-print-safe-charts",
     "ministry-excel-normalization-engine",
     "merged-cell-aware-header-reconstruction",
-    "spacer-row-and-column-removal",
-    "multi-row-header-detection",
-    "rtl-logical-column-reordering",
-    "report-metadata-separation",
-    "required-field-completeness",
-    "local-semantic-form-recognition",
-    "gemini-hybrid-form-verification",
-    "classification-provenance",
-    "deterministic-local-analysis",
-    "live-ai-educational-interpretation",
-    "vision-table-and-narrative-extraction",
-    "evidence-reference-contract",
-    "server-side-evidence-reference-validation",
-    "quality-tool-selection",
-    "measurable-improvement-plan",
     "personal-field-masking-before-ai",
     "local-analysis-fallback",
-    "json-export",
-    "independent-official-report-window",
-    "human-readable-evidence-references",
-    "print-safe-charts-and-tables",
-    "dashboard-print-blocker",
-    "dynamic-one-or-two-page-report-layout",
-    "compact-visual-density",
-    "blank-page-prevention",
-    "single-action-visual-card",
-    "conditional-quality-tool-section",
-    "friendly-report-title"
+    "json-export"
   ],
   "runtime": {
     "frontend": "GitHub Pages static site",
@@ -71,11 +91,22 @@
     "geminiKeyInBrowser": false,
     "originAllowlist": true,
     "sharedAccessCode": true,
-    "personalFieldMaskingDefault": true
+    "personalFieldMaskingDefault": true,
+    "evidenceReferencesValidatedServerSide": true
   },
-  "acceptanceFixtures": {
-    "ministryExcel": "aaaa.xlsx analyzed as 268 records and 5 logical fields",
-    "supervisionDocx": "1111111.docx analyzed as supervision narrative"
+  "acceptanceCoverage": {
+    "analysisFamilies": 11,
+    "adaptiveFallback": "new-form profiling, relevant exploratory analysis, data requests and contract proposal",
+    "scoreReports": "10 metrics, 4 charts, 5 findings, 6 quality tools, 4 intervention actions",
+    "levelDistribution": "group comparison, upper/lower levels, gaps and priorities",
+    "crossSubject": "subject ranking, comprehensive/specialized risk and descriptive relationships",
+    "supervisionIndicators": "domains, gap, radar, pareto, priority and PDCA",
+    "studentWork": "feedback, differentiation, progress, learning skills and product quality",
+    "supervisionNarrative": "evidence strength, alignment, duplication, contradictions, dates and actionability",
+    "survey": "Likert profile, item gaps, Pareto and conditional internal consistency",
+    "trainingNeeds": "importance x performance gap x beneficiary reach with impact follow-up",
+    "programEvaluation": "implementation, outcomes, impact, gap, PDCA and sustainability",
+    "behaviorAttendance": "Pareto, time trend, repeated cases and early-warning logic"
   },
   "notYetEnabled": [
     "direct-word-export",
