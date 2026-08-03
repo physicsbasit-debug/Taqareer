@@ -111,6 +111,15 @@
     return response.result;
   }
 
+  async function enrichDetailed(payload) {
+    return invoke("enrich", payload);
+  }
+
+  async function enrich(payload) {
+    const response = await enrichDetailed(payload);
+    return response.result;
+  }
+
   async function extractVisual(payload) {
     const response = await invoke("vision_extract", payload);
     return response.result;
@@ -126,7 +135,7 @@
   }
 
   async function ping() {
-    const response = await invoke("ping", { clientVersion: "0.8.2" });
+    const response = await invoke("ping", { clientVersion: "0.9.0" });
     return response;
   }
 
@@ -139,6 +148,8 @@
     getAccessCode,
     analyze,
     analyzeDetailed,
+    enrich,
+    enrichDetailed,
     extractVisual,
     classify,
     classifyDetailed,

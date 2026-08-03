@@ -76,7 +76,7 @@
   const state = {
     headers: [], rows: [], sourceName: "", rawText: "", narrativeText: "", delimiter: ",", type: formTypes.at(-1), confidence: 0,
     quality: { blockers: [], warnings: [], info: [], completeness: 0 },
-    analysis: null, aiResult: null, aiError: "", aiUsed: false, aiPending: false,
+    analysis: null, reconciledAnalysis: null, aiResult: null, aiError: "", aiUsed: false, aiPending: false,
     performance: { spans: [], cacheHit: false, payloadChars: 0, aiUsage: null, aiModel: "" },
     localRecognition: null, aiRecognition: null, recognitionStatus: "محلي", recognitionRequestId: 0, analysisRequestId: 0,
     sampleMaxScore: null, pendingSource: null, sourceMeta: null, pendingManualFileName: "", pendingVisualPreview: null
@@ -380,7 +380,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "0.8.2",
+      appVersion: "0.9.0",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -905,15 +905,6 @@
       keyIndicators,
       metrics,
       charts,
-      diagnosticSections: (analysis.diagnosticSections || []).slice(0, 8),
-      findings: (analysis.findings || []).slice(0, 10),
-      qualityTools: (analysis.qualityTools || []).slice(0, 8).map(tool => ({
-        id: tool.id, name: tool.name, conditionsMet: tool.conditionsMet, reason: tool.reason,
-        interpretation: tool.interpretation,
-        output: Array.isArray(tool.output) ? tool.output.slice(0, 16) : tool.output
-      })),
-      improvementPlan: (analysis.improvementPlan || []).slice(0, 8),
-      monitoringPlan: (analysis.monitoringPlan || []).slice(0, 8),
       limitations: (analysis.limitations || []).slice(0, 12),
       evidenceCatalog: Object.entries(analysis.evidenceMap || {}).slice(0, 100).map(([ref, text]) => ({ ref, text }))
     };
@@ -932,12 +923,14 @@
     const dataset = sanitizeRowsForAi(maskPersonalData);
     const lines = narrativeLinesForAi(maskPersonalData);
     const deterministicAnalysis = compactDeterministicAnalysis(state.analysis);
+    const reconciliationContract = window.TaqareerReconciliation?.buildContract?.(state.analysis);
+    if (!reconciliationContract) throw new Error("محرك المصالحة التحليلية غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "0.8.2",
+      appVersion: "0.9.0",
       pipeline: {
-        mode: "fast-deep-analysis",
-        instruction: "اعتمد المؤشرات والرسوم الحتمية لجميع السجلات. استخدم العينة فقط لفهم البنية والسياق، ولا تعِد الحساب من الصفوف المرسلة."
+        mode: "reconciled-delta-analysis",
+        instruction: "المحرك الحتمي هو العقد الأساسي. أعد تحسينات Delta مرتبطة بمعرفات العقد فقط، ولا تنشئ خطة أو دورة متابعة موازية."
       },
       source: {
         name: state.sourceName,
@@ -965,6 +958,7 @@
         ? { lines, originalLineCount: String(state.narrativeText || state.rawText || "").split(/\r?\n/).length, sentLineCount: lines.length }
         : dataset,
       deterministicAnalysis,
+      reconciliationContract,
       availableEvidenceRefs: buildEvidenceCatalog(isNarrativeMode() ? null : dataset, isNarrativeMode() ? lines : null, deterministicAnalysis),
       evidenceReferenceGuide: {
         rows: "row:N يشير إلى سجل من العينة السياقية فقط",
@@ -1024,49 +1018,44 @@
     return [...new Set(items)].join("، ") || "لم يحدد مرجع دليل واضح.";
   }
 
-  function normalizeAiFinding(item) {
-    return {
-      title: item?.title || "استنتاج تربوي",
-      statement: item?.statement || "",
-      evidence: humanizeEvidenceRefs(item?.evidenceRefs || []),
-      evidenceRefs: item?.evidenceRefs || [],
-      confidence: item?.confidence || "متوسطة",
-      impact: item?.educationalImpact || "أثر تربوي يحتاج مراجعة.",
-      action: item?.recommendedAction || "مراجعة الاستنتاج وربطه بإجراء قابل للقياس.",
-      limitations: item?.limitations || [],
-      source: "ai"
-    };
-  }
 
   async function enrichAnalysisWithAi({ force = false } = {}) {
     if (!aiReady()) return null;
+    if (!window.TaqareerReconciliation?.reconcile) throw new Error("محرك المصالحة التحليلية غير محمل.");
     const maskPersonalData = $("maskPersonalDataInput")?.checked !== false;
     const payload = buildAiAnalysisPayload(maskPersonalData);
-    const cacheKey = perfApi() ? await perfApi().makeKey("deep-analysis", payload) : "";
+    const cacheKey = perfApi() ? await perfApi().makeKey("analysis-delta-v2", payload) : "";
     const cached = !force && cacheKey ? perfApi().cacheGet(cacheKey) : null;
-    if (cached) {
-      state.aiResult = cached.result || cached;
-      state.aiUsed = true;
+    const applyDelta = (delta) => {
+      state.aiResult = delta;
+      state.reconciledAnalysis = window.TaqareerReconciliation.reconcile(state.analysis, delta, {
+        availableEvidenceRefs: payload.availableEvidenceRefs || []
+      });
+      const countCheck = window.TaqareerReconciliation.validateCounts(state.analysis, state.reconciledAnalysis);
+      if (!countCheck.ok) throw new Error(`رفض محرك المصالحة نتيجة غيّرت بنية العقد: ${countCheck.errors.join("، ")}`);
+      state.aiUsed = Boolean(state.reconciledAnalysis?._reconciliation?.aiApplied);
       state.aiError = "";
+      return state.reconciledAnalysis;
+    };
+    if (cached) {
+      applyDelta(cached.result || cached);
       state.performance.cacheHit = true;
       state.performance.aiUsage = cached.usage || null;
       state.performance.aiModel = cached.model || "Gemini";
-      return state.aiResult;
+      return state.reconciledAnalysis;
     }
-    const response = window.TaqareerAI.analyzeDetailed
-      ? await window.TaqareerAI.analyzeDetailed(payload)
-      : { result: await window.TaqareerAI.analyze(payload) };
-    state.aiResult = response.result;
-    state.aiUsed = true;
-    state.aiError = "";
+    const response = window.TaqareerAI.enrichDetailed
+      ? await window.TaqareerAI.enrichDetailed(payload)
+      : await window.TaqareerAI.analyzeDetailed(payload);
+    applyDelta(response.result);
     state.performance.cacheHit = false;
     state.performance.aiUsage = response.usage || null;
     state.performance.aiModel = response.model || "Gemini";
     if (response.clientTiming?.durationMs !== undefined) {
-      recordSpan({ name: "Gemini", durationMs: response.clientTiming.durationMs, cacheHit: false });
+      recordSpan({ name: "Gemini Delta", durationMs: response.clientTiming.durationMs, cacheHit: false });
     }
     if (cacheKey) perfApi().cacheSet(cacheKey, { result: response.result, usage: response.usage, model: response.model });
-    return response.result;
+    return state.reconciledAnalysis;
   }
 
   async function retryAiOnly() {
@@ -1079,6 +1068,7 @@
     } catch (error) {
       state.aiError = error.message || "تعذر التفسير الذكي الحي.";
       state.aiResult = null;
+      state.reconciledAnalysis = window.TaqareerReconciliation?.canonicalize?.(state.analysis) || state.analysis;
       state.aiUsed = false;
     } finally {
       state.aiPending = false;
@@ -1090,6 +1080,7 @@
   async function runAnalysis() {
     clearMessage("setupMessage");
     state.aiResult = null;
+    state.reconciledAnalysis = null;
     state.aiError = "";
     state.aiUsed = false;
     state.aiPending = false;
@@ -1134,6 +1125,7 @@
         quality: state.quality
       });
       recordSpan(localTimer ? perfApi().endSpan(localTimer) : null);
+      state.reconciledAnalysis = window.TaqareerReconciliation?.canonicalize?.(state.analysis) || state.analysis;
 
       // أظهر النتائج الحتمية فورًا؛ لا نجعل Gemini بوابة تعطل كل شيء.
       state.aiPending = aiReady();
@@ -1148,6 +1140,7 @@
         } catch (error) {
           state.aiError = error.message || "تعذر التحليل الذكي الحي.";
           state.aiResult = null;
+          state.reconciledAnalysis = window.TaqareerReconciliation?.canonicalize?.(state.analysis) || state.analysis;
           state.aiUsed = false;
         } finally {
           if (analysisRequestId === state.analysisRequestId) {
@@ -1251,10 +1244,6 @@
     return renderBarChart(chart, compact);
   }
 
-  function mergeUnique(items, keyFn) {
-    const seen = new Set();
-    return items.filter(item => { const key = keyFn(item); if (!key || seen.has(key)) return false; seen.add(key); return true; });
-  }
 
   function renderPerformanceSummary() {
     const panel = $("analysisTimingPanel");
@@ -1279,8 +1268,9 @@
   }
 
   function renderResults() {
-    const a = state.analysis;
-    const ai = state.aiResult;
+    const a = state.reconciledAnalysis || state.analysis;
+    const delta = state.aiResult;
+    const aiApplied = Boolean(a?._reconciliation?.aiApplied);
     const metrics = (a.metrics || []).slice(0, 8);
     $("metrics").innerHTML = metrics.map(item => `<div class="metric"><small>${escapeHtml(item.label)}</small><strong>${escapeHtml(formatMetricValue(item))}</strong><span>${escapeHtml(item.note || "")}</span></div>`).join("");
 
@@ -1292,79 +1282,76 @@
 
     const extraCharts = charts.slice(1);
     $("deepChartsSection").classList.toggle("hidden", !extraCharts.length);
-    $("deepChartsGrid").innerHTML = extraCharts.map((chart,index)=>`<article class="deep-chart-card ${chart.type==='heatmap'||chart.type==='table'?'wide':''}"><h5>${escapeHtml(chart.title)}</h5><p>${escapeHtml(chart.description||"")}</p>${renderChartContent(chart)}</article>`).join("");
+    $("deepChartsGrid").innerHTML = extraCharts.map(chart=>`<article class="deep-chart-card ${chart.type==='heatmap'||chart.type==='table'?'wide':''}"><h5>${escapeHtml(chart.title)}</h5><p>${escapeHtml(chart.description||"")}</p>${renderChartContent(chart)}</article>`).join("");
 
     const profile = a.analysisProfile || {};
-    const aiProfile = ai?.analysisProfile || {};
-    const profileDimensions = mergeUnique([...(profile.dimensions || []), ...(aiProfile.dimensions || [])], item => normalize(item));
-    const decisionUses = mergeUnique([...(profile.decisionUse || []), ...(aiProfile.decisionUses || [])], item => normalize(item));
+    const profileDimensions = profile.dimensions || [];
+    const decisionUses = profile.decisionUse || profile.decisionUses || [];
     const profileCards = [
-      { title:"عائلة التحليل", value:aiProfile.method || profile.purpose || a.kind, items:profileDimensions },
-      { title:"كفاية البيانات", value:aiProfile.dataAdequacy || profile.dataSufficiency || "غير محددة", items:profile.assumptions || [] },
+      { title:"عائلة التحليل", value:profile.method || profile.purpose || a.kind, items:profileDimensions },
+      { title:"كفاية البيانات", value:profile.dataAdequacy || profile.dataSufficiency || "غير محددة", items:profile.assumptions || [] },
       { title:"القرارات التي يدعمها", value:`${decisionUses.length} استخدامات`, items:decisionUses },
       { title:"نطاق التحليل", value:state.type.name, items:[`المصدر: ${state.sourceName}`,`الثقة في النوع: ${state.confidence}%`,`طريقة التصنيف: ${state.recognitionStatus}`] }
     ];
     $("diagnosticProfileSection").classList.toggle("hidden", !profileCards.length);
     $("diagnosticProfileGrid").innerHTML = profileCards.map(card=>`<article class="diagnostic-card"><h5>${escapeHtml(card.title)}</h5><strong>${escapeHtml(card.value)}</strong><ul>${card.items.map(item=>`<li>${escapeHtml(item)}</li>`).join("")}</ul></article>`).join("");
 
-    const localSections = (a.diagnosticSections || []).map(item => ({ ...item, source: "محرك متخصص" }));
-    const aiSections = (ai?.diagnosticSections || []).map(item => ({ ...item, source: "Gemini" }));
-    const diagnosticSections = mergeUnique([...aiSections, ...localSections], item => normalize(item.title)).slice(0, 10);
+    const diagnosticSections = (a.diagnosticSections || []).slice(0, 10);
     $("diagnosticSectionsSection").classList.toggle("hidden", !diagnosticSections.length);
     $("diagnosticSectionsGrid").innerHTML = diagnosticSections.map(section => {
       const evidence = humanizeEvidenceRefs(section.evidenceRefs || []);
       const implications = Array.isArray(section.implications) ? section.implications : [];
-      return `<article class="diagnostic-section-card"><div class="diagnostic-section-meta"><span>${escapeHtml(section.source || "تحليل متخصص")}</span><span>ثقة ${escapeHtml(section.confidence || "متوسطة")}</span></div><h5>${escapeHtml(section.title || "قراءة تفسيرية")}</h5><p>${escapeHtml(section.analysis || "")}</p>${evidence && evidence !== "لم يحدد مرجع دليل واضح." ? `<div class="soft-note">الدليل: ${escapeHtml(evidence)}</div>` : ""}${implications.length ? `<ul>${implications.map(item=>`<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}</article>`;
+      const source = String(section.source || "deterministic").includes("gemini") ? "محرك متخصص + Gemini" : "محرك متخصص";
+      return `<article class="diagnostic-section-card"><div class="diagnostic-section-meta"><span>${source}</span><span>ثقة ${escapeHtml(section.confidence || "متوسطة")}</span></div><h5>${escapeHtml(section.title || "قراءة تفسيرية")}</h5><p>${escapeHtml(section.analysis || "")}</p>${evidence && evidence !== "لم يحدد مرجع دليل واضح." ? `<div class="soft-note">الدليل: ${escapeHtml(evidence)}</div>` : ""}${implications.length ? `<ul>${implications.map(item=>`<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}</article>`;
     }).join("");
 
-    $("analysisModeChip").textContent = state.aiPending ? "ظهرت النتائج المحلية · التفسير الذكي جارٍ" : (ai ? "تحليل متخصص حتمي + تفسير عميق عبر Gemini" : "تحليل متخصص حتمي عميق");
-    $("analysisModeChip").className = ai ? "success-chip ai-result-chip" : "success-chip";
+    $("analysisModeChip").textContent = state.aiPending ? "ظهرت النتائج المحلية · تحسين Gemini جارٍ" : (aiApplied ? "تحليل حتمي متخصص مصالَح مع Gemini" : "تحليل متخصص حتمي عميق");
+    $("analysisModeChip").className = aiApplied ? "success-chip ai-result-chip" : "success-chip";
     const notice = $("aiResultNotice");
     if (state.aiPending) {
       notice.classList.remove("hidden", "error");
-      notice.innerHTML = `<strong>ظهرت الحسابات والرسوم فورًا</strong><span>يجري الآن بناء التفسير التربوي العميق في الخلفية. يمكنك مراجعة المؤشرات دون انتظار اكتمال Gemini.</span>`;
-    } else if (ai) {
+      notice.innerHTML = `<strong>ظهرت الحسابات والرسوم فورًا</strong><span>يجري Gemini تحسين العقد المحلي نفسه، دون إنشاء خطط أو دورات متابعة موازية.</span>`;
+    } else if (aiApplied) {
+      const meta = a._reconciliation || {};
       notice.classList.remove("hidden", "error");
-      notice.innerHTML = `<strong>اكتملت القراءة التربوية المتخصصة${state.performance.cacheHit ? " من الذاكرة المؤقتة" : ""}</strong><span>استخدم Gemini خطة التحليل الخاصة بهذا النوع، بينما بقيت الإحصاءات وأدوات الجودة الأساسية محسوبة حتميًا.</span>`;
+      notice.innerHTML = `<strong>اكتملت المصالحة التحليلية${state.performance.cacheHit ? " من الذاكرة المؤقتة" : ""}</strong><span>طُبقت ${meta.appliedEnhancements || 0} تحسينات على العقد الأساسي، مع بقاء ${a.improvementPlan?.length || 0} تدخلات و${a.monitoringPlan?.length || 0} مراحل متابعة فقط.</span>`;
     } else if (state.aiError) {
       notice.classList.remove("hidden"); notice.classList.add("error");
-      notice.innerHTML = `<strong>اكتمل المحرك المتخصص المحلي</strong><span>تعذر التفسير الذكي الحي: ${escapeHtml(state.aiError)}. لم تُفقد النتائج أو أدوات الجودة.</span><button id="retryAiOnlyBtn" class="secondary compact" type="button">إعادة التفسير الذكي فقط</button>`;
+      notice.innerHTML = `<strong>اكتمل المحرك المتخصص المحلي</strong><span>تعذر تحسين Gemini: ${escapeHtml(state.aiError)}. لم تُفقد النتائج أو أدوات الجودة.</span><button id="retryAiOnlyBtn" class="secondary compact" type="button">إعادة تحسين Gemini فقط</button>`;
     } else { notice.classList.add("hidden"); notice.classList.remove("error"); }
     bindRetryAiButton();
     renderPerformanceSummary();
 
-    $("executiveTitle").textContent = ai?.executiveTitle || a.executiveTitle;
-    $("executiveSummary").textContent = ai?.executiveSummary || a.executiveSummary;
+    $("executiveTitle").textContent = a.executiveTitle;
+    $("executiveSummary").textContent = a.executiveSummary;
 
-    const aiFindings = (ai?.findings || []).map(normalizeAiFinding);
-    const localFindings = (a.findings || []).map(item => ({ ...item, source:"deterministic", statement:item.title, limitations:item.limitations||[] }));
-    const allFindings = mergeUnique([...aiFindings,...localFindings], item=>normalize(item.title)).slice(0,18);
-    $("findings").innerHTML = allFindings.map((f,i)=>{
-      const sourceLabel=f.source==="ai"?"تفسير ذكي":"محرك متخصص";
+    const findings = (a.findings || []).slice(0, 18);
+    $("findings").innerHTML = findings.map((f,i)=>{
+      const sourceLabel=String(f.source||"").includes("gemini")?"محرك متخصص + Gemini":"محرك متخصص";
       const severity=f.severity||"medium";
-      const limitationHtml=f.limitations?.length?`<h5>الحدود</h5><p>${f.limitations.map(escapeHtml).join("، ")}</p>`:"";
-      const statementHtml=f.statement&&f.statement!==f.title?`<p class="finding-statement">${escapeHtml(f.statement)}</p>`:"";
-      return `<details class="finding" ${i<2?'open':''}><summary><div class="finding-title"><strong>${escapeHtml(f.title)}</strong><small>${escapeHtml(f.impact)}</small></div><div class="finding-badges"><span class="source-pill ${f.source}">${sourceLabel}</span><span class="confidence-pill severity-${severity}">ثقة ${escapeHtml(f.confidence)}</span></div></summary><div class="finding-body">${statementHtml}<h5>الدليل</h5><p>${escapeHtml(f.evidence)}</p><h5>الإجراء المرتبط</h5><p>${escapeHtml(f.action)}</p>${limitationHtml}</div></details>`;
+      const limitations=f.limitations||[];
+      const limitationHtml=limitations.length?`<h5>الحدود</h5><p>${limitations.map(escapeHtml).join("، ")}</p>`:"";
+      const statement=f.statement||f.title||"";
+      const statementHtml=statement&&statement!==f.title?`<p class="finding-statement">${escapeHtml(statement)}</p>`:"";
+      const evidence=f.evidence||humanizeEvidenceRefs(f.evidenceRefs||[]);
+      const impact=f.educationalImpact||f.impact||"";
+      const action=f.recommendedAction||f.action||"";
+      return `<details class="finding" ${i<2?'open':''}><summary><div class="finding-title"><strong>${escapeHtml(f.title)}</strong><small>${escapeHtml(impact)}</small></div><div class="finding-badges"><span class="source-pill ${String(f.source||"").includes("gemini")?'ai':'deterministic'}">${sourceLabel}</span><span class="confidence-pill severity-${severity}">ثقة ${escapeHtml(f.confidence)}</span></div></summary><div class="finding-body">${statementHtml}<h5>الدليل</h5><p>${escapeHtml(evidence)}</p><h5>الإجراء المرتبط</h5><p>${escapeHtml(action)}</p>${limitationHtml}</div></details>`;
     }).join("");
 
-    const localTools=(a.qualityTools||[]).filter(tool=>tool.conditionsMet!==false);
-    const aiTools=(ai?.qualityTools||[]).filter(tool=>tool.conditionsMet!==false);
-    const tools=mergeUnique([...localTools,...aiTools],tool=>normalize(tool.id||tool.name)).slice(0,12);
+    const tools=(a.qualityTools||[]).filter(tool=>tool.conditionsMet!==false).slice(0,12);
     $("qualityToolsSection").classList.toggle("hidden",!tools.length);
-    $("qualityToolsGrid").innerHTML=tools.map(tool=>`<article class="quality-tool-card"><strong>${escapeHtml(tool.name)}</strong><p>${escapeHtml(tool.reason||"")}</p><span>${tool.conditionsMet===false?"غير منطبقة":"مطبقة فعليًا"}</span>${tool.interpretation?`<div class="tool-output">${escapeHtml(tool.interpretation)}</div>`:""}</article>`).join("");
+    $("qualityToolsGrid").innerHTML=tools.map(tool=>`<article class="quality-tool-card"><strong>${escapeHtml(tool.name)}</strong><p>${escapeHtml(tool.reason||"")}</p><span>مطبقة فعليًا</span>${tool.interpretation?`<div class="tool-output">${escapeHtml(tool.interpretation)}</div>`:""}</article>`).join("");
 
-    const normalizePlan=item=>({
-      priority:item.priority||"متوسطة", issue:item.issue||"أولوية تحسين", targetGroup:item.targetGroup||"الفئة المستهدفة", action:item.action||"", responsibleRole:item.responsibleRole||"يحدد لاحقًا", timeframe:item.timeframe||"يحدد لاحقًا", successIndicator:item.successIndicator||"مؤشر قابل للقياس", monitoringMethod:item.monitoringMethod||"متابعة دورية", contingency:item.contingency||"مراجعة التدخل عند ضعف الاستجابة"
-    });
-    const plans=mergeUnique([...(a.improvementPlan||[]).map(normalizePlan),...(ai?.improvementPlan||[]).map(normalizePlan)],item=>normalize(item.action)).slice(0,10);
+    const plans=(a.improvementPlan||[]).slice(0,10);
     $("improvementPlanSection").classList.toggle("hidden",!plans.length);
     $("improvementPlanBody").innerHTML=plans.map(item=>`<tr><td>${escapeHtml(item.priority)}</td><td><strong>${escapeHtml(item.issue)}</strong><small>${escapeHtml(item.targetGroup)}</small></td><td>${escapeHtml(item.action)}<small>بديل عند عدم التحسن: ${escapeHtml(item.contingency)}</small></td><td>${escapeHtml(item.responsibleRole)}<small>${escapeHtml(item.timeframe)}</small></td><td>${escapeHtml(item.successIndicator)}<small>${escapeHtml(item.monitoringMethod)}</small></td></tr>`).join("");
 
-    const monitoring=mergeUnique([...(a.monitoringPlan||[]),...(ai?.monitoringPlan||[])],item=>normalize(`${item.stage||""}|${item.timing||""}`)).slice(0,8);
+    const monitoring=(a.monitoringPlan||[]).slice(0,8);
     $("monitoringPlanSection").classList.toggle("hidden",!monitoring.length);
     $("monitoringPlanGrid").innerHTML=monitoring.map(item=>`<article class="monitoring-card"><small>${escapeHtml(item.timing||"")}</small><h5>${escapeHtml(item.stage||"")}</h5><p>${escapeHtml(item.measure||"")}</p><p class="owner">${escapeHtml(item.owner||"")}</p></article>`).join("");
 
-    const limitations=mergeUnique([...(a.limitations||[]),...(ai?.dataRequests||[]).map(item=>`بيانات إضافية مطلوبة: ${item}`)],item=>normalize(item));
+    const limitations=a.limitations||[];
     $("analysisLimitations").classList.toggle("hidden",!limitations.length);
     $("analysisLimitationsList").innerHTML=limitations.map(item=>`<li>${escapeHtml(item)}</li>`).join("");
 
@@ -1375,11 +1362,11 @@
     $("actionPriority").textContent=action?.priority||"متوسطة";
     $("actionIndicator").textContent=action?.indicator||"مؤشر متابعة";
 
-    const cautions=ai?.cautions||[];
+    const cautions=a.cautions||[];
     $("aiCautions").classList.toggle("hidden",!cautions.length);
     $("aiCautionsList").innerHTML=cautions.map(item=>`<li>${escapeHtml(item)}</li>`).join("");
 
-    const suggested=ai?.suggestedNewType; const showSuggested=Boolean(suggested?.needed);
+    const suggested=delta?.suggestedNewType || a.suggestedNewType; const showSuggested=Boolean(suggested?.needed);
     $("aiSuggestedType").classList.toggle("hidden",!showSuggested);
     if(showSuggested){$("aiSuggestedTypeName").textContent=suggested.nameAr||"نوع تحليلي جديد";$("aiSuggestedTypePurpose").textContent=suggested.purpose||"يحتاج الغرض التربوي إلى مراجعة المستخدم.";const tags=[...(suggested.requiredFields||[]).map(item=>`حقل: ${item}`),...(suggested.analysisFamily||[]).map(item=>`تحليل: ${item}`)];$("aiSuggestedTypeMeta").innerHTML=tags.map(item=>`<span>${escapeHtml(item)}</span>`).join("");}
   }
@@ -1391,8 +1378,9 @@
     }
     try {
       window.TaqareerReports.openReport({
-        analysis: state.analysis,
-        aiResult: state.aiResult,
+        analysis: state.reconciledAnalysis || state.analysis,
+        aiResult: null,
+        aiDelta: state.aiResult,
         aiError: state.aiError,
         type: state.type,
         sourceName: state.sourceName,
@@ -1411,19 +1399,20 @@
   function exportAnalysis() {
     const payload = {
       app: "تقارير",
-      version: "0.8.2",
+      version: "0.9.0",
       generatedAt: new Date().toISOString(),
       source: state.sourceName,
       sourceMeta: state.sourceMeta,
       recognizedType: { id: state.type.id, name: state.type.name, confidence: state.confidence },
       quality: state.quality,
-      analysis: state.analysis,
-      aiAnalysis: state.aiResult,
+      localAnalysis: state.analysis,
+      aiDelta: state.aiResult,
+      analysis: state.reconciledAnalysis || state.analysis,
       aiError: state.aiError || null
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v0.8.2.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v0.9.0.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
@@ -1434,7 +1423,7 @@
       headers: [], rows: [], sourceName: "", rawText: "", narrativeText: "", delimiter: ",",
       type: formTypes.at(-1), confidence: 0,
       quality: { blockers: [], warnings: [], info: [], completeness: 0 },
-      analysis: null, aiResult: null, aiError: "", aiUsed: false, aiPending: false,
+      analysis: null, reconciledAnalysis: null, aiResult: null, aiError: "", aiUsed: false, aiPending: false,
       performance: { spans: [], cacheHit: false, payloadChars: 0, aiUsage: null, aiModel: "" },
       localRecognition: null, aiRecognition: null, recognitionStatus: "محلي", recognitionRequestId: state.recognitionRequestId + 1,
       analysisRequestId: state.analysisRequestId + 1,

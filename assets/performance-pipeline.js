@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "0.8.2";
+  const VERSION = "0.9.0";
   const CACHE_NAMESPACE = `taqareer.fast-pipeline.${VERSION}`;
   const INDEX_KEY = `${CACHE_NAMESPACE}.index`;
   const MAX_ENTRIES = 8;
