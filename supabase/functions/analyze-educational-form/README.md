@@ -1,12 +1,11 @@
-# analyze-educational-form v0.8.2
+# analyze-educational-form v0.7.0
 
-Supabase Edge Function for Taqareer with Google Gemini.
+تدعم الوظيفة العمليات: `ping`, `classify`, `vision_extract`, `enrich`، إضافة إلى `analyze` القديم للتوافق.
 
-Operations:
+الواجهة v0.9.0 تستخدم `enrich`، حيث ترسل عقد مصالحة بعناصر ومعرفات ثابتة، وتعيد الوظيفة Delta بعد التحقق من:
 
-- `ping`: connection check with thinking disabled.
-- `classify`: semantic verification using `GEMINI_CLASSIFIER_MODEL` or `gemini-2.5-flash-lite`, thinking budget 0.
-- `vision_extract`: image/scanned-PDF extraction with thinking budget 0.
-- `analyze`: deep type-aware interpretation using `GEMINI_MODEL`, thinking budget 1024.
+- صلاحية `targetId`.
+- صلاحية مراجع الأدلة.
+- حدود الإضافات حسب عائلة التحليل.
 
-The client sends a compact deterministic dossier rather than the full raw dataset for known score reports. Invalid evidence references remain removed server-side. No new required secrets.
+لا توجد أسرار أو SQL جديدة.

@@ -134,6 +134,146 @@ const ANALYSIS_SCHEMA = {
   required: ["classification", "executiveTitle", "executiveSummary", "analysisProfile", "diagnosticSections", "findings", "qualityTools", "improvementPlan", "monitoringPlan", "dataRequests", "cautions", "suggestedNewType"]
 };
 
+const ENRICHMENT_DELTA_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    executiveEnhancement: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        title: { type: "string" },
+        summary: { type: "string" },
+        rationale: { type: "string" }
+      },
+      required: ["title", "summary", "rationale"]
+    },
+    profileEnhancement: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        method: { type: "string" },
+        dataAdequacy: { type: "string" },
+        dimensions: { type: "array", items: { type: "string" } },
+        decisionUses: { type: "array", items: { type: "string" } }
+      },
+      required: ["method", "dataAdequacy", "dimensions", "decisionUses"]
+    },
+    diagnosticEnhancements: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          targetId: { type: "string" },
+          analysis: { type: "string" },
+          evidenceRefs: { type: "array", items: { type: "string" } },
+          confidence: { type: "string", enum: ["مرتفعة", "متوسطة", "منخفضة"] },
+          implications: { type: "array", items: { type: "string" } },
+          limitations: { type: "array", items: { type: "string" } }
+        },
+        required: ["targetId", "analysis", "evidenceRefs", "confidence", "implications", "limitations"]
+      }
+    },
+    findingEnhancements: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          targetId: { type: "string" },
+          statement: { type: "string" },
+          evidenceRefs: { type: "array", items: { type: "string" } },
+          confidence: { type: "string", enum: ["مرتفعة", "متوسطة", "منخفضة"] },
+          educationalImpact: { type: "string" },
+          recommendedAction: { type: "string" },
+          limitations: { type: "array", items: { type: "string" } },
+          severity: { type: "string", enum: ["high", "medium", "low"] }
+        },
+        required: ["targetId", "statement", "evidenceRefs", "confidence", "educationalImpact", "recommendedAction", "limitations", "severity"]
+      }
+    },
+    additionalFindings: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          title: { type: "string" },
+          statement: { type: "string" },
+          evidenceRefs: { type: "array", items: { type: "string" } },
+          confidence: { type: "string", enum: ["مرتفعة", "متوسطة", "منخفضة"] },
+          educationalImpact: { type: "string" },
+          recommendedAction: { type: "string" },
+          limitations: { type: "array", items: { type: "string" } },
+          severity: { type: "string", enum: ["high", "medium", "low"] }
+        },
+        required: ["title", "statement", "evidenceRefs", "confidence", "educationalImpact", "recommendedAction", "limitations", "severity"]
+      }
+    },
+    qualityToolEnhancements: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          targetId: { type: "string" },
+          reason: { type: "string" },
+          interpretation: { type: "string" },
+          requiredData: { type: "array", items: { type: "string" } }
+        },
+        required: ["targetId", "reason", "interpretation", "requiredData"]
+      }
+    },
+    interventionEnhancements: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          targetId: { type: "string" },
+          action: { type: "string" },
+          responsibleRole: { type: "string" },
+          timeframe: { type: "string" },
+          successIndicator: { type: "string" },
+          monitoringMethod: { type: "string" },
+          contingency: { type: "string" },
+          evidenceRefs: { type: "array", items: { type: "string" } }
+        },
+        required: ["targetId", "action", "responsibleRole", "timeframe", "successIndicator", "monitoringMethod", "contingency", "evidenceRefs"]
+      }
+    },
+    monitoringEnhancements: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          targetId: { type: "string" },
+          measure: { type: "string" },
+          owner: { type: "string" }
+        },
+        required: ["targetId", "measure", "owner"]
+      }
+    },
+    additionalCautions: { type: "array", items: { type: "string" } },
+    missingDataRequests: { type: "array", items: { type: "string" } },
+    suggestedNewType: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        needed: { type: "boolean" },
+        nameAr: { type: "string" },
+        purpose: { type: "string" },
+        requiredFields: { type: "array", items: { type: "string" } },
+        analysisFamily: { type: "array", items: { type: "string" } }
+      },
+      required: ["needed", "nameAr", "purpose", "requiredFields", "analysisFamily"]
+    }
+  },
+  required: ["executiveEnhancement", "profileEnhancement", "diagnosticEnhancements", "findingEnhancements", "additionalFindings", "qualityToolEnhancements", "interventionEnhancements", "monitoringEnhancements", "additionalCautions", "missingDataRequests", "suggestedNewType"]
+};
+
 const CLASSIFICATION_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -456,6 +596,93 @@ function validateEvidenceReferences(result: unknown, payload: Record<string, unk
   return output;
 }
 
+function enrichmentInstructions(): string {
+  return `أنت طبقة تحسين تربوي داخل محرك مصالحة، ولست مولد تقرير موازٍ.
+القواعد الملزمة:
+1) reconciliationContract هو العقد الأساسي والوحيد. كل تحسين يجب أن يشير إلى targetId موجود حرفيًا في العقد.
+2) لا تنشئ خطة تدخل جديدة أو مرحلة متابعة جديدة إذا كان العقد يقفل عددها. حسّن الحقول داخل العناصر القائمة فقط.
+3) لا تعِد الحسابات ولا تغيّر الفئات أو الأعداد أو الحدود أو الأولويات الحتمية.
+4) لا تكرر عنوانًا أو استنتاجًا بصياغة بديلة. additionalFindings تستخدم فقط لفكرة جديدة حقًا لا يغطيها أي targetId، وضمن الحد المعلن.
+5) لا تضف أداة جودة جديدة إذا كان الحد الإضافي صفرًا. حسّن تفسير الأدوات القائمة عبر targetId.
+6) اجعل المخرجات Delta قصيرة وعميقة: تفسير أوضح، أثر تربوي أدق، إجراء أقوى، مؤشر نجاح أفضل، أو قيد ضروري.
+7) كل evidenceRefs يجب أن يكون موجودًا حرفيًا في availableEvidenceRefs.
+8) التزم بنوع الاستمارة؛ لا توحّد إجراءات التحليل بين الأنواع.
+9) لا تعرض أسماء أشخاص أو بيانات حجبت.
+10) اكتب بالعربية الواضحة، ولا تملأ الحقول بكلام عام إن لم توجد إضافة ذات قيمة؛ يمكن إبقاء النص فارغًا.
+11) في تحليل الدرجات: ثبّت 5 استنتاجات، 4 تدخلات، و4 مراحل متابعة كما يحدد العقد، ولا تنشئ عناصر موازية.
+12) suggestedNewType يستخدم فقط عندما يكون النوع غير معروف فعلًا.`;
+}
+
+function targetIdsFromPayload(payload: Record<string, unknown>, key: string): Set<string> {
+  const contract = payload.reconciliationContract && typeof payload.reconciliationContract === "object"
+    ? payload.reconciliationContract as Record<string, unknown>
+    : {};
+  const targets = contract.targets && typeof contract.targets === "object"
+    ? contract.targets as Record<string, unknown>
+    : {};
+  const items = Array.isArray(targets[key]) ? targets[key] as Array<Record<string, unknown>> : [];
+  return new Set(items.map(item => String(item.id || "")).filter(Boolean));
+}
+
+function limitFromPayload(payload: Record<string, unknown>, key: string): number {
+  const contract = payload.reconciliationContract && typeof payload.reconciliationContract === "object"
+    ? payload.reconciliationContract as Record<string, unknown>
+    : {};
+  const rules = contract.rules && typeof contract.rules === "object" ? contract.rules as Record<string, unknown> : {};
+  const limits = rules.additionalLimits && typeof rules.additionalLimits === "object"
+    ? rules.additionalLimits as Record<string, unknown>
+    : {};
+  return Math.max(0, Number(limits[key] || 0));
+}
+
+function validateEnrichmentDelta(result: unknown, payload: Record<string, unknown>): unknown {
+  if (!result || typeof result !== "object") return result;
+  const output = structuredClone(result) as Record<string, unknown>;
+  const allowedEvidence = new Set((Array.isArray(payload.availableEvidenceRefs) ? payload.availableEvidenceRefs : []).map(String));
+  let removedTargets = 0;
+  let removedEvidence = 0;
+  const groups: Array<[string, string]> = [
+    ["diagnosticEnhancements", "diagnosticSections"],
+    ["findingEnhancements", "findings"],
+    ["qualityToolEnhancements", "qualityTools"],
+    ["interventionEnhancements", "interventions"],
+    ["monitoringEnhancements", "monitoring"],
+  ];
+  for (const [outputKey, targetKey] of groups) {
+    const allowedTargets = targetIdsFromPayload(payload, targetKey);
+    const source = Array.isArray(output[outputKey]) ? output[outputKey] as Array<Record<string, unknown>> : [];
+    output[outputKey] = source.filter(item => {
+      const valid = allowedTargets.has(String(item.targetId || ""));
+      if (!valid) removedTargets += 1;
+      return valid;
+    }).map(item => {
+      if (Array.isArray(item.evidenceRefs)) {
+        const refs = item.evidenceRefs.map(String);
+        const valid = refs.filter(ref => allowedEvidence.has(ref));
+        removedEvidence += refs.length - valid.length;
+        item.evidenceRefs = valid;
+      }
+      return item;
+    });
+  }
+  const additional = Array.isArray(output.additionalFindings) ? output.additionalFindings as Array<Record<string, unknown>> : [];
+  const maxAdditional = limitFromPayload(payload, "findings");
+  output.additionalFindings = additional.slice(0, maxAdditional).map(item => {
+    const refs = Array.isArray(item.evidenceRefs) ? item.evidenceRefs.map(String) : [];
+    const valid = refs.filter(ref => allowedEvidence.has(ref));
+    removedEvidence += refs.length - valid.length;
+    item.evidenceRefs = valid;
+    return item;
+  }).filter(item => Array.isArray(item.evidenceRefs) && item.evidenceRefs.length > 0);
+  if (removedTargets || removedEvidence) {
+    const cautions = Array.isArray(output.additionalCautions) ? output.additionalCautions.map(String) : [];
+    if (removedTargets) cautions.push(`حُذفت ${removedTargets} تحسينات استهدفت معرفات غير موجودة في العقد المحلي.`);
+    if (removedEvidence) cautions.push(`حُذفت ${removedEvidence} إحالات دليل غير موجودة في البيانات المرسلة.`);
+    output.additionalCautions = [...new Set(cautions)];
+  }
+  return output;
+}
+
 function classificationInstructions(): string {
   return `أنت مصنف مستندات تربوية عربية. مهمتك تحديد نوع النموذج فقط، دون إجراء تحليل تربوي أو حساب نتائج.
 القواعد:
@@ -483,7 +710,7 @@ function visionInstructions(): string {
 8) استخدم knownFormTypes للمطابقة، واقترح معرفًا وصفيًا جديدًا إذا لم ينطبق أي نوع.`;
 }
 
-async function callGemini(operation: "analyze" | "vision_extract" | "classify", payload: Record<string, unknown>) {
+async function callGemini(operation: "analyze" | "enrich" | "vision_extract" | "classify", payload: Record<string, unknown>) {
   const model = normalizeModelName(operation === "classify"
     ? (Deno.env.get("GEMINI_CLASSIFIER_MODEL") || DEFAULT_CLASSIFIER_MODEL)
     : (Deno.env.get("GEMINI_MODEL") || DEFAULT_MODEL));
@@ -525,6 +752,11 @@ async function callGemini(operation: "analyze" | "vision_extract" | "classify", 
     schema = CLASSIFICATION_SCHEMA;
     maxOutputTokens = 900;
     userParts = [{ text: JSON.stringify(payload) }];
+  } else if (operation === "enrich") {
+    instructions = enrichmentInstructions();
+    schema = ENRICHMENT_DELTA_SCHEMA;
+    maxOutputTokens = 4200;
+    userParts = [{ text: JSON.stringify(payload) }];
   } else {
     instructions = analysisInstructions();
     schema = ANALYSIS_SCHEMA;
@@ -545,9 +777,9 @@ async function callGemini(operation: "analyze" | "vision_extract" | "classify", 
       responseJsonSchema: schema,
       maxOutputTokens,
       candidateCount: 1,
-      temperature: operation === "analyze" ? 0.2 : 0,
+      temperature: operation === "analyze" ? 0.2 : operation === "enrich" ? 0.15 : 0,
       thinkingConfig: {
-        thinkingBudget: operation === "analyze" ? 1024 : 0,
+        thinkingBudget: operation === "analyze" ? 1024 : operation === "enrich" ? 768 : 0,
         includeThoughts: false,
       },
     },
@@ -564,6 +796,7 @@ async function callGemini(operation: "analyze" | "vision_extract" | "classify", 
   }
 
   if (operation === "analyze") result = validateEvidenceReferences(result, payload);
+  if (operation === "enrich") result = validateEnrichmentDelta(result, payload);
 
   return {
     result,
@@ -574,7 +807,7 @@ async function callGemini(operation: "analyze" | "vision_extract" | "classify", 
     serverTiming: {
       geminiMs: Math.round(performance.now() - startedAt),
       payloadChars: JSON.stringify(payload).length,
-      thinkingBudget: operation === "analyze" ? 1024 : 0,
+      thinkingBudget: operation === "analyze" ? 1024 : operation === "enrich" ? 768 : 0,
     },
   };
 }
@@ -646,11 +879,11 @@ Deno.serve(async (req: Request) => {
       const ai = await pingGemini();
       return jsonResponse({ ok: true, operation, aiKeyConfigured: Boolean(Deno.env.get("GEMINI_API_KEY")), ...ai }, 200, origin);
     }
-    if (operation !== "analyze" && operation !== "vision_extract" && operation !== "classify") {
+    if (operation !== "analyze" && operation !== "enrich" && operation !== "vision_extract" && operation !== "classify") {
       return jsonResponse({ ok: false, error: "العملية المطلوبة غير مدعومة." }, 400, origin);
     }
 
-    const ai = await callGemini(operation as "analyze" | "vision_extract" | "classify", payload);
+    const ai = await callGemini(operation as "analyze" | "enrich" | "vision_extract" | "classify", payload);
     return jsonResponse({ ok: true, operation, ...ai }, 200, origin);
   } catch (error) {
     console.error("taqareer-ai-error", error);
