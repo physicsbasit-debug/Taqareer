@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "0.7.2";
+  const VERSION = "0.8.0";
 
   function escapeHtml(value) {
     return String(value ?? "").replace(/[&<>'"]/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" }[char]));
@@ -93,7 +93,7 @@
     return `تقرير التحليل التربوي - ${context.type?.name||"نموذج تعليمي"}`;
   }
   function selectMetricGroups(data){
-    const family=familyOf(data),preferred=family==="scores"?["n","mean","median","masteryPct","q1","q3"]:family==="narrative"?["sentenceCount","strongEvidencePct","actionablePct","alignmentPct","contradictionCount","dateAnomalies"]:[];
+    const family=familyOf(data),preferred=family==="scores"?["n","masteryCount","nonMasteryCount","masteryPct","mean","median"]:family==="narrative"?["sentenceCount","strongEvidencePct","actionablePct","alignmentPct","contradictionCount","dateAnomalies"]:[];
     const core=[];preferred.forEach(id=>{const found=data.metrics.find(item=>item.id===id);if(found&&!core.includes(found))core.push(found);});
     data.metrics.forEach(item=>{if(core.length<6&&!core.includes(item))core.push(item);});
     return{core:core.slice(0,6),advanced:data.metrics.filter(item=>!core.includes(item))};

@@ -373,7 +373,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "0.7.2",
+      appVersion: "0.8.0",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -892,7 +892,7 @@
     const deterministicAnalysis = compactDeterministicAnalysis(state.analysis);
     return {
       locale: "ar-OM",
-      appVersion: "0.7.2",
+      appVersion: "0.8.0",
       source: {
         name: state.sourceName,
         meta: state.sourceMeta || {},
@@ -932,7 +932,15 @@
     sd: "الانحراف المعياري",
     maxScore: "الدرجة الكلية المعتمدة",
     thresholdPct: "حد الإتقان المعتمد",
-    masteryPct: "نسبة الإتقان",
+    masteryCutoffScore: "درجة حد الإتقان",
+    masteryCount: "عدد من حققوا حد الإتقان",
+    nonMasteryCount: "عدد من لم يحققوا الإتقان",
+    masteryPct: "نسبة انتشار الإتقان",
+    masteryJudgement: "الحكم وفق سلم بوصلة الإتقان",
+    additionalStudentsNeeded: "عدد الطلبة المطلوب للمستوى التالي",
+    singleStudentImpact: "أثر الطالب الواحد في نسبة الانتشار",
+    nearMasteryPct: "نسبة القريبين من الإتقان",
+    deepGapPct: "نسبة الفجوة العميقة",
     total: "إجمالي الحالات",
     evidenceRatio: "نسبة مؤشرات الأدلة",
     sentenceCount: "عدد الجمل المحللة",
@@ -1269,7 +1277,7 @@
   function exportAnalysis() {
     const payload = {
       app: "تقارير",
-      version: "0.7.2",
+      version: "0.8.0",
       generatedAt: new Date().toISOString(),
       source: state.sourceName,
       sourceMeta: state.sourceMeta,
@@ -1281,7 +1289,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v0.7.2.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v0.8.0.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }

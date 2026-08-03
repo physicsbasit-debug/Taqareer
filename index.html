@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="تقارير - منصة التحليل التربوي الذكي للبيانات والاستمارات التعليمية" />
-  <title>تقارير | التحليل التربوي التكيفي العميق v0.7.2</title>
+  <title>تقارير | التحليل التربوي التكيفي العميق v0.8.0</title>
   <link rel="stylesheet" href="assets/styles.css" />
 </head>
 <body>
@@ -18,7 +18,7 @@
         </div>
       </a>
       <div class="top-actions">
-        <span class="version-badge">نسخة تشغيلية v0.7.2</span>
+        <span class="version-badge">نسخة تشغيلية v0.8.0</span>
         <span id="aiHeaderStatus" class="version-badge">الذكاء الاصطناعي غير مربوط</span>
         <button id="openAiSettingsTopBtn" class="ghost-button" type="button">إعداد الذكاء الاصطناعي</button>
         <button id="resetTopBtn" class="ghost-button" type="button">بدء تحليل جديد</button>
@@ -164,7 +164,7 @@
             <div class="form-grid">
               <label><span>عمود الدرجة</span><select id="scoreColumnSelect"></select></label>
               <label><span>الدرجة الكلية</span><input id="maxScoreInput" type="number" min="0.01" step="0.5" placeholder="مثال: 100 أو 40" /></label>
-              <label><span>حد الإتقان (%)</span><input id="masteryThresholdInput" type="number" min="1" max="100" step="1" value="60" /></label>
+              <label><span>حد الإتقان (%)</span><input id="masteryThresholdInput" type="number" min="1" max="100" step="1" value="75" /></label>
               <label><span>عمود المستوى، إن وُجد</span><select id="levelColumnSelect"></select></label>
             </div>
             <div class="soft-note">لا يفترض النظام الدرجة الكلية من أعلى درجة ظهرت. أكّدها فقط عند رغبتك في حساب النسب والإتقان.</div>
@@ -291,7 +291,7 @@
       </section>
     </main>
 
-    <footer><span>تقارير · v0.7.2</span><span>ذكاء اصطناعي قوي، وحسابات لا تفاوض الواقع.</span></footer>
+    <footer><span>تقارير · v0.8.0</span><span>ذكاء اصطناعي قوي، وحسابات لا تفاوض الواقع.</span></footer>
   </div>
 
   <dialog id="sheetDialog">
@@ -348,6 +348,7 @@
   <script src="assets/xlsx-lite.js"></script>
   <script src="assets/document-lite.js"></script>
   <script src="assets/ai-client.js"></script>
+  <script src="assets/mastery-metrics.js"></script>
   <script src="assets/deep-analysis.js"></script>
   <script src="assets/report-system.js"></script>
   <script src="assets/app.js"></script>

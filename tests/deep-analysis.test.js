@@ -1,8 +1,9 @@
 const fs=require('fs'), vm=require('vm');
 const path=require('path');
+const masteryCode=fs.readFileSync(path.join(__dirname,'..','assets','mastery-metrics.js'),'utf8');
 const code=fs.readFileSync(path.join(__dirname,'..','assets','deep-analysis.js'),'utf8');
 const sandbox={window:{},console,Intl,Date,Math,Set,Map,structuredClone,Array,Object,String,Number,RegExp,JSON};
-vm.createContext(sandbox);vm.runInContext(code,sandbox);
+vm.createContext(sandbox);vm.runInContext(masteryCode,sandbox);vm.runInContext(code,sandbox);
 const analyze=sandbox.window.TaqareerDeepAnalytics.analyze;
 const tests=[
  ['scores',{typeId:'assessment_component',headers:['م','اسم الطالب','عنصر المادة','درجة عنصر المادة','ملاحظات'],rows:Array.from({length:60},(_,i)=>({'م':i+1,'اسم الطالب':`طالب ${i+1}`,'عنصر المادة':'اختبار','درجة عنصر المادة':(i*7)%41,'ملاحظات':''})),scoreColumn:'درجة عنصر المادة',maxScore:40,thresholdPct:75}],
@@ -63,6 +64,12 @@ for(const [name,input] of tests){
  const checks={kind:r.kind,metrics:r.metrics?.length,charts:r.charts?.length,findings:r.findings?.length,tools:r.qualityTools?.length,plan:r.improvementPlan?.length,monitor:r.monitoringPlan?.length,diagnostic:r.diagnosticSections?.length,limits:r.limitations?.length};
  console.log(name,JSON.stringify(checks));
  if(!r.metrics?.length||!r.findings?.length||!r.diagnosticSections?.length) throw new Error(`${name} incomplete`);
+ if(name==='scores'){
+   if(r.masteryContractVersion!=='1.0.0') throw new Error('scores did not use mastery contract');
+   if(r.thresholdPct!==75) throw new Error('scores cutoff drifted from 75%');
+   if(!r.masteryJudgement?.label) throw new Error('scores judgement missing');
+   if(r.masteryDistribution?.reduce((a,b)=>a+b.count,0)!==r.n) throw new Error('scores bands do not equal group size');
+ }
  if(name!=='unknown' && (!r.charts?.length||!r.qualityTools?.length||!r.improvementPlan?.length)) throw new Error(`${name} shallow`);
 }
 console.log('PASS');

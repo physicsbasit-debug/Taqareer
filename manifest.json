@@ -1,6 +1,6 @@
 {
   "app": "تقارير",
-  "version": "0.7.2",
+  "version": "0.8.0",
   "phase": "Phase 1-C1 Fix 2 - Cross-paper Print Engine",
   "releaseName": "Adaptive Deep Educational Analytics Engine",
   "buildType": "static-github-pages-plus-supabase-edge-function",

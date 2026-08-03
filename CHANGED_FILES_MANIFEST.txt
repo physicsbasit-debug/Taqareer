@@ -1,11 +1,21 @@
-assets/report-system.js
-assets/app.js
-assets/ai-client.js
-assets/deep-analysis.js
+Phase 1-C2 v0.8.0 changed files
+
 index.html
 manifest.json
 README.md
 APPLY_INSTRUCTIONS.txt
-docs/VISUAL_REPORT_REBUILD.md
+CHANGED_FILES_MANIFEST.txt
+assets/mastery-metrics.js
+assets/deep-analysis.js
+assets/app.js
+assets/report-system.js
+assets/ai-client.js
+tests/mastery-metrics.test.js
+tests/mastery-integration.test.js
+tests/report-generation.test.js
+tests/deep-analysis.test.js
+tests/fixtures/aaaa-scores.json
+docs/MASTERY_METRICS_CONTRACT.md
+docs/ARCHITECTURE.md
 docs/RELEASE_NOTES.md
-docs/OFFICIAL_REPORT_SYSTEM.md
+docs/TEST_REPORT.md

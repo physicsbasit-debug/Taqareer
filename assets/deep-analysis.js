@@ -1,7 +1,13 @@
 (() => {
   "use strict";
 
-  const VERSION = "0.7.2";
+  const VERSION = "0.8.0";
+
+  function masteryEngine() {
+    const engine = window.TaqareerMasteryMetrics;
+    if (!engine?.calculate) throw new Error("محرك معادلات بوصلة الإتقان غير محمل.");
+    return engine;
+  }
 
   function normalize(value) {
     return String(value ?? "")
@@ -223,10 +229,28 @@
     const result = createBase(context, "scores", "تحليل أداء الدرجات وتشخيص التوزيع والفجوات وفئات التدخل");
     const column = context.scoreColumn || findHeader(context.headers, ["درجة عنصر المادة", "الدرجة", "المجموع", "المتوسط"]);
     const rawValues = column ? context.rows.map(row => parseNumber(row[column])) : [];
-    const invalidCount = rawValues.filter(value => !Number.isFinite(value)).length;
     const maxScore = Number.isFinite(context.maxScore) && context.maxScore > 0 ? context.maxScore : NaN;
-    const values = rawValues.filter(value => Number.isFinite(value) && (!Number.isFinite(maxScore) || (value >= 0 && value <= maxScore)));
-    const outOfRange = rawValues.filter(value => Number.isFinite(value) && Number.isFinite(maxScore) && (value < 0 || value > maxScore)).length;
+    const thresholdPct = Number.isFinite(context.thresholdPct)
+      ? context.thresholdPct
+      : masteryEngine().DEFAULTS.masteryCutoffPercent;
+    const masteryAnalysis = Number.isFinite(maxScore)
+      ? masteryEngine().calculate(rawValues, {
+          totalScore: maxScore,
+          masteryCutoffPercent: thresholdPct,
+          nearMasteryMargin: masteryEngine().DEFAULTS.nearMasteryMargin,
+          deepGapMargin: masteryEngine().DEFAULTS.deepGapMargin,
+          decimalPlaces: masteryEngine().DEFAULTS.decimalPlaces
+        })
+      : null;
+    const values = masteryAnalysis
+      ? masteryAnalysis.validScores.map(record => record.score)
+      : rawValues.filter(Number.isFinite);
+    const invalidCount = masteryAnalysis
+      ? masteryAnalysis.validation.invalidRecords.filter(record => record.reason === "not_numeric").length
+      : rawValues.filter(value => !Number.isFinite(value)).length;
+    const outOfRange = masteryAnalysis
+      ? masteryAnalysis.validation.invalidRecords.filter(record => record.reason !== "not_numeric").length
+      : 0;
     if (!values.length) throw new Error("لا توجد درجات صالحة للتحليل العميق.");
 
     const n = values.length;
@@ -234,21 +258,37 @@
     const min = Math.min(...values), max = Math.max(...values), p10 = quantile(values, 0.1), p90 = quantile(values, 0.9);
     const modes = mode(values), skew = skewness(values), kurt = excessKurtosis(values), cv = coefficientOfVariation(values);
     const outliers = outlierSummary(values);
-    const thresholdPct = Number.isFinite(context.thresholdPct) ? context.thresholdPct : 60;
-    const masteryCut = Number.isFinite(maxScore) ? maxScore * thresholdPct / 100 : NaN;
-    const masteryCount = Number.isFinite(masteryCut) ? values.filter(value => value >= masteryCut).length : null;
-    const masteryPct = masteryCount === null ? null : pct(masteryCount, n);
-    const segments = scoreSegments(values, maxScore, masteryCut);
+    const masteryCut = masteryAnalysis?.summary.masteryCutoffScoreRaw ?? NaN;
+    const masteryCount = masteryAnalysis?.summary.masteryCount ?? null;
+    const masteryPct = masteryAnalysis?.summary.masterySpreadPercentRaw ?? null;
+    const masteryPctDisplay = masteryAnalysis?.summary.masterySpreadPercent ?? null;
+    const masteryJudgement = masteryAnalysis?.judgement ?? null;
+    const masteryGap = masteryAnalysis?.gapToNextLevel ?? null;
+    const segments = masteryAnalysis
+      ? masteryAnalysis.distribution.map(band => {
+          const selected = masteryAnalysis.validScores.filter(record => record.percent >= band.minPercent && (band.key === "mastery" ? record.percent <= band.maxPercent : record.percent < band.maxPercent));
+          return { id: band.key, label: band.label, count: band.count, percentage: band.percent, mean: round(mean(selected.map(record => record.score))) };
+        })
+      : [];
     const histogram = buildHistogram(values, maxScore, n >= 120 ? 10 : 8);
-    const sensitivity = Number.isFinite(maxScore) ? [50, 60, 70, 75, 80, 90].map(threshold => {
-      const count = values.filter(value => value >= maxScore * threshold / 100).length;
-      return { threshold, count, percentage: round(pct(count, n)) };
-    }) : [];
+    const sensitivity = Number.isFinite(maxScore)
+      ? masteryEngine().calculateSensitivity(rawValues, { totalScore: maxScore, masteryCutoffPercent: thresholdPct, decimalPlaces: 1 })
+          .map(item => ({ threshold: item.threshold, count: item.count, percentage: item.percentage, judgement: item.judgement }))
+      : [];
 
     result.n = n; result.mean = avg; result.med = med; result.min = min; result.max = max; result.sd = sigma;
     result.variance = vari; result.q1 = q1; result.q3 = q3; result.iqr = q3 - q1; result.p10 = p10; result.p90 = p90;
     result.mode = modes; result.cv = cv; result.skewness = skew; result.kurtosis = kurt;
     result.hasMax = Number.isFinite(maxScore); result.maxScore = maxScore; result.thresholdPct = thresholdPct; result.masteryPct = masteryPct;
+    result.masteryPctDisplay = masteryPctDisplay;
+    result.masteryCount = masteryCount;
+    result.nonMasteryCount = masteryAnalysis?.summary.nonMasteryCount ?? null;
+    result.masteryCutoffScore = masteryAnalysis?.summary.masteryCutoffScore ?? null;
+    result.masteryCutoffScoreRaw = masteryAnalysis?.summary.masteryCutoffScoreRaw ?? null;
+    result.masteryJudgement = masteryJudgement;
+    result.masteryGapToNextLevel = masteryGap;
+    result.masteryDistribution = masteryAnalysis?.distribution || [];
+    result.masteryContractVersion = masteryAnalysis?.version || masteryEngine().VERSION;
     result.bins = histogram.map(item => ({ label: item.label, count: item.count }));
     result.segments = segments; result.sensitivity = sensitivity; result.outliers = outliers;
 
@@ -256,7 +296,8 @@
     result.analysisProfile.dimensions = ["مركز التوزيع", "التشتت", "شكل التوزيع", "الإتقان", "فئات التدخل", "القيم المتطرفة"];
     result.analysisProfile.assumptions = [
       Number.isFinite(maxScore) ? `الدرجة الكلية المعتمدة ${maxScore}.` : "لم تُحدد الدرجة الكلية؛ لا تعتمد نسب الإتقان.",
-      `حد الإتقان المستخدم ${thresholdPct}%.`
+      `حد الإتقان المستخدم ${thresholdPct}% وفق عقد بوصلة الإتقان؛ هامش القريب 5 نقاط مئوية وهامش الفجوة العميقة 15 نقطة.`,
+      "تُستخدم القيم الخام غير المقربة للحكم والتصنيف، ويستخدم التقريب للعرض فقط."
     ];
     result.analysisProfile.decisionUse = ["بناء مجموعات علاجية", "تحديد شدة التدخل", "وضع خط أساس", "تحديد موعد إعادة القياس"];
 
@@ -270,7 +311,17 @@
       metric("cv", "معامل الاختلاف", round(cv), "التشتت النسبي", "percent"),
       metric("skewness", "معامل الالتواء", round(skew, 2), skew < -0.5 ? "انحراف نحو الدرجات العليا" : skew > 0.5 ? "انحراف نحو الدرجات الدنيا" : "توزيع قريب من التماثل"),
       metric("outlierCount", "القيم المتطرفة", outliers.count, "وفق قاعدة المدى الربيعي", "integer"),
-      ...(Number.isFinite(masteryPct) ? [metric("masteryPct", "نسبة الإتقان", round(masteryPct), `حد ${thresholdPct}%`, "percent")] : [])
+      ...(Number.isFinite(masteryPct) ? [
+        metric("masteryCutoffScore", "درجة حد الإتقان", masteryAnalysis.summary.masteryCutoffScore, `${thresholdPct}% من ${maxScore}`),
+        metric("masteryCount", "حققوا حد الإتقان", masteryCount, `من أصل ${n}`, "integer"),
+        metric("nonMasteryCount", "لم يحققوا الإتقان", masteryAnalysis.summary.nonMasteryCount, `من أصل ${n}`, "integer"),
+        metric("masteryPct", "نسبة انتشار الإتقان", masteryPctDisplay, `القيمة الخام ${round(masteryPct, 4)}%`, "percent"),
+        metric("masteryJudgement", "الحكم وفق سلم بوصلة الإتقان", masteryJudgement.label, `بني على ${round(masteryPct, 4)}%`),
+        metric("additionalStudentsNeeded", "المطلوب للمستوى التالي", masteryGap.additionalStudentsNeeded, masteryGap.hasNextLevel ? `للوصول إلى ${masteryGap.nextJudgementLabel}` : "بلغ أعلى مستوى", "integer"),
+        metric("singleStudentImpact", "أثر الطالب الواحد", masteryAnalysis.summary.singleStudentImpact, "نقطة مئوية تقريبًا"),
+        metric("nearMasteryPct", "القريبون من الإتقان", masteryAnalysis.distribution.find(item => item.key === "near_mastery")?.percent || 0, "هامش 5 نقاط", "percent"),
+        metric("deepGapPct", "الفجوة العميقة", masteryAnalysis.distribution.find(item => item.key === "deep_gap")?.percent || 0, "15 نقطة أو أكثر دون الحد", "percent")
+      ] : [])
     ];
 
     result.charts = [
@@ -281,10 +332,9 @@
     ];
 
     if (Number.isFinite(masteryPct)) {
-      const deficit = 100 - masteryPct;
       result.findings.push(finding(
-        masteryPct < 50 ? "فجوة إتقان واسعة" : masteryPct < 75 ? "فجوة إتقان تحتاج دعمًا موجّهًا" : "إتقان عام جيد مع فجوات فردية",
-        `بلغت نسبة الإتقان ${round(masteryPct)}%، أي أن ${n - masteryCount} من أصل ${n} لم يبلغوا حد ${thresholdPct}%.`,
+        `انتشار الإتقان: ${masteryJudgement.label}`,
+        `بلغت نسبة انتشار الإتقان ${masteryPctDisplay}% (${masteryCount} من أصل ${n}) عند حد ${thresholdPct}%، والحكم وفق السلم المعتمد «${masteryJudgement.label}».`,
         "مرتفعة",
         masteryPct < 50 ? "الحاجة ليست حالات فردية معزولة؛ حجم الفجوة يبرر تدخلًا منظّمًا متعدد المستويات." : "تتطلب الفجوة دعمًا متدرجًا بدل إجراء موحد لجميع الطلبة.",
         "اعتماد مجموعات تدخل وفق قرب الطالب من حد الإتقان، لا وفق تصنيف ثنائي فقط.",
@@ -339,13 +389,14 @@
       ["metric:q1", "metric:q3", "metric:median"]
     ));
 
-    const severe = segments.find(item => item.id === "intensive");
-    const near = segments.find(item => item.id === "near");
-    const advanced = segments.find(item => item.id === "advanced");
+    const severe = segments.find(item => item.id === "deep_gap");
+    const moderate = segments.find(item => item.id === "moderate_gap");
+    const near = segments.find(item => item.id === "near_mastery");
+    const mastered = segments.find(item => item.id === "mastery");
     if (segments.length) {
       result.findings.push(finding(
         "الحاجة إلى تدخلات متمايزة",
-        `تعثر شديد: ${severe?.count || 0}، قريبون من الإتقان: ${near?.count || 0}، إتقان مرتفع: ${advanced?.count || 0}.`,
+        `فجوة عميقة: ${severe?.count || 0}، فجوة متوسطة: ${moderate?.count || 0}، قريبون من الإتقان: ${near?.count || 0}، حققوا الإتقان: ${mastered?.count || 0}.`,
         "مرتفعة",
         "الفئات تختلف في نوع التدخل المطلوب؛ الجمع بينها في برنامج واحد يضعف الكفاءة.",
         "تخصيص تدخل مكثف للحالات الشديدة، دعم قصير للقريبين من الإتقان، وإثراء للمتقنين.",
@@ -357,24 +408,24 @@
     result.qualityTools = [
       qualityTool("distribution", "المدرج التكراري وتحليل شكل التوزيع", true, "توجد درجات فردية كافية لفهم التجمع والانحراف.", histogram, `التواء ${round(skew, 2)} وتفرطح زائد ${round(kurt, 2)}.`),
       qualityTool("boxplot", "الصندوق والربيعات والقيم المتطرفة", n >= 5, "توجد بيانات فردية تسمح بحساب الربيعات.", outliers, `المدى الربيعي ${round(q3 - q1)} مع ${outliers.count} قيمة متطرفة.`),
-      qualityTool("gap", "تحليل فجوة الإتقان", Number.isFinite(masteryPct), "يتطلب درجة كلية وحد إتقان معتمدين.", Number.isFinite(masteryPct) ? { current: round(masteryPct), target: Math.max(thresholdPct, Math.min(90, Math.ceil(masteryPct / 5) * 5 + 10)), gap: round(100 - masteryPct) } : null, Number.isFinite(masteryPct) ? `الفجوة عن الإتقان الكامل ${round(100 - masteryPct)} نقطة مئوية.` : "غير متاح دون معيار."),
+      qualityTool("gap", "تحليل الفجوة للمستوى التالي", Number.isFinite(masteryPct), "يتطلب درجة كلية وحد إتقان معتمدين.", Number.isFinite(masteryPct) ? masteryGap : null, Number.isFinite(masteryPct) ? masteryGap.message : "غير متاح دون معيار."),
       qualityTool("segmentation", "تجزئة فئات التدخل", segments.length > 0, "تتطلب حد إتقان ودرجة كلية.", segments, "تحدد شدة التدخل والفئة المستهدفة."),
       qualityTool("sensitivity", "تحليل حساسية معيار الإتقان", sensitivity.length > 0, "يفحص استقرار الحكم عند تغير المعيار.", sensitivity, "يمنع بناء الحكم على حد وحيد دون فهم أثره."),
-      qualityTool("priority", "مصفوفة أولوية التدخل", segments.length > 0, "تستخدم حجم الفئة وشدة الفجوة لتحديد الأولوية.", segments.map(item => ({ group: item.label, size: item.count, urgency: item.id === "intensive" ? 5 : item.id === "support" ? 4 : item.id === "near" ? 3 : item.id === "mastered" ? 2 : 1 })), "الأولوية الأعلى للحالات شديدة التعثر ثم التعثر المتوسط.")
+      qualityTool("priority", "مصفوفة أولوية التدخل", segments.length > 0, "تستخدم حجم الفئة وشدة الفجوة لتحديد الأولوية.", segments.map(item => ({ group: item.label, size: item.count, urgency: item.id === "deep_gap" ? 5 : item.id === "moderate_gap" ? 4 : item.id === "near_mastery" ? 3 : item.id === "mastery" ? 2 : 1 })), "الأولوية الأعلى للحالات شديدة التعثر ثم التعثر المتوسط.")
     ];
 
     if (segments.length) {
       const groupMap = Object.fromEntries(segments.map(item => [item.id, item]));
       result.improvementPlan = [
-        intervention("عالية", "تعثر شديد", `الحالات شديدة التعثر (${groupMap.intensive?.count || 0})`, "إجراء تشخيص فردي قصير ثم برنامج علاجي مكثف يركز على المتطلبات السابقة ومهارات الأساس.", "المعلم بالتنسيق مع أخصائي التقويم والدعم", "3 أسابيع", "تحسن متوسط المجموعة 20% على الأقل وانخفاض الحالات الشديدة", "اختبار تشخيصي قبلي وبعدي + سجل متابعة أسبوعي", "إذا لم يتحقق التحسن، إحالة الحالات لتشخيص أعمق وجمع بيانات الحضور والصعوبات.", ["metric:masteryPct"]),
-        intervention("عالية", "تعثر متوسط", `مجموعة الدعم (${groupMap.support?.count || 0})`, "تدريس علاجي متدرج في مجموعات صغيرة مع نمذجة الحل وتغذية راجعة فورية.", "معلم المادة", "أسبوعان", "انتقال 50% من المجموعة إلى فئة قريب من الإتقان أو أعلى", "مهام قصيرة مرتين أسبوعيًا", "تغيير الاستراتيجية أو تقليل حجم المجموعة إذا ثبت ضعف الاستجابة.", ["metric:q1", "metric:median"]),
-        intervention("متوسطة", "فجوة محدودة عن الإتقان", `القريبون من الإتقان (${groupMap.near?.count || 0})`, "مراجعة مركزة قصيرة ومهام تصحيحية تستهدف الأخطاء الأكثر تكرارًا.", "معلم المادة", "أسبوع واحد", "بلوغ 70% من الفئة حد الإتقان في القياس اللاحق", "اختبار خروج قصير بعد كل جلسة", "تقديم دعم فردي محدود للحالات التي تبقى دون الحد.", ["metric:masteryPct"]),
-        intervention("محددة", "حاجة للإثراء", `الإتقان المرتفع (${groupMap.advanced?.count || 0})`, "مهام إثرائية وتطبيقية تحافظ على النمو وتمنع توقف التقدم.", "معلم المادة", "مستمر خلال الوحدة", "إنجاز مهمة إثرائية بمعيار أداء مرتفع", "Rubric مختصر + ملف إنجاز", "رفع مستوى التحدي أو توظيف المتقنين في دعم تعلم الأقران دون تحميلهم مسؤولية التدريس.", ["metric:q3"])
+        intervention("عالية", "فجوة عميقة", `دون الإتقان بفجوة عميقة (${groupMap.deep_gap?.count || 0})`, "إجراء تشخيص جماعي وفردي موجز ثم إعادة تدريس مركزة للمتطلبات السابقة، مع مجموعات صغيرة ومتابعة لصيقة.", "المعلم بالتنسيق مع أخصائي التقويم والدعم", "3 أسابيع", "خفض فئة الفجوة العميقة وانتقال نسبة موثقة منها إلى الفجوة المتوسطة أو أعلى", "اختبار تشخيصي قبلي وبعدي + سجل متابعة أسبوعي", "إذا لم يتحقق التحسن، جمع بيانات الحضور والصعوبات وعينات الأعمال وإحالة الحالات لتشخيص أعمق.", ["metric:deepGapPct", "metric:masteryPct"]),
+        intervention("عالية", "فجوة متوسطة", `دون الإتقان بفجوة متوسطة (${groupMap.moderate_gap?.count || 0})`, "دعم جماعي موجّه ومتدرج مع نمذجة الحل وتغذية راجعة فورية ومهام قصيرة متكررة.", "معلم المادة", "أسبوعان", "انتقال 50% من الفئة إلى قريب من الإتقان أو إلى الإتقان", "مهام قصيرة مرتين أسبوعيًا", "تغيير الاستراتيجية أو تقليل حجم المجموعة إذا ثبت ضعف الاستجابة.", ["metric:nearMasteryPct", "metric:masteryPct"]),
+        intervention("متوسطة", "قرب من الإتقان", `قريبون من الإتقان (${groupMap.near_mastery?.count || 0})`, "مراجعة مركزة قصيرة ومهام تصحيحية تستهدف الفجوة المحدودة عن حد الإتقان.", "معلم المادة", "أسبوع واحد", "بلوغ أغلب الفئة حد الإتقان في القياس اللاحق", "اختبار خروج قصير بعد كل جلسة", "تقديم دعم فردي محدود للحالات التي تبقى دون الحد.", ["metric:nearMasteryPct", "metric:masteryPct"]),
+        intervention("محددة", "تثبيت وإثراء", `حققوا حد الإتقان (${groupMap.mastery?.count || 0})`, "مهام تثبيت وإثراء وتطبيقات أعلى تحافظ على النمو وتمنع توقف التقدم.", "معلم المادة", "مستمر خلال الوحدة", "ثبات الإتقان مع تحسن جودة الأداء في مهمة إثرائية", "Rubric مختصر + ملف إنجاز", "رفع مستوى التحدي دون تحميل المتقنين مسؤولية تدريس زملائهم.", ["metric:masteryCount"])
       ];
     }
 
     result.monitoringPlan = [
-      { stage: "خط الأساس", timing: "الآن", measure: `المتوسط ${round(avg)} ونسبة الإتقان ${Number.isFinite(masteryPct) ? `${round(masteryPct)}%` : "غير محسوبة"}`, owner: "معلم المادة / أخصائي التقويم" },
+      { stage: "خط الأساس", timing: "الآن", measure: `المتوسط ${round(avg)} وانتشار الإتقان ${Number.isFinite(masteryPct) ? `${masteryPctDisplay}% (${masteryJudgement.label})` : "غير محسوب"}`, owner: "معلم المادة / أخصائي التقويم" },
       { stage: "متابعة قصيرة", timing: "أسبوعيًا", measure: "نتائج مهام قصيرة وانتقال الطلبة بين فئات التدخل", owner: "معلم المادة" },
       { stage: "إعادة قياس", timing: "بعد 2-3 أسابيع", measure: "اختبار مكافئ ومقارنة المتوسط والإتقان والتشتت", owner: "فريق المادة" },
       { stage: "قرار الاستمرار", timing: "بعد إعادة القياس", measure: "الاستجابة للتدخل وتحديد من يحتاج مسارًا بديلًا", owner: "المعلم الأول / المشرف" }
@@ -388,8 +439,8 @@
       ...(outOfRange ? [`استُبعدت ${outOfRange} قيمة خارج نطاق الدرجة الكلية.`] : [])
     ];
 
-    result.executiveTitle = Number.isFinite(masteryPct) ? `تحليل تشخيصي: الإتقان ${round(masteryPct)}%` : "تحليل تشخيصي للتوزيع";
-    result.executiveSummary = `شمل التحليل ${n} درجة. بلغ المتوسط ${round(avg)} والوسيط ${round(med)} والانحراف المعياري ${round(sigma)}. ${Number.isFinite(masteryPct) ? `بلغ الإتقان ${round(masteryPct)}% عند حد ${thresholdPct}%.` : "لم يحسب الإتقان لغياب الدرجة الكلية."} تشير الربيعات ومعامل الاختلاف إلى تفاوت ${dispersionLevel}، وتحتاج القرارات إلى تدخلات متدرجة وإعادة قياس موثقة.`;
+    result.executiveTitle = Number.isFinite(masteryPct) ? `انتشار الإتقان ${masteryPctDisplay}% — ${masteryJudgement.label}` : "تحليل تشخيصي للتوزيع";
+    result.executiveSummary = `شمل التحليل ${n} درجة. بلغ المتوسط ${round(avg)} والوسيط ${round(med)} والانحراف المعياري ${round(sigma)}. ${Number.isFinite(masteryPct) ? `بلغ انتشار الإتقان ${masteryPctDisplay}% (${masteryCount} من أصل ${n}) عند حد ${thresholdPct}%، والحكم «${masteryJudgement.label}». ${masteryGap.message}` : "لم يحسب الإتقان لغياب الدرجة الكلية."} تشير الربيعات ومعامل الاختلاف إلى تفاوت ${dispersionLevel}، وتحتاج القرارات إلى تدخلات متدرجة وإعادة قياس موثقة.`;
     result.action = result.improvementPlan[0]
       ? { title: result.improvementPlan[0].action, text: `${result.improvementPlan[0].responsibleRole} - ${result.improvementPlan[0].timeframe}`, priority: result.improvementPlan[0].priority, indicator: result.improvementPlan[0].successIndicator }
       : { title: "تحديد الدرجة الكلية", text: "إكمال إعدادات القياس قبل اعتماد الإتقان.", priority: "عالية", indicator: "ظهور فئات التدخل ونسبة الإتقان" };
@@ -524,10 +575,11 @@
       .map(column => ({ name: column.header, values: column.values }));
     if (subjects.length < 2) throw new Error("لا توجد أعمدة مواد كافية للتحليل عبر المواد.");
     const maxScore = Number.isFinite(context.maxScore) && context.maxScore > 0 ? context.maxScore : 100;
-    const thresholdPct = Number.isFinite(context.thresholdPct) ? context.thresholdPct : 60;
+    const thresholdPct = Number.isFinite(context.thresholdPct) ? context.thresholdPct : masteryEngine().DEFAULTS.masteryCutoffPercent;
     const subjectStats = subjects.map(subject => {
-      const avg = mean(subject.values), sigma = sd(subject.values), mastered = subject.values.filter(value => value >= maxScore * thresholdPct / 100).length;
-      return { subject: subject.name, n: subject.values.length, mean: round(avg), median: round(median(subject.values)), sd: round(sigma), masteryPct: round(pct(mastered, subject.values.length)), min: Math.min(...subject.values), max: Math.max(...subject.values) };
+      const avg = mean(subject.values), sigma = sd(subject.values);
+      const mastery = masteryEngine().calculate(subject.values, { totalScore: maxScore, masteryCutoffPercent: thresholdPct, decimalPlaces: 1 });
+      return { subject: subject.name, n: subject.values.length, mean: round(avg), median: round(median(subject.values)), sd: round(sigma), masteryPct: mastery.summary.masterySpreadPercent, masteryPctRaw: mastery.summary.masterySpreadPercentRaw, masteryCount: mastery.summary.masteryCount, judgement: mastery.judgement.label, min: Math.min(...subject.values), max: Math.max(...subject.values) };
     }).sort((a, b) => b.mean - a.mean);
     const studentProfiles = context.rows.map((row, index) => {
       const values = subjects.map(subject => parseNumber(row[subject.name]));
@@ -536,7 +588,7 @@
       const avg = mean(valid), spread = sd(valid);
       const pairs = subjects.map(subject => ({ subject: subject.name, value: parseNumber(row[subject.name]) })).filter(item => Number.isFinite(item.value));
       const strongest = [...pairs].sort((a, b) => b.value - a.value)[0], weakest = [...pairs].sort((a, b) => a.value - b.value)[0];
-      return { ref: `row:${index + 1}`, mean: avg, sd: spread, strongest, weakest, belowCount: valid.filter(value => value < maxScore * thresholdPct / 100).length };
+      return { ref: `row:${index + 1}`, mean: avg, sd: spread, strongest, weakest, belowCount: valid.filter(value => (value / maxScore) * 100 < thresholdPct).length };
     }).filter(Boolean);
     const comprehensiveRisk = studentProfiles.filter(profile => profile.belowCount >= Math.ceil(subjects.length * 0.6)).length;
     const specializedRisk = studentProfiles.filter(profile => profile.belowCount > 0 && profile.belowCount < Math.ceil(subjects.length * 0.6)).length;
@@ -1373,5 +1425,5 @@
     return result;
   }
 
-  window.TaqareerDeepAnalytics = { VERSION, analyze, analyzers: Object.keys(analyzers), helpers: { normalize, parseNumber, quantile, pearson } };
+  window.TaqareerDeepAnalytics = { VERSION, analyze, analyzers: Object.keys(analyzers), helpers: { normalize, parseNumber, quantile, pearson }, masteryContractVersion: masteryEngine().VERSION };
 })();

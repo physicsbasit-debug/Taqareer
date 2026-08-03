@@ -1,7 +1,9 @@
-تقارير v0.7.2 - Phase 1-C1 Fix 2
+تقارير v0.8.0 - Phase 1-C2 Mastery Metrics Contract
 
-1) فك ضغط changed_files_only.
-2) ارفع محتويات المجلد إلى جذر المستودع ووافق على الاستبدال.
-3) لا تعدل .github/workflows/deploy.yml.
-4) لا حاجة إلى تعديل Supabase أو Gemini.
-5) بعد نجاح GitHub Actions أعد فتح التقرير الرسمي، ثم اطبعه. سيعمل دون صفحات بيضاء سواء كان برنامج الطباعة على A4 أو Letter.
+1) فك ضغط حزمة changed_files_only.
+2) ارفع كل محتوياتها إلى جذر مستودع Taqareer.
+3) وافق على استبدال الملفات الموجودة.
+4) لا تحذف .github/workflows/deploy.yml من مستودعك.
+5) انتظر نجاح GitHub Actions ثم حدّث صفحة التطبيق تحديثًا قويًا.
+
+لا يلزم تعديل Supabase أو Edge Function أو أسرار Gemini أو SQL.
