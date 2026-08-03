@@ -1,45 +1,48 @@
-# إعداد Gemini لتطبيق تقارير v0.6.1
+# إعداد Gemini لتطبيق تقارير v0.7.0
 
-## الأسرار المطلوبة في Supabase
+لا توجد أسرار جديدة في هذا الإصدار.
 
-```text
-GEMINI_API_KEY
-GEMINI_MODEL=gemini-2.5-flash
-TAQAREER_ACCESS_CODE
-TAQAREER_ALLOWED_ORIGINS
-```
+## الأسرار المطلوبة
 
-لا يوضع مفتاح Gemini في GitHub أو داخل المتصفح.
+- `GEMINI_API_KEY`
+- `GEMINI_MODEL`
+- `TAQAREER_ACCESS_CODE`
+- `TAQAREER_ALLOWED_ORIGINS`
 
 ## تحديث الوظيفة
 
-1. افتح `Edge Functions`.
-2. افتح `analyze-educational-form`.
-3. افتح محرر الكود.
-4. استبدل الكود كاملًا بمحتوى:
+1. افتح Supabase.
+2. اذهب إلى `Edge Functions > analyze-educational-form > Code > Edit function`.
+3. استبدل الكود كاملًا بمحتوى:
    `supabase/functions/analyze-educational-form/index.ts`
-5. اضغط `Deploy function`.
-6. لا تغيّر الأسرار الحالية.
-
-## العمليات المدعومة
-
-- `ping`: اختبار الاتصال.
-- `classify`: التحقق الدلالي السريع من نوع الملف.
-- `analyze`: التحليل التربوي العميق.
-- `vision_extract`: قراءة الصور وPDF الممسوح.
+4. اضغط `Deploy function`.
 
 ## اختبار ping
+
+Body:
 
 ```json
 {
   "operation": "ping",
-  "payload": { "clientVersion": "0.6.1" }
+  "payload": { "clientVersion": "0.7.0" }
 }
 ```
 
-الهيدرز:
+Headers:
 
-| Key | Value |
-|---|---|
-| `Content-Type` | `application/json` |
-| `x-taqareer-access-code` | رمز الوصول الفعلي |
+- Key: `Content-Type` / Value: `application/json`
+- Key: `x-taqareer-access-code` / Value: رمز الوصول الفعلي
+
+## اختبار القبول الحقيقي
+
+نجاح `ping` لا يكفي. ارفع ملفًا ثم تأكد أن نتيجة Gemini تتضمن:
+
+- `analysisProfile`
+- `diagnosticSections`
+- عدة `findings`
+- `qualityTools`
+- `improvementPlan`
+- `monitoringPlan`
+- `dataRequests`
+
+عند فشل Gemini يبقى المحلل المحلي المتخصص ظاهرًا.

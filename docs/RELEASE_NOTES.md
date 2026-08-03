@@ -1,12 +1,43 @@
-# Release Notes - v0.6.1
+# Release Notes - v0.7.0
 
-## Phase 1-B2 Fix 1: Compact Visual Report
+## Phase 1-C1: Adaptive Deep Educational Analytics Engine
 
-- Removed fixed 297mm report-page heights.
-- Prevented blank interleaved print pages.
-- Added dynamic 1/2-page planning based on content volume.
-- Merged findings and plan for short reports.
-- Added compact single-action presentation.
-- Reduced vertical spacing and tightened information hierarchy.
-- Added friendly report titles and improved metadata extraction.
-- No Supabase or Gemini changes required.
+### التغيير الجذري
+
+- استبدال مسار التحليل السطحي بموجّه تكيفي ومحللات مستقلة لكل عائلة.
+- الإبقاء على القراءة والتنظيف والتحقق والأدلة والتقرير كبنية مشتركة فقط.
+- اعتماد `assets/deep-analysis.js` مصدر الحقيقة للحسابات والتحليل الحتمي.
+
+### المحللات
+
+- نتائج مادة واحدة ومكونات التقويم.
+- توزيع مستويات الأداء.
+- الأداء عبر المواد.
+- المؤشرات الإشرافية.
+- أعمال الطلبة.
+- التقارير الإشرافية السردية.
+- استبانات الرضا والاتجاهات.
+- الاحتياجات التدريبية.
+- تقييم البرامج والمبادرات.
+- السلوك والغياب والانضباط.
+- محلل تكيفي للأنواع الجديدة.
+
+### العمق التحليلي
+
+- إحصاءات وصفية متقدمة، ربيعات ومئينات وقيم متطرفة وشكل التوزيع.
+- حساسية حد الإتقان وفئات العلاج والإثراء.
+- رسوم متعددة بحسب النوع: أعمدة، اتجاهات، رادار، حرارة، باريتو، فجوة وBox Plot.
+- أدوات جودة مشروطة مع تفسير ناتجها.
+- قراءات تشخيصية واستنتاجات مرتبطة بالأدلة.
+- خطط متعددة الإجراءات والمتابعة وإعادة القياس والبدائل.
+
+### Gemini
+
+- توسيع العقد ليعيد ملف المنهج، أقسامًا تشخيصية، أدوات جودة مفسرة، خطة تحسين ومتابعة وطلبات بيانات.
+- منع إعادة حساب أرقام تخالف المحرك المحلي.
+- استمرار التحقق الخادمي من مراجع الأدلة.
+
+### النشر
+
+- يجب إعادة نشر وظيفة Supabase المرفقة.
+- لا توجد أسرار أو SQL أو Storage جديدة.
