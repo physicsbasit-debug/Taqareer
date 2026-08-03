@@ -1,5 +1,6 @@
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 const DEFAULT_MODEL = "gemini-2.5-flash";
+const DEFAULT_CLASSIFIER_MODEL = "gemini-2.5-flash-lite";
 const MAX_REQUEST_BYTES = 9_000_000;
 const MAX_IMAGE_COUNT = 4;
 const MAX_IMAGE_DATA_URL_LENGTH = 2_800_000;
@@ -391,10 +392,10 @@ function analysisInstructions(): string {
 7) عند ظهور نوع جديد، اقترح تعريفًا مختصرًا له بدل إجباره على نوع معروف.
 8) اكتب بالعربية الواضحة، ولا تعرض أسماء الأفراد أو تعيد كشف بيانات حُجبت.
 9) ابنِ تحليلًا عميقًا خاصًا بالنوع: لا تستخدم الإجراءات أو الأدوات نفسها للاستبانة والزيارة الإشرافية والنتائج والبرامج والاحتياجات التدريبية والسلوك.
-10) استخدم deterministicAnalysis بوصفه مصدر الحسابات والرسوم وأدوات الجودة الحتمية، ثم أضف تفسيرًا تربويًا لا تكرارًا للأرقام.
+10) استخدم deterministicAnalysis بوصفه مصدر الحسابات والرسوم وأدوات الجودة الحتمية، ثم أضف تفسيرًا تربويًا لا تكرارًا للأرقام. لا تعِد حساب الصفوف ولا تسرد كل مؤشر مرة أخرى.
 11) أنشئ analysisProfile يوضح منهج التحليل وكفاية البيانات والأبعاد والقرارات التي تدعمها.
 12) أنشئ 3 إلى 8 diagnosticSections، وكل قسم يفسر نمطًا أو علاقة أو فجوة أو اتساقًا مع آثار عملية وحدود صريحة.
-13) اجعل عدد الاستنتاجات الأساسية بين 4 و10 بحسب قوة البيانات، وخطة التحسين بين 3 و8 إجراءات متعددة المستويات عند الحاجة.
+13) اجعل عدد الاستنتاجات الأساسية بين 4 و8 بحسب قوة البيانات، وخطة التحسين بين 3 و6 إجراءات متعددة المستويات عند الحاجة. العمق في التفسير والربط، لا في تكرار العبارات.
 14) لكل إجراء: المشكلة، الفئة، الإجراء، المسؤول، الزمن، مؤشر النجاح، طريقة المتابعة، والخطة البديلة إذا لم يتحقق التحسن.
 15) أنشئ monitoringPlan من خط الأساس إلى إعادة القياس، وdataRequests لما يلزم جمعه لتأكيد الأسباب أو توسيع القرار.
 16) في الأنواع الجديدة، استخدم بنية الحقول والغرض المتوقع لبناء عقد تحليل خاص؛ لا تكتفِ بوصف الأعمدة ولا تفرض نوعًا معروفًا.
@@ -483,7 +484,10 @@ function visionInstructions(): string {
 }
 
 async function callGemini(operation: "analyze" | "vision_extract" | "classify", payload: Record<string, unknown>) {
-  const model = normalizeModelName(Deno.env.get("GEMINI_MODEL") || DEFAULT_MODEL);
+  const model = normalizeModelName(operation === "classify"
+    ? (Deno.env.get("GEMINI_CLASSIFIER_MODEL") || DEFAULT_CLASSIFIER_MODEL)
+    : (Deno.env.get("GEMINI_MODEL") || DEFAULT_MODEL));
+  const startedAt = performance.now();
 
   let instructions: string;
   let schema: Record<string, unknown>;
@@ -494,7 +498,7 @@ async function callGemini(operation: "analyze" | "vision_extract" | "classify", 
     const images = validateVisualPayload(payload);
     instructions = visionInstructions();
     schema = VISION_SCHEMA;
-    maxOutputTokens = 7000;
+    maxOutputTokens = 6000;
     userParts = [
       {
         text: `اقرأ المستندات المصورة التالية. سياق الطلب:\n${
@@ -519,12 +523,12 @@ async function callGemini(operation: "analyze" | "vision_extract" | "classify", 
   } else if (operation === "classify") {
     instructions = classificationInstructions();
     schema = CLASSIFICATION_SCHEMA;
-    maxOutputTokens = 1400;
+    maxOutputTokens = 900;
     userParts = [{ text: JSON.stringify(payload) }];
   } else {
     instructions = analysisInstructions();
     schema = ANALYSIS_SCHEMA;
-    maxOutputTokens = 10000;
+    maxOutputTokens = 7500;
     userParts = [{ text: JSON.stringify(payload) }];
   }
 
@@ -541,6 +545,11 @@ async function callGemini(operation: "analyze" | "vision_extract" | "classify", 
       responseJsonSchema: schema,
       maxOutputTokens,
       candidateCount: 1,
+      temperature: operation === "analyze" ? 0.2 : 0,
+      thinkingConfig: {
+        thinkingBudget: operation === "analyze" ? 1024 : 0,
+        includeThoughts: false,
+      },
     },
   });
 
@@ -562,6 +571,11 @@ async function callGemini(operation: "analyze" | "vision_extract" | "classify", 
     usage: raw.usageMetadata || null,
     requestId,
     provider: "gemini",
+    serverTiming: {
+      geminiMs: Math.round(performance.now() - startedAt),
+      payloadChars: JSON.stringify(payload).length,
+      thinkingBudget: operation === "analyze" ? 1024 : 0,
+    },
   };
 }
 
@@ -575,8 +589,10 @@ async function pingGemini(): Promise<Record<string, unknown>> {
     generationConfig: {
       // اختبار الاتصال لا يحتاج عقد JSON كاملًا. رفع الميزانية يمنع استهلاكها
       // بواسطة تفكير Gemini قبل إنتاج الرد النهائي القصير.
-      maxOutputTokens: 512,
+      maxOutputTokens: 128,
       candidateCount: 1,
+      temperature: 0,
+      thinkingConfig: { thinkingBudget: 0, includeThoughts: false },
     },
   });
 
