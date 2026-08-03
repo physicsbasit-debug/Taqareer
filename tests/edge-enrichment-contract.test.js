@@ -1,0 +1,11 @@
+const fs=require('fs');
+const path=require('path');
+const assert=require('assert');
+const source=fs.readFileSync(path.join(__dirname,'..','supabase','functions','analyze-educational-form','index.ts'),'utf8');
+assert.ok(source.includes('ENRICHMENT_DELTA_SCHEMA'));
+assert.ok(source.includes('operation === "enrich"'));
+assert.ok(source.includes('validateEnrichmentDelta'));
+assert.ok(source.includes('thinkingBudget: operation === "analyze" ? 1024 : operation === "enrich" ? 768 : 0'));
+assert.ok(source.includes('لا تنشئ خطة تدخل جديدة أو مرحلة متابعة جديدة'));
+assert.ok(source.includes('targetId'));
+console.log('PASS edge enrichment delta contract and target validation');

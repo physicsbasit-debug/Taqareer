@@ -6,9 +6,12 @@ assert.ok(app.includes('return 16;'),'known score tables should use a tiny conte
 assert.ok(app.includes('sampleRows: rows'));
 assert.ok(!app.includes('state.rows.slice(0, 220)'),'large raw-row payload must be removed');
 assert.ok(app.includes('ظهرت الحسابات والرسوم فورًا'));
-assert.ok(app.includes('إعادة التفسير الذكي فقط'));
+assert.ok(app.includes('إعادة تحسين Gemini فقط'));
+assert.ok(app.includes('analysis-delta-v2'));
+assert.ok(app.includes('TaqareerReconciliation.reconcile'));
 assert.ok(app.includes('cacheGet(cacheKey)'));
 assert.ok(edge.includes('gemini-2.5-flash-lite'));
-assert.ok(edge.includes('thinkingBudget: operation === "analyze" ? 1024 : 0'));
+assert.ok(edge.includes('thinkingBudget: operation === "analyze" ? 1024 : operation === "enrich" ? 768 : 0'));
+assert.ok(edge.includes('ENRICHMENT_DELTA_SCHEMA'));
 assert.ok(edge.includes('serverTiming'));
-console.log('PASS fast payload, progressive UI, cache and bounded thinking contract');
+console.log('PASS fast payload, progressive UI, reconciliation cache and bounded delta thinking contract');
