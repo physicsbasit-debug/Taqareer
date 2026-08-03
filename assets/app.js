@@ -76,8 +76,9 @@
   const state = {
     headers: [], rows: [], sourceName: "", rawText: "", narrativeText: "", delimiter: ",", type: formTypes.at(-1), confidence: 0,
     quality: { blockers: [], warnings: [], info: [], completeness: 0 },
-    analysis: null, aiResult: null, aiError: "", aiUsed: false,
-    localRecognition: null, aiRecognition: null, recognitionStatus: "محلي", recognitionRequestId: 0,
+    analysis: null, aiResult: null, aiError: "", aiUsed: false, aiPending: false,
+    performance: { spans: [], cacheHit: false, payloadChars: 0, aiUsage: null, aiModel: "" },
+    localRecognition: null, aiRecognition: null, recognitionStatus: "محلي", recognitionRequestId: 0, analysisRequestId: 0,
     sampleMaxScore: null, pendingSource: null, sourceMeta: null, pendingManualFileName: "", pendingVisualPreview: null
   };
 
@@ -98,6 +99,12 @@
     const el = $(id); el.textContent = text; el.classList.remove("hidden", "error"); if (error) el.classList.add("error");
   }
   function clearMessage(id) { $(id).classList.add("hidden"); }
+
+  function perfApi() { return window.TaqareerPerformance || null; }
+  function resetPerformance() { state.performance = { spans: [], cacheHit: false, payloadChars: 0, aiUsage: null, aiModel: "" }; }
+  function recordSpan(span) { if (span) state.performance.spans.push(span); return span; }
+  function formatDuration(ms) { return perfApi()?.formatDuration?.(ms) || `${Math.round(Number(ms) || 0)} مللي ثانية`; }
+  function yieldToUi() { return new Promise(resolve => requestAnimationFrame(() => resolve())); }
 
 
   function aiConfig() {
@@ -373,7 +380,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "0.8.1",
+      appVersion: "0.8.2",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -389,12 +396,21 @@
   }
 
   async function maybeVerifyRecognition(requestId) {
-    const shouldVerify = aiReady() && (state.type.id === "unknown" || state.confidence < 90 || state.sourceMeta?.mode === "narrative" || state.sourceMeta?.normalization?.applied);
+    const knownHighConfidence = state.type.id !== "unknown" && state.confidence >= 95;
+    const shouldVerify = aiReady() && !knownHighConfidence && (
+      state.type.id === "unknown" || state.confidence < 90 || state.sourceMeta?.mode === "narrative" || state.sourceMeta?.normalization?.applied
+    );
     if (!shouldVerify || !window.TaqareerAI?.classify) return;
     state.recognitionStatus = "جارٍ التحقق دلاليًا بواسطة Gemini…";
     renderReview();
     try {
-      const result = await window.TaqareerAI.classify(buildRecognitionPayload());
+      const payload = buildRecognitionPayload();
+      const cacheKey = perfApi() ? await perfApi().makeKey("classification", payload) : "";
+      const cached = cacheKey ? perfApi().cacheGet(cacheKey) : null;
+      const timer = perfApi()?.startSpan?.("التصنيف الذكي");
+      const result = cached || await window.TaqareerAI.classify(payload);
+      recordSpan(timer ? perfApi().endSpan(timer, { cacheHit: Boolean(cached) }) : null);
+      if (!cached && cacheKey) perfApi().cacheSet(cacheKey, result, 30 * 24 * 60 * 60 * 1000);
       if (requestId !== state.recognitionRequestId) return;
       const classification = result?.classification || result;
       const known = typeById(String(classification?.id || ""));
@@ -410,7 +426,7 @@
         state.quality = assessQuality(state.headers, state.rows, state.type, state.sourceMeta);
       }
       state.recognitionStatus = known
-        ? `تحقق هجين: المحرك المحلي + Gemini${adopt ? " · تم اعتماد التصنيف الدلالي" : " · التصنيف المحلي متسق"}`
+        ? `تحقق هجين: المحرك المحلي + Gemini${adopt ? " · تم اعتماد التصنيف الدلالي" : " · التصنيف المحلي متسق"}${cached ? " · من الذاكرة المؤقتة" : ""}`
         : "تحقق Gemini اقترح نوعًا جديدًا للمراجعة";
       state.quality.info = state.quality.info.filter(item => item.title !== "تحقق دلالي من النوع");
       state.quality.info.unshift({
@@ -815,74 +831,100 @@
     return /اسم.*طالب|اسم.*معلم|الرقم.*مدني|رقم.*طالب|هاتف|بريد|ايميل|عنوان|بطاقه|هوية|هويه|civil|student.?id|teacher.?id|phone|email/.test(value);
   }
 
+  function tableAiLimit() {
+    if (state.type.id === "unknown") return 60;
+    if (["supervision_indicator", "student_work", "survey", "training_needs", "program_evaluation", "behavior_attendance", "level_distribution", "cross_subject"].includes(state.type.id)) return 70;
+    return 16;
+  }
+
   function sanitizeRowsForAi(maskPersonalData = true) {
-    const headers = state.headers.slice(0, 35);
+    const headers = state.headers.slice(0, 28);
     const sensitive = new Set(headers.filter(isSensitiveHeader));
-    const rows = state.rows.slice(0, 220).map((row, rowIndex) => {
-      const clean = { _evidenceRef: `row:${rowIndex + 1}` };
+    const limit = tableAiLimit();
+    const sourceRows = state.rows.length <= limit
+      ? state.rows
+      : [...state.rows.slice(0, Math.ceil(limit / 2)), ...state.rows.slice(-Math.floor(limit / 2))];
+    const rows = sourceRows.map((row, rowIndex) => {
+      const originalIndex = state.rows.indexOf(row);
+      const clean = { _evidenceRef: `row:${Math.max(0, originalIndex) + 1}` };
       headers.forEach(header => {
-        let value = String(row[header] ?? "").slice(0, 500);
-        if (maskPersonalData && sensitive.has(header)) value = header.includes("اسم") ? `سجل ${rowIndex + 1}` : "[محجوب]";
+        let value = String(row[header] ?? "").slice(0, 280);
+        if (maskPersonalData && sensitive.has(header)) value = header.includes("اسم") ? `سجل ${Math.max(0, originalIndex) + 1}` : "[محجوب]";
         clean[header] = value;
       });
       return clean;
     });
     return {
       headers,
-      rows,
+      sampleRows: rows,
       rowCount: state.rows.length,
       sentRowCount: rows.length,
       maskedHeaders: [...sensitive],
+      sampling: state.rows.length > rows.length ? "بداية ونهاية البيانات مع الاعتماد على المؤشرات الحتمية لجميع السجلات" : "كل السجلات",
       truncated: state.rows.length > rows.length || state.headers.length > headers.length
     };
   }
 
   function narrativeLinesForAi(maskPersonalData = true) {
-    const source = String(state.narrativeText || state.rawText || "").slice(0, 42000);
-    const lines = source.split(/\r?\n/).map(line => line.trim()).filter(Boolean).slice(0, 450);
-    return lines.map((line, index) => ({
-      ref: `line:${index + 1}`,
+    const source = String(state.narrativeText || state.rawText || "").slice(0, 30000);
+    const allLines = source.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    const limit = 260;
+    const chosen = allLines.length <= limit
+      ? allLines.map((text, index) => ({ text, index }))
+      : [
+          ...allLines.slice(0, 180).map((text, index) => ({ text, index })),
+          ...allLines.slice(-80).map((text, offset) => ({ text, index: allLines.length - 80 + offset }))
+        ];
+    return chosen.map(item => ({
+      ref: `line:${item.index + 1}`,
       text: maskPersonalData
-        ? line.replace(/(اسم\s*(?:الطالب|المعلم)?\s*[:：-]?\s*)[^،؛\n]{3,80}/gi, "$1[محجوب]")
-        : line
+        ? item.text.replace(/(اسم\s*(?:الطالب|المعلم)?\s*[:：-]?\s*)[^،؛\n]{3,80}/gi, "$1[محجوب]")
+        : item.text
     }));
   }
 
   function compactDeterministicAnalysis(analysis) {
     if (!analysis) return null;
-    const copy = JSON.parse(JSON.stringify(analysis));
-    delete copy.localAnalysis;
-    delete copy.ai;
-    delete copy.rows;
-    delete copy.studentProfiles;
-    delete copy.sections;
-    delete copy.items;
-    delete copy.evidenceMap;
-    if (Array.isArray(copy.bins)) copy.bins = copy.bins.slice(0, 14);
-    if (Array.isArray(copy.charts)) copy.charts = copy.charts.slice(0, 8).map(chart => ({
-      ...chart,
-      data: Array.isArray(chart.data) ? chart.data.slice(0, 40) : chart.data
+    const metrics = (analysis.metrics || []).slice(0, 28).map(item => ({
+      id: item.id, label: item.label, value: item.value, note: item.note, format: item.format,
+      evidenceRef: item.evidenceRef || `metric:${item.id}`
     }));
-    if (Array.isArray(copy.findings)) copy.findings = copy.findings.slice(0, 12);
-    if (Array.isArray(copy.qualityTools)) copy.qualityTools = copy.qualityTools.slice(0, 8).map(tool => ({
-      ...tool,
-      output: Array.isArray(tool.output) ? tool.output.slice(0, 30) : tool.output
+    const keyIndicators = Object.fromEntries(metrics.map(item => [item.id, item.value]));
+    const charts = (analysis.charts || []).slice(0, 8).map(item => ({
+      id: item.id, type: item.type, title: item.title, description: item.description,
+      xKey: item.xKey, yKey: item.yKey, valueSuffix: item.valueSuffix,
+      data: Array.isArray(item.data) ? item.data.slice(0, 24) : item.data
     }));
-    if (Array.isArray(copy.improvementPlan)) copy.improvementPlan = copy.improvementPlan.slice(0, 8);
-    if (Array.isArray(copy.monitoringPlan)) copy.monitoringPlan = copy.monitoringPlan.slice(0, 8);
-    if (Array.isArray(copy.duplicates)) copy.duplicates = copy.duplicates.slice(0, 12);
-    if (Array.isArray(copy.correlations)) copy.correlations = copy.correlations.slice(0, 12);
-    return copy;
+    return {
+      version: analysis.version,
+      kind: analysis.kind,
+      typeId: analysis.typeId,
+      analysisProfile: analysis.analysisProfile,
+      executiveTitle: analysis.executiveTitle,
+      executiveSummary: analysis.executiveSummary,
+      keyIndicators,
+      metrics,
+      charts,
+      diagnosticSections: (analysis.diagnosticSections || []).slice(0, 8),
+      findings: (analysis.findings || []).slice(0, 10),
+      qualityTools: (analysis.qualityTools || []).slice(0, 8).map(tool => ({
+        id: tool.id, name: tool.name, conditionsMet: tool.conditionsMet, reason: tool.reason,
+        interpretation: tool.interpretation,
+        output: Array.isArray(tool.output) ? tool.output.slice(0, 16) : tool.output
+      })),
+      improvementPlan: (analysis.improvementPlan || []).slice(0, 8),
+      monitoringPlan: (analysis.monitoringPlan || []).slice(0, 8),
+      limitations: (analysis.limitations || []).slice(0, 12),
+      evidenceCatalog: Object.entries(analysis.evidenceMap || {}).slice(0, 100).map(([ref, text]) => ({ ref, text }))
+    };
   }
 
   function buildEvidenceCatalog(dataset, narrativeLines, deterministicAnalysis) {
     const refs = [];
-    (dataset?.rows || []).forEach(row => { if (row?._evidenceRef) refs.push(row._evidenceRef); });
+    (dataset?.sampleRows || []).forEach(row => { if (row?._evidenceRef) refs.push(row._evidenceRef); });
     (narrativeLines || []).forEach(line => { if (line?.ref) refs.push(line.ref); });
+    (deterministicAnalysis?.metrics || []).forEach(item => refs.push(item.evidenceRef || `metric:${item.id}`));
     (deterministicAnalysis?.evidenceCatalog || []).forEach(item => { if (item?.ref) refs.push(item.ref); });
-    Object.entries(deterministicAnalysis || {}).forEach(([key, value]) => {
-      if (["string", "number", "boolean"].includes(typeof value) || value === null) refs.push(`metric:${key}`);
-    });
     return [...new Set(refs)];
   }
 
@@ -890,9 +932,13 @@
     const dataset = sanitizeRowsForAi(maskPersonalData);
     const lines = narrativeLinesForAi(maskPersonalData);
     const deterministicAnalysis = compactDeterministicAnalysis(state.analysis);
-    return {
+    const payload = {
       locale: "ar-OM",
-      appVersion: "0.8.1",
+      appVersion: "0.8.2",
+      pipeline: {
+        mode: "fast-deep-analysis",
+        instruction: "اعتمد المؤشرات والرسوم الحتمية لجميع السجلات. استخدم العينة فقط لفهم البنية والسياق، ولا تعِد الحساب من الصفوف المرسلة."
+      },
       source: {
         name: state.sourceName,
         meta: state.sourceMeta || {},
@@ -904,23 +950,30 @@
         purpose: state.type.purpose,
         confidence: state.confidence
       },
-      quality: state.quality,
+      quality: {
+        completeness: state.quality?.completeness,
+        blockers: state.quality?.blockers || [],
+        warnings: (state.quality?.warnings || []).slice(0, 12),
+        info: (state.quality?.info || []).slice(0, 8)
+      },
       privacy: {
         personalDataMasked: maskPersonalData,
         maskedHeaders: dataset.maskedHeaders,
-        note: maskPersonalData ? "أزيلت الحقول المباشرة المعروفة قبل الإرسال. قد تبقى إشارات شخصية داخل النصوص الحرة وتحتاج مراجعة." : "طلب المستخدم إرسال المحتوى دون إخفاء تلقائي."
+        note: maskPersonalData ? "أزيلت الحقول المباشرة المعروفة قبل الإرسال." : "طلب المستخدم إرسال المحتوى دون إخفاء تلقائي."
       },
       data: isNarrativeMode()
-        ? { lines, originalLineCount: String(state.narrativeText || state.rawText || "").split(/\r?\n/).length }
+        ? { lines, originalLineCount: String(state.narrativeText || state.rawText || "").split(/\r?\n/).length, sentLineCount: lines.length }
         : dataset,
       deterministicAnalysis,
       availableEvidenceRefs: buildEvidenceCatalog(isNarrativeMode() ? null : dataset, isNarrativeMode() ? lines : null, deterministicAnalysis),
       evidenceReferenceGuide: {
-        rows: "row:N يشير إلى رقم السجل ضمن العينة المرسلة",
+        rows: "row:N يشير إلى سجل من العينة السياقية فقط",
         lines: "line:N يشير إلى السطر النصي المرسل",
-        metrics: "metric:NAME يشير إلى مؤشر محسوب داخل deterministicAnalysis"
+        metrics: "metric:NAME يشير إلى مؤشر محسوب حتميًا من كامل البيانات"
       }
     };
+    state.performance.payloadChars = JSON.stringify(payload).length;
+    return payload;
   }
 
   const evidenceMetricLabels = {
@@ -985,15 +1038,53 @@
     };
   }
 
-  async function enrichAnalysisWithAi() {
+  async function enrichAnalysisWithAi({ force = false } = {}) {
     if (!aiReady()) return null;
     const maskPersonalData = $("maskPersonalDataInput")?.checked !== false;
     const payload = buildAiAnalysisPayload(maskPersonalData);
-    const result = await window.TaqareerAI.analyze(payload);
-    state.aiResult = result;
+    const cacheKey = perfApi() ? await perfApi().makeKey("deep-analysis", payload) : "";
+    const cached = !force && cacheKey ? perfApi().cacheGet(cacheKey) : null;
+    if (cached) {
+      state.aiResult = cached.result || cached;
+      state.aiUsed = true;
+      state.aiError = "";
+      state.performance.cacheHit = true;
+      state.performance.aiUsage = cached.usage || null;
+      state.performance.aiModel = cached.model || "Gemini";
+      return state.aiResult;
+    }
+    const response = window.TaqareerAI.analyzeDetailed
+      ? await window.TaqareerAI.analyzeDetailed(payload)
+      : { result: await window.TaqareerAI.analyze(payload) };
+    state.aiResult = response.result;
     state.aiUsed = true;
     state.aiError = "";
-    return result;
+    state.performance.cacheHit = false;
+    state.performance.aiUsage = response.usage || null;
+    state.performance.aiModel = response.model || "Gemini";
+    if (response.clientTiming?.durationMs !== undefined) {
+      recordSpan({ name: "Gemini", durationMs: response.clientTiming.durationMs, cacheHit: false });
+    }
+    if (cacheKey) perfApi().cacheSet(cacheKey, { result: response.result, usage: response.usage, model: response.model });
+    return response.result;
+  }
+
+  async function retryAiOnly() {
+    if (!state.analysis || !aiReady()) return;
+    state.aiPending = true;
+    state.aiError = "";
+    renderResults();
+    try {
+      await enrichAnalysisWithAi({ force: true });
+    } catch (error) {
+      state.aiError = error.message || "تعذر التفسير الذكي الحي.";
+      state.aiResult = null;
+      state.aiUsed = false;
+    } finally {
+      state.aiPending = false;
+      renderResults();
+      updateAiStatusUi();
+    }
   }
 
   async function runAnalysis() {
@@ -1001,10 +1092,14 @@
     state.aiResult = null;
     state.aiError = "";
     state.aiUsed = false;
+    state.aiPending = false;
+    resetPerformance();
+    const analysisRequestId = ++state.analysisRequestId;
     const runButton = $("runAnalysisBtn");
     runButton.disabled = true;
 
     try {
+      const totalTimer = perfApi()?.startSpan?.("الزمن الكلي");
       const narrativeMode = isNarrativeMode();
       const narrativeText = narrativeMode ? $("narrativeTextReview").value.trim() : "";
       if (narrativeMode && narrativeText.length < 40) {
@@ -1025,6 +1120,7 @@
         throw new Error("محرك التحليل العميق غير محمل. أعد تحميل الصفحة بعد تحديث الملفات.");
       }
 
+      const localTimer = perfApi()?.startSpan?.("التحليل المحلي والرسوم");
       state.analysis = window.TaqareerDeepAnalytics.analyze({
         typeId: state.type.id,
         headers: state.headers,
@@ -1037,20 +1133,31 @@
         thresholdPct,
         quality: state.quality
       });
+      recordSpan(localTimer ? perfApi().endSpan(localTimer) : null);
+
+      // أظهر النتائج الحتمية فورًا؛ لا نجعل Gemini بوابة تعطل كل شيء.
+      state.aiPending = aiReady();
+      renderResults();
+      showPanel(4);
+      await yieldToUi();
 
       if (aiReady()) {
-        setMessage("setupMessage", "اكتمل التحليل المتخصص الحتمي. جارٍ تنفيذ القراءة التربوية العميقة عبر Gemini وربطها بالأدلة…");
         try {
           await enrichAnalysisWithAi();
+          if (analysisRequestId !== state.analysisRequestId) return;
         } catch (error) {
           state.aiError = error.message || "تعذر التحليل الذكي الحي.";
           state.aiResult = null;
           state.aiUsed = false;
+        } finally {
+          if (analysisRequestId === state.analysisRequestId) {
+            state.aiPending = false;
+            renderResults();
+          }
         }
       }
-
-      renderResults();
-      showPanel(4);
+      if (totalTimer) recordSpan(perfApi().endSpan(totalTimer));
+      renderPerformanceSummary();
     } catch (error) {
       setMessage("setupMessage", error.message || "تعذر تنفيذ التحليل العميق.", true);
     } finally {
@@ -1149,6 +1256,28 @@
     return items.filter(item => { const key = keyFn(item); if (!key || seen.has(key)) return false; seen.add(key); return true; });
   }
 
+  function renderPerformanceSummary() {
+    const panel = $("analysisTimingPanel");
+    if (!panel) return;
+    const spans = state.performance.spans || [];
+    const local = spans.find(item => item.name === "التحليل المحلي والرسوم");
+    const gemini = spans.find(item => item.name === "Gemini");
+    const total = spans.findLast ? spans.findLast(item => item.name === "الزمن الكلي") : [...spans].reverse().find(item => item.name === "الزمن الكلي");
+    const items = [];
+    if (local) items.push(`<span><strong>الحسابات والرسوم</strong>${formatDuration(local.durationMs)}</span>`);
+    if (state.performance.cacheHit) items.push(`<span><strong>التفسير الذكي</strong>مستعاد فورًا من الذاكرة المؤقتة</span>`);
+    else if (gemini) items.push(`<span><strong>Gemini</strong>${formatDuration(gemini.durationMs)}</span>`);
+    if (state.performance.payloadChars) items.push(`<span><strong>حمولة الذكاء</strong>${Math.max(1, Math.round(state.performance.payloadChars / 1024))} كيلوبايت</span>`);
+    if (total) items.push(`<span><strong>الإجمالي</strong>${formatDuration(total.durationMs)}</span>`);
+    panel.innerHTML = items.join("");
+    panel.classList.toggle("hidden", !items.length);
+  }
+
+  function bindRetryAiButton() {
+    const button = $("retryAiOnlyBtn");
+    if (button) button.onclick = retryAiOnly;
+  }
+
   function renderResults() {
     const a = state.analysis;
     const ai = state.aiResult;
@@ -1188,16 +1317,21 @@
       return `<article class="diagnostic-section-card"><div class="diagnostic-section-meta"><span>${escapeHtml(section.source || "تحليل متخصص")}</span><span>ثقة ${escapeHtml(section.confidence || "متوسطة")}</span></div><h5>${escapeHtml(section.title || "قراءة تفسيرية")}</h5><p>${escapeHtml(section.analysis || "")}</p>${evidence && evidence !== "لم يحدد مرجع دليل واضح." ? `<div class="soft-note">الدليل: ${escapeHtml(evidence)}</div>` : ""}${implications.length ? `<ul>${implications.map(item=>`<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}</article>`;
     }).join("");
 
-    $("analysisModeChip").textContent = ai ? "تحليل متخصص حتمي + تفسير عميق عبر Gemini" : "تحليل متخصص حتمي عميق";
+    $("analysisModeChip").textContent = state.aiPending ? "ظهرت النتائج المحلية · التفسير الذكي جارٍ" : (ai ? "تحليل متخصص حتمي + تفسير عميق عبر Gemini" : "تحليل متخصص حتمي عميق");
     $("analysisModeChip").className = ai ? "success-chip ai-result-chip" : "success-chip";
     const notice = $("aiResultNotice");
-    if (ai) {
+    if (state.aiPending) {
       notice.classList.remove("hidden", "error");
-      notice.innerHTML = `<strong>اكتملت القراءة التربوية المتخصصة</strong><span>استخدم Gemini خطة التحليل الخاصة بهذا النوع، بينما بقيت الإحصاءات وأدوات الجودة الأساسية محسوبة حتميًا.</span>`;
+      notice.innerHTML = `<strong>ظهرت الحسابات والرسوم فورًا</strong><span>يجري الآن بناء التفسير التربوي العميق في الخلفية. يمكنك مراجعة المؤشرات دون انتظار اكتمال Gemini.</span>`;
+    } else if (ai) {
+      notice.classList.remove("hidden", "error");
+      notice.innerHTML = `<strong>اكتملت القراءة التربوية المتخصصة${state.performance.cacheHit ? " من الذاكرة المؤقتة" : ""}</strong><span>استخدم Gemini خطة التحليل الخاصة بهذا النوع، بينما بقيت الإحصاءات وأدوات الجودة الأساسية محسوبة حتميًا.</span>`;
     } else if (state.aiError) {
       notice.classList.remove("hidden"); notice.classList.add("error");
-      notice.innerHTML = `<strong>اكتمل المحرك المتخصص المحلي</strong><span>تعذر التفسير الذكي الحي: ${escapeHtml(state.aiError)}. لم تُفقد النتائج أو أدوات الجودة.</span>`;
+      notice.innerHTML = `<strong>اكتمل المحرك المتخصص المحلي</strong><span>تعذر التفسير الذكي الحي: ${escapeHtml(state.aiError)}. لم تُفقد النتائج أو أدوات الجودة.</span><button id="retryAiOnlyBtn" class="secondary compact" type="button">إعادة التفسير الذكي فقط</button>`;
     } else { notice.classList.add("hidden"); notice.classList.remove("error"); }
+    bindRetryAiButton();
+    renderPerformanceSummary();
 
     $("executiveTitle").textContent = ai?.executiveTitle || a.executiveTitle;
     $("executiveSummary").textContent = ai?.executiveSummary || a.executiveSummary;
@@ -1277,7 +1411,7 @@
   function exportAnalysis() {
     const payload = {
       app: "تقارير",
-      version: "0.8.1",
+      version: "0.8.2",
       generatedAt: new Date().toISOString(),
       source: state.sourceName,
       sourceMeta: state.sourceMeta,
@@ -1289,7 +1423,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v0.8.1.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v0.8.2.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
@@ -1300,11 +1434,14 @@
       headers: [], rows: [], sourceName: "", rawText: "", narrativeText: "", delimiter: ",",
       type: formTypes.at(-1), confidence: 0,
       quality: { blockers: [], warnings: [], info: [], completeness: 0 },
-      analysis: null, aiResult: null, aiError: "", aiUsed: false,
+      analysis: null, aiResult: null, aiError: "", aiUsed: false, aiPending: false,
+      performance: { spans: [], cacheHit: false, payloadChars: 0, aiUsage: null, aiModel: "" },
       localRecognition: null, aiRecognition: null, recognitionStatus: "محلي", recognitionRequestId: state.recognitionRequestId + 1,
+      analysisRequestId: state.analysisRequestId + 1,
       sampleMaxScore: null, pendingSource: null, sourceMeta: null, pendingManualFileName: "", pendingVisualPreview: null
     });
     $("fileInput").value = ""; $("pasteInput").value = ""; $("manualTextInput").value = "";
+    $("analysisTimingPanel")?.classList.add("hidden");
     clearMessage("inputMessage"); clearMessage("setupMessage"); showPanel(1);
   }
 
@@ -1342,6 +1479,7 @@
     $("clearAiSettingsBtn").addEventListener("click", e => {
       e.preventDefault();
       window.TaqareerAI.clearConfig();
+      perfApi()?.clearCache?.();
       $("aiEndpointInput").value = "";
       $("aiAnonKeyInput").value = "";
       $("aiAccessCodeInput").value = "";

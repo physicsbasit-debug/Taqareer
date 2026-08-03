@@ -295,3 +295,10 @@ dialog::backdrop { background: rgba(12,22,42,.5); backdrop-filter: blur(3px); }
 .diagnostic-section-meta span{padding:4px 8px;border-radius:999px;background:#edf3f8;color:#27416f;font-size:.72rem;font-weight:800}
 .diagnostic-section-card ul{margin:0;padding-right:20px;color:var(--muted);line-height:1.75}
 @media(max-width:900px){.diagnostic-section-grid{grid-template-columns:1fr}}
+
+
+/* v0.8.2 fast deep analysis pipeline */
+.analysis-timing { display:flex; flex-wrap:wrap; gap:8px; margin:-5px 0 15px; }
+.analysis-timing span { display:grid; gap:2px; min-width:145px; padding:9px 12px; border:1px solid #dce5ee; border-radius:11px; background:#f8fbfd; color:#42536a; font-size:12px; }
+.analysis-timing strong { color:#142a4d; font-size:11px; }
+.ai-result-notice button { justify-self:start; margin-top:6px; }

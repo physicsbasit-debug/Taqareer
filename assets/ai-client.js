@@ -23,7 +23,7 @@
       endpoint: normalizeEndpoint(stored.endpoint || defaults.aiEndpoint || ""),
       anonKey: String(stored.anonKey || defaults.supabaseAnonKey || "").trim(),
       enabled: stored.enabled !== undefined ? Boolean(stored.enabled) : defaults.aiEnabledByDefault !== false,
-      timeoutMs: Number(stored.timeoutMs || defaults.requestTimeoutMs || 120000)
+      timeoutMs: Number(stored.timeoutMs || defaults.requestTimeoutMs || 90000)
     };
   }
 
@@ -75,6 +75,7 @@
     const accessCode = getAccessCode();
     if (accessCode) headers["x-taqareer-access-code"] = accessCode;
 
+    const startedAt = globalThis.performance?.now?.() ?? Date.now();
     try {
       const response = await fetch(config.endpoint, {
         method: "POST",
@@ -90,6 +91,8 @@
         error.status = response.status;
         throw error;
       }
+      const finishedAt = globalThis.performance?.now?.() ?? Date.now();
+      body.clientTiming = { durationMs: Math.max(0, finishedAt - startedAt) };
       return body;
     } catch (error) {
       if (error?.name === "AbortError") throw new Error("انتهت مهلة الاتصال بالذكاء الاصطناعي. أعد المحاولة أو استخدم التحليل المحلي.");
@@ -99,8 +102,12 @@
     }
   }
 
+  async function analyzeDetailed(payload) {
+    return invoke("analyze", payload);
+  }
+
   async function analyze(payload) {
-    const response = await invoke("analyze", payload);
+    const response = await analyzeDetailed(payload);
     return response.result;
   }
 
@@ -109,13 +116,17 @@
     return response.result;
   }
 
+  async function classifyDetailed(payload) {
+    return invoke("classify", payload);
+  }
+
   async function classify(payload) {
-    const response = await invoke("classify", payload);
+    const response = await classifyDetailed(payload);
     return response.result;
   }
 
   async function ping() {
-    const response = await invoke("ping", { clientVersion: "0.8.1" });
+    const response = await invoke("ping", { clientVersion: "0.8.2" });
     return response;
   }
 
@@ -127,8 +138,10 @@
     setAccessCode,
     getAccessCode,
     analyze,
+    analyzeDetailed,
     extractVisual,
     classify,
+    classifyDetailed,
     ping
   };
 })();
