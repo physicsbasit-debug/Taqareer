@@ -21,6 +21,33 @@ const ANALYSIS_SCHEMA = {
     },
     executiveTitle: { type: "string" },
     executiveSummary: { type: "string" },
+    analysisProfile: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        method: { type: "string" },
+        dataAdequacy: { type: "string" },
+        dimensions: { type: "array", items: { type: "string" } },
+        decisionUses: { type: "array", items: { type: "string" } }
+      },
+      required: ["method", "dataAdequacy", "dimensions", "decisionUses"]
+    },
+    diagnosticSections: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          title: { type: "string" },
+          analysis: { type: "string" },
+          evidenceRefs: { type: "array", items: { type: "string" } },
+          confidence: { type: "string", enum: ["مرتفعة", "متوسطة", "منخفضة"] },
+          implications: { type: "array", items: { type: "string" } },
+          limitations: { type: "array", items: { type: "string" } }
+        },
+        required: ["title", "analysis", "evidenceRefs", "confidence", "implications", "limitations"]
+      }
+    },
     findings: {
       type: "array",
       items: {
@@ -44,11 +71,14 @@ const ANALYSIS_SCHEMA = {
         type: "object",
         additionalProperties: false,
         properties: {
+          id: { type: "string" },
           name: { type: "string" },
           reason: { type: "string" },
-          conditionsMet: { type: "boolean" }
+          conditionsMet: { type: "boolean" },
+          interpretation: { type: "string" },
+          requiredData: { type: "array", items: { type: "string" } }
         },
-        required: ["name", "reason", "conditionsMet"]
+        required: ["id", "name", "reason", "conditionsMet", "interpretation", "requiredData"]
       }
     },
     improvementPlan: {
@@ -58,15 +88,34 @@ const ANALYSIS_SCHEMA = {
         additionalProperties: false,
         properties: {
           priority: { type: "string", enum: ["عالية", "متوسطة", "محددة"] },
+          issue: { type: "string" },
+          targetGroup: { type: "string" },
           action: { type: "string" },
           responsibleRole: { type: "string" },
           timeframe: { type: "string" },
           successIndicator: { type: "string" },
+          monitoringMethod: { type: "string" },
+          contingency: { type: "string" },
           evidenceRefs: { type: "array", items: { type: "string" } }
         },
-        required: ["priority", "action", "responsibleRole", "timeframe", "successIndicator", "evidenceRefs"]
+        required: ["priority", "issue", "targetGroup", "action", "responsibleRole", "timeframe", "successIndicator", "monitoringMethod", "contingency", "evidenceRefs"]
       }
     },
+    monitoringPlan: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          stage: { type: "string" },
+          timing: { type: "string" },
+          measure: { type: "string" },
+          owner: { type: "string" }
+        },
+        required: ["stage", "timing", "measure", "owner"]
+      }
+    },
+    dataRequests: { type: "array", items: { type: "string" } },
     cautions: { type: "array", items: { type: "string" } },
     suggestedNewType: {
       type: "object",
@@ -81,7 +130,7 @@ const ANALYSIS_SCHEMA = {
       required: ["needed", "nameAr", "purpose", "requiredFields", "analysisFamily"]
     }
   },
-  required: ["classification", "executiveTitle", "executiveSummary", "findings", "qualityTools", "improvementPlan", "cautions", "suggestedNewType"]
+  required: ["classification", "executiveTitle", "executiveSummary", "analysisProfile", "diagnosticSections", "findings", "qualityTools", "improvementPlan", "monitoringPlan", "dataRequests", "cautions", "suggestedNewType"]
 };
 
 const CLASSIFICATION_SCHEMA = {
@@ -341,8 +390,15 @@ function analysisInstructions(): string {
 6) راعِ نوع الاستمارة وهدفها؛ لا تطبق قالب تحليل موحدًا.
 7) عند ظهور نوع جديد، اقترح تعريفًا مختصرًا له بدل إجباره على نوع معروف.
 8) اكتب بالعربية الواضحة، ولا تعرض أسماء الأفراد أو تعيد كشف بيانات حُجبت.
-9) اجعل عدد الاستنتاجات الأساسية بين 3 و8 بحسب قوة البيانات، وخطة التحسين بين 2 و6 إجراءات.
-10) صرّح بالقيود ونقص البيانات بوضوح.`;
+9) ابنِ تحليلًا عميقًا خاصًا بالنوع: لا تستخدم الإجراءات أو الأدوات نفسها للاستبانة والزيارة الإشرافية والنتائج والبرامج والاحتياجات التدريبية والسلوك.
+10) استخدم deterministicAnalysis بوصفه مصدر الحسابات والرسوم وأدوات الجودة الحتمية، ثم أضف تفسيرًا تربويًا لا تكرارًا للأرقام.
+11) أنشئ analysisProfile يوضح منهج التحليل وكفاية البيانات والأبعاد والقرارات التي تدعمها.
+12) أنشئ 3 إلى 8 diagnosticSections، وكل قسم يفسر نمطًا أو علاقة أو فجوة أو اتساقًا مع آثار عملية وحدود صريحة.
+13) اجعل عدد الاستنتاجات الأساسية بين 4 و10 بحسب قوة البيانات، وخطة التحسين بين 3 و8 إجراءات متعددة المستويات عند الحاجة.
+14) لكل إجراء: المشكلة، الفئة، الإجراء، المسؤول، الزمن، مؤشر النجاح، طريقة المتابعة، والخطة البديلة إذا لم يتحقق التحسن.
+15) أنشئ monitoringPlan من خط الأساس إلى إعادة القياس، وdataRequests لما يلزم جمعه لتأكيد الأسباب أو توسيع القرار.
+16) في الأنواع الجديدة، استخدم بنية الحقول والغرض المتوقع لبناء عقد تحليل خاص؛ لا تكتفِ بوصف الأعمدة ولا تفرض نوعًا معروفًا.
+17) صرّح بالقيود ونقص البيانات بوضوح.`;
 }
 
 function validateEvidenceReferences(result: unknown, payload: Record<string, unknown>): unknown {
@@ -366,6 +422,20 @@ function validateEvidenceReferences(result: unknown, payload: Record<string, unk
       const limitations = Array.isArray(finding.limitations) ? finding.limitations.map(String) : [];
       limitations.push("لم يقدم النموذج مرجع دليل صالحًا من القائمة المتاحة؛ يحتاج الاستنتاج إلى مراجعة بشرية.");
       finding.limitations = [...new Set(limitations)];
+    }
+  }
+
+  const sections = Array.isArray(output.diagnosticSections) ? output.diagnosticSections as Array<Record<string, unknown>> : [];
+  for (const section of sections) {
+    const refs = Array.isArray(section.evidenceRefs) ? section.evidenceRefs.map(String) : [];
+    const valid = refs.filter((ref) => allowed.has(ref));
+    removed += refs.length - valid.length;
+    section.evidenceRefs = valid;
+    if (!valid.length && refs.length) {
+      section.confidence = "منخفضة";
+      const limitations = Array.isArray(section.limitations) ? section.limitations.map(String) : [];
+      limitations.push("حُذفت إحالات غير موجودة؛ يحتاج القسم إلى مراجعة بشرية.");
+      section.limitations = [...new Set(limitations)];
     }
   }
 
@@ -454,7 +524,7 @@ async function callGemini(operation: "analyze" | "vision_extract" | "classify", 
   } else {
     instructions = analysisInstructions();
     schema = ANALYSIS_SCHEMA;
-    maxOutputTokens = 6000;
+    maxOutputTokens = 10000;
     userParts = [{ text: JSON.stringify(payload) }];
   }
 
