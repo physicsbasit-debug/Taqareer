@@ -115,7 +115,7 @@
   }
 
   async function ping() {
-    const response = await invoke("ping", { clientVersion: "0.7.0" });
+    const response = await invoke("ping", { clientVersion: "0.7.1" });
     return response;
   }
 

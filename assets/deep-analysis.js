@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "0.7.0";
+  const VERSION = "0.7.1";
 
   function normalize(value) {
     return String(value ?? "")
