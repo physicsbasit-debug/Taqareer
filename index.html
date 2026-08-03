@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="تقارير - منصة التحليل التربوي الذكي للبيانات والاستمارات التعليمية" />
-  <title>تقارير | التحليل التربوي التكيفي العميق v0.8.1</title>
+  <title>تقارير | التحليل التربوي التكيفي العميق v0.8.2</title>
   <link rel="stylesheet" href="assets/styles.css" />
 </head>
 <body>
@@ -18,7 +18,7 @@
         </div>
       </a>
       <div class="top-actions">
-        <span class="version-badge">نسخة تشغيلية v0.8.1</span>
+        <span class="version-badge">نسخة تشغيلية v0.8.2</span>
         <span id="aiHeaderStatus" class="version-badge">الذكاء الاصطناعي غير مربوط</span>
         <button id="openAiSettingsTopBtn" class="ghost-button" type="button">إعداد الذكاء الاصطناعي</button>
         <button id="resetTopBtn" class="ghost-button" type="button">بدء تحليل جديد</button>
@@ -217,6 +217,7 @@
         </div>
 
         <div id="aiResultNotice" class="ai-result-notice hidden"></div>
+        <div id="analysisTimingPanel" class="analysis-timing hidden" aria-label="أزمنة مراحل التحليل"></div>
         <div id="metrics" class="metrics"></div>
 
         <div class="results-grid">
@@ -291,7 +292,7 @@
       </section>
     </main>
 
-    <footer><span>تقارير · v0.8.1</span><span>ذكاء اصطناعي قوي، وحسابات لا تفاوض الواقع.</span></footer>
+    <footer><span>تقارير · v0.8.2</span><span>ذكاء اصطناعي قوي، وحسابات لا تفاوض الواقع.</span></footer>
   </div>
 
   <dialog id="sheetDialog">
@@ -347,6 +348,7 @@
   <script src="assets/runtime-config.js"></script>
   <script src="assets/xlsx-lite.js"></script>
   <script src="assets/document-lite.js"></script>
+  <script src="assets/performance-pipeline.js"></script>
   <script src="assets/ai-client.js"></script>
   <script src="assets/mastery-metrics.js"></script>
   <script src="assets/deep-analysis.js"></script>

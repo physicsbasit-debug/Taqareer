@@ -1,10 +1,8 @@
-تقارير v0.8.1 - Phase 1-C2 Fix 1 Chart Completeness Guard
+تقارير v0.8.2 - Phase 1-C2 Fix 2 Fast Deep Analysis Pipeline
 
-1. فك ضغط حزمة changed_files_only.
-2. ارفع محتوياتها إلى جذر مستودع Taqareer.
-3. وافق على استبدال الملفات.
-4. لا تعدل .github/workflows/deploy.yml.
-5. انتظر نجاح GitHub Actions ثم نفذ تحديثًا قويًا للمتصفح.
-6. أعد تحليل aaaa.xlsx وتأكد من ظهور 10 نطاقات درجات و4 فئات تدخل كاملة.
-
-لا يحتاج هذا الإصدار إلى تعديل Supabase أو Gemini أو SQL أو Edge Function.
+1) ارفع محتويات حزمة changed_files_only إلى جذر المستودع الحالي ووافق على الاستبدال.
+2) لا تحذف .github/workflows/deploy.yml.
+3) انتظر نجاح GitHub Actions ثم نفذ Ctrl + Shift + R.
+4) في Supabase استبدل كود analyze-educational-form بمحتوى supabase/functions/analyze-educational-form/index.ts ثم Deploy function.
+5) لا توجد أسرار أو SQL جديدة. GEMINI_CLASSIFIER_MODEL اختياري فقط.
+6) أعد تحليل الملف نفسه مرتين: الأولى تختبر الزمن الفعلي، والثانية تختبر الذاكرة المؤقتة.
