@@ -1,8 +1,8 @@
 {
   "app": "تقارير",
-  "version": "0.8.2",
-  "phase": "Phase 1-C2 Fix 2 - Fast Deep Analysis Pipeline",
-  "releaseName": "Progressive Local Results, Compact Gemini Dossier and Cached AI Enrichment",
+  "version": "0.9.0",
+  "phase": "Phase 1-C3 - Analytical Reconciliation Architecture",
+  "releaseName": "Canonical Deterministic Contract with Targeted Gemini Delta Enrichment",
   "buildType": "static-github-pages-plus-supabase-edge-function",
   "supportedInputs": {
     "table": [
@@ -51,80 +51,84 @@
       "behavior-attendance-and-discipline",
       "adaptive-new-form-contract"
     ],
+    "canonicalContract": "deterministic-analysis-is-authoritative",
+    "aiContribution": "target-id-based-delta-enrichment-only",
+    "reconciliation": "field-level-merge-with-count-locks-and-semantic-deduplication",
     "routingRule": "form-type-routes-to-its-own-analysis-family-without-forcing-a-unified-procedure"
   },
   "features": [
     "adaptive-analysis-router",
     "specialized-form-analyzers",
     "deep-descriptive-statistics",
-    "quartiles-percentiles-and-outlier-analysis",
-    "distribution-shape-skewness-kurtosis-and-variation",
-    "mastery-sensitivity-and-intervention-segmentation",
-    "cross-group-and-cross-subject-comparison",
-    "radar-pareto-gap-priority-and-pdca-tools",
-    "narrative-evidence-quality-analysis",
-    "section-alignment-duplication-contradiction-and-date-checks",
-    "type-specific-diagnostic-sections",
-    "multi-layer-evidence-linked-findings",
-    "multi-action-improvement-plan",
-    "baseline-follow-up-remeasurement-monitoring-cycle",
-    "additional-data-requests",
-    "dynamic-new-form-contract-proposal",
-    "gemini-deep-type-aware-analysis",
+    "mastery-metrics-single-source-of-truth",
+    "chart-completeness-guard",
+    "print-safe-a4-and-letter-reporting",
+    "canonical-deterministic-analysis-contract",
+    "stable-target-identifiers",
+    "gemini-delta-only-enrichment",
+    "server-side-target-validation",
     "server-side-evidence-reference-validation",
-    "independent-deep-official-report",
-    "multiple-print-safe-charts",
-    "ministry-excel-normalization-engine",
-    "merged-cell-aware-header-reconstruction",
-    "personal-field-masking-before-ai",
-    "local-analysis-fallback",
-    "json-export",
-    "chart-data-contract-validation",
-    "bar-chart-row-completeness-guard",
-    "dense-primary-chart-layout",
-    "a4-and-letter-chart-visibility-checks",
+    "field-level-analytical-reconciliation",
+    "locked-score-report-counts",
+    "duplicate-intervention-rejection",
+    "duplicate-monitoring-rejection",
+    "semantic-deduplication-for-allowed-novel-findings",
+    "single-effective-analysis-model",
+    "late-response-guard",
+    "fingerprint-based-local-ai-result-cache",
     "progressive-local-results-before-ai-completion",
     "compact-type-aware-ai-dossier",
-    "high-confidence-classification-skip",
-    "fingerprint-based-local-ai-result-cache",
     "ai-only-retry-without-recalculation",
     "visible-stage-timing-and-payload-size",
-    "flash-lite-classification-default",
     "bounded-gemini-thinking-budget",
-    "stale-analysis-response-guard"
+    "personal-field-masking-before-ai",
+    "local-analysis-fallback"
   ],
   "runtime": {
     "frontend": "GitHub Pages static site",
     "aiGateway": "Supabase Edge Function",
     "aiProvider": "Google Gemini API",
     "defaultModel": "gemini-2.5-flash",
-    "pdfjs": "6.2.108 via jsDelivr, loaded only when PDF is opened",
-    "classifierModel": "gemini-2.5-flash-lite (default, optional override via GEMINI_CLASSIFIER_MODEL)",
-    "analysisThinkingBudget": 1024,
-    "classificationThinkingBudget": 0
+    "classifierModel": "gemini-2.5-flash-lite",
+    "enrichmentOperation": "enrich",
+    "enrichmentThinkingBudget": 768,
+    "legacyAnalyzeThinkingBudget": 1024,
+    "classificationThinkingBudget": 0,
+    "reconciliationContractVersion": "2.0.0"
   },
   "security": {
     "geminiKeyInBrowser": false,
     "originAllowlist": true,
     "sharedAccessCode": true,
     "personalFieldMaskingDefault": true,
-    "evidenceReferencesValidatedServerSide": true
+    "evidenceReferencesValidatedServerSide": true,
+    "targetIdsValidatedServerSide": true,
+    "deterministicCountsLockedClientSide": true
   },
   "acceptanceCoverage": {
     "analysisFamilies": 11,
     "adaptiveFallback": "new-form profiling, relevant exploratory analysis, data requests and contract proposal",
-    "scoreReports": "10 metrics, 4 charts, 5 findings, 6 quality tools, 4 intervention actions",
-    "levelDistribution": "group comparison, upper/lower levels, gaps and priorities",
-    "crossSubject": "subject ranking, comprehensive/specialized risk and descriptive relationships",
-    "supervisionIndicators": "domains, gap, radar, pareto, priority and PDCA",
-    "studentWork": "feedback, differentiation, progress, learning skills and product quality",
-    "supervisionNarrative": "evidence strength, alignment, duplication, contradictions, dates and actionability",
-    "survey": "Likert profile, item gaps, Pareto and conditional internal consistency",
-    "trainingNeeds": "importance x performance gap x beneficiary reach with impact follow-up",
-    "programEvaluation": "implementation, outcomes, impact, gap, PDCA and sustainability",
-    "behaviorAttendance": "Pareto, time trend, repeated cases and early-warning logic",
-    "chartCompleteness": "10 score bins + 4 intervention segments; each chart count must sum to the valid-record total and every rendered row must remain inside the printable card",
-    "fastPipeline": "local metrics render before delayed AI; identical analysis reuses cached AI result; score fixture payload reduced to 40.4% of legacy comparison payload"
+    "scoreReconciliation": "exactly 4 diagnostic sections, 5 findings, 4 interventions and 4 monitoring stages",
+    "duplicatePrevention": "Gemini cannot create parallel score interventions or monitoring cycles",
+    "invalidTargetHandling": "unknown target IDs are rejected before reconciliation",
+    "reportOutput": "one reconciled analysis, six print-safe pages for the score fixture",
+    "masteryFixture": "268 valid, 48 mastered, 220 not mastered, 17.91044776119403% raw spread, 17.9% display"
+  },
+  "performance": {
+    "knownScoreContextRows": 16,
+    "specializedTableContextRows": 70,
+    "newTypeContextRows": 60,
+    "narrativeContextLines": 260,
+    "cacheEntries": 8,
+    "cacheTtlDays": 7,
+    "resultsPresentation": "deterministic results first, targeted Gemini delta second",
+    "expectedBenefit": "smaller structured AI output and no duplicated report sections"
+  },
+  "backwardCompatibility": {
+    "legacyAnalyzeOperation": "retained for older clients",
+    "currentFrontendOperation": "enrich",
+    "databaseChanges": false,
+    "newSecretsRequired": false
   },
   "notYetEnabled": [
     "direct-word-export",
@@ -135,14 +139,5 @@
     "saved-dynamic-form-registry",
     "direct-rpt-reading",
     "legacy-doc-and-xls-reading"
-  ],
-  "performance": {
-    "knownScoreContextRows": 16,
-    "specializedTableContextRows": 70,
-    "newTypeContextRows": 60,
-    "narrativeContextLines": 260,
-    "cacheEntries": 8,
-    "cacheTtlDays": 7,
-    "resultsPresentation": "deterministic results first, Gemini enrichment second"
-  }
+  ]
 }
