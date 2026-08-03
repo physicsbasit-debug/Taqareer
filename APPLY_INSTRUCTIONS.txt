@@ -1,9 +1,10 @@
-تقارير v0.8.0 - Phase 1-C2 Mastery Metrics Contract
+تقارير v0.8.1 - Phase 1-C2 Fix 1 Chart Completeness Guard
 
-1) فك ضغط حزمة changed_files_only.
-2) ارفع كل محتوياتها إلى جذر مستودع Taqareer.
-3) وافق على استبدال الملفات الموجودة.
-4) لا تحذف .github/workflows/deploy.yml من مستودعك.
-5) انتظر نجاح GitHub Actions ثم حدّث صفحة التطبيق تحديثًا قويًا.
+1. فك ضغط حزمة changed_files_only.
+2. ارفع محتوياتها إلى جذر مستودع Taqareer.
+3. وافق على استبدال الملفات.
+4. لا تعدل .github/workflows/deploy.yml.
+5. انتظر نجاح GitHub Actions ثم نفذ تحديثًا قويًا للمتصفح.
+6. أعد تحليل aaaa.xlsx وتأكد من ظهور 10 نطاقات درجات و4 فئات تدخل كاملة.
 
-لا يلزم تعديل Supabase أو Edge Function أو أسرار Gemini أو SQL.
+لا يحتاج هذا الإصدار إلى تعديل Supabase أو Gemini أو SQL أو Edge Function.

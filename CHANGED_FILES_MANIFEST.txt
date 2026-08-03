@@ -1,21 +1,18 @@
-Phase 1-C2 v0.8.0 changed files
+Phase 1-C2 Fix 1 v0.8.1 changed files
 
+assets/report-system.js
+assets/app.js
+assets/deep-analysis.js
+assets/ai-client.js
 index.html
 manifest.json
 README.md
 APPLY_INSTRUCTIONS.txt
 CHANGED_FILES_MANIFEST.txt
-assets/mastery-metrics.js
-assets/deep-analysis.js
-assets/app.js
-assets/report-system.js
-assets/ai-client.js
-tests/mastery-metrics.test.js
-tests/mastery-integration.test.js
-tests/report-generation.test.js
-tests/deep-analysis.test.js
-tests/fixtures/aaaa-scores.json
-docs/MASTERY_METRICS_CONTRACT.md
-docs/ARCHITECTURE.md
 docs/RELEASE_NOTES.md
 docs/TEST_REPORT.md
+docs/CHART_COMPLETENESS_GUARD.md
+docs/taqareer_v0_8_1_chart_completeness_A4_preview.pdf
+docs/taqareer_v0_8_1_chart_completeness_Letter_preview.pdf
+tests/report-generation.test.js
+tests/chart-completeness.test.js

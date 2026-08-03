@@ -1,8 +1,8 @@
 {
   "app": "تقارير",
-  "version": "0.8.0",
-  "phase": "Phase 1-C1 Fix 2 - Cross-paper Print Engine",
-  "releaseName": "Adaptive Deep Educational Analytics Engine",
+  "version": "0.8.1",
+  "phase": "Phase 1-C2 Fix 1 - Chart Completeness Guard",
+  "releaseName": "Mastery Chart Completeness and Print Integrity",
   "buildType": "static-github-pages-plus-supabase-edge-function",
   "supportedInputs": {
     "table": [
@@ -78,7 +78,11 @@
     "merged-cell-aware-header-reconstruction",
     "personal-field-masking-before-ai",
     "local-analysis-fallback",
-    "json-export"
+    "json-export",
+    "chart-data-contract-validation",
+    "bar-chart-row-completeness-guard",
+    "dense-primary-chart-layout",
+    "a4-and-letter-chart-visibility-checks"
   ],
   "runtime": {
     "frontend": "GitHub Pages static site",
@@ -106,7 +110,8 @@
     "survey": "Likert profile, item gaps, Pareto and conditional internal consistency",
     "trainingNeeds": "importance x performance gap x beneficiary reach with impact follow-up",
     "programEvaluation": "implementation, outcomes, impact, gap, PDCA and sustainability",
-    "behaviorAttendance": "Pareto, time trend, repeated cases and early-warning logic"
+    "behaviorAttendance": "Pareto, time trend, repeated cases and early-warning logic",
+    "chartCompleteness": "10 score bins + 4 intervention segments; each chart count must sum to the valid-record total and every rendered row must remain inside the printable card"
   },
   "notYetEnabled": [
     "direct-word-export",
