@@ -1,46 +1,38 @@
-# إعداد Gemini لتطبيق تقارير v0.8.2
+# إعداد Gemini وSupabase لتقارير v0.9.0
 
-## الأسرار المطلوبة
+## الأسرار الحالية
 
-لا توجد أسرار إلزامية جديدة:
+لا تضف أسرارًا جديدة. تبقى:
 
 - `GEMINI_API_KEY`
 - `GEMINI_MODEL`
 - `TAQAREER_ACCESS_CODE`
 - `TAQAREER_ALLOWED_ORIGINS`
 
-يوجد سر اختياري فقط:
+والسر الاختياري للتصنيف:
 
 - `GEMINI_CLASSIFIER_MODEL`
 
-إذا لم تضفه، تستخدم الوظيفة تلقائيًا `gemini-2.5-flash-lite` للتصنيف السريع. يبقى `GEMINI_MODEL` للتحليل العميق والقراءة البصرية.
-
 ## تحديث الوظيفة
 
-1. افتح Supabase.
-2. اذهب إلى `Edge Functions > analyze-educational-form > Code > Edit function`.
-3. استبدل الكود كاملًا بمحتوى:
-   `supabase/functions/analyze-educational-form/index.ts`
-4. اضغط `Deploy function`.
-5. لا تغيّر `Verify JWT` أو الأسرار الحالية.
+1. افتح مشروع `taqareer` في Supabase.
+2. ادخل إلى `Edge Functions`.
+3. افتح `analyze-educational-form`.
+4. اختر `Code` ثم `Edit function`.
+5. احذف الكود السابق كاملًا.
+6. الصق محتوى `SUPABASE_FUNCTION_GEMINI_V0_7_0.txt`.
+7. اضغط `Deploy function`.
+8. اترك `Verify JWT` وفق الإعداد السابق للمشروع.
 
-## اختبار ping
+## اختبار الاتصال
 
-```json
-{
-  "operation": "ping",
-  "payload": { "clientVersion": "0.8.2" }
-}
-```
+أعد اختبار `ping` بنفس الرؤوس الحالية. لا يتغير رابط الوظيفة أو المفتاح العام أو رمز الوصول.
 
-Headers:
+## اختبار عقد المصالحة
 
-- Key: `Content-Type` / Value: `application/json`
-- Key: `x-taqareer-access-code` / Value: رمز الوصول الفعلي
+بعد نشر GitHub والوظيفة:
 
-## اختبار القبول
-
-- تظهر الحسابات والرسوم قبل انتهاء Gemini.
-- بعد اكتمال Gemini تظهر القراءة التفسيرية.
-- عند تحليل الملف نفسه مرة ثانية تظهر عبارة «من الذاكرة المؤقتة» ولا يرسل طلب تحليل جديد.
-- في بطاقة الأزمنة يظهر زمن الحساب المحلي وزمن Gemini وحجم الحمولة.
+1. حلل ملف الدرجات المرجعي.
+2. يجب أن تظهر رسالة `اكتملت المصالحة التحليلية`.
+3. يجب أن يبقى عدد التدخلات 4 ومراحل المتابعة 4.
+4. يجب ألا تظهر صفحة تدخلات مكررة من Gemini.
