@@ -1,0 +1,14 @@
+const fs=require('fs'),path=require('path'),assert=require('assert');
+const app=fs.readFileSync(path.join(__dirname,'..','assets','app.js'),'utf8');
+const edge=fs.readFileSync(path.join(__dirname,'..','supabase','functions','analyze-educational-form','index.ts'),'utf8');
+assert.ok(app.includes('tableAiLimit()'));
+assert.ok(app.includes('return 16;'),'known score tables should use a tiny context sample');
+assert.ok(app.includes('sampleRows: rows'));
+assert.ok(!app.includes('state.rows.slice(0, 220)'),'large raw-row payload must be removed');
+assert.ok(app.includes('ظهرت الحسابات والرسوم فورًا'));
+assert.ok(app.includes('إعادة التفسير الذكي فقط'));
+assert.ok(app.includes('cacheGet(cacheKey)'));
+assert.ok(edge.includes('gemini-2.5-flash-lite'));
+assert.ok(edge.includes('thinkingBudget: operation === "analyze" ? 1024 : 0'));
+assert.ok(edge.includes('serverTiming'));
+console.log('PASS fast payload, progressive UI, cache and bounded thinking contract');
