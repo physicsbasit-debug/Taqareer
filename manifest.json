@@ -1,8 +1,8 @@
 {
   "app": "تقارير",
-  "version": "0.6.0",
-  "phase": "1-B2",
-  "releaseName": "Independent Official A4 Report System",
+  "version": "0.6.1",
+  "phase": "1-B2 Fix 1",
+  "releaseName": "Compact Visual Official Report System",
   "buildType": "static-github-pages-plus-supabase-edge-function",
   "supportedInputs": {
     "table": [
@@ -50,10 +50,15 @@
     "local-analysis-fallback",
     "json-export",
     "independent-official-report-window",
-    "three-page-a4-report-layout",
     "human-readable-evidence-references",
     "print-safe-charts-and-tables",
-    "dashboard-print-blocker"
+    "dashboard-print-blocker",
+    "dynamic-one-or-two-page-report-layout",
+    "compact-visual-density",
+    "blank-page-prevention",
+    "single-action-visual-card",
+    "conditional-quality-tool-section",
+    "friendly-report-title"
   ],
   "runtime": {
     "frontend": "GitHub Pages static site",

@@ -348,7 +348,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "0.6.0",
+      appVersion: "0.6.1",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -849,7 +849,7 @@
     const deterministicAnalysis = compactDeterministicAnalysis(state.analysis);
     return {
       locale: "ar-OM",
-      appVersion: "0.6.0",
+      appVersion: "0.6.1",
       source: {
         name: state.sourceName,
         meta: state.sourceMeta || {},
@@ -1302,7 +1302,7 @@
   function exportAnalysis() {
     const payload = {
       app: "تقارير",
-      version: "0.6.0",
+      version: "0.6.1",
       generatedAt: new Date().toISOString(),
       source: state.sourceName,
       sourceMeta: state.sourceMeta,
@@ -1314,7 +1314,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v0.6.0.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v0.6.1.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }

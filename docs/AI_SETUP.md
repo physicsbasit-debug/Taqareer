@@ -1,4 +1,4 @@
-# إعداد Gemini لتطبيق تقارير v0.5.1
+# إعداد Gemini لتطبيق تقارير v0.6.1
 
 ## الأسرار المطلوبة في Supabase
 
@@ -33,7 +33,7 @@ TAQAREER_ALLOWED_ORIGINS
 ```json
 {
   "operation": "ping",
-  "payload": { "clientVersion": "0.5.1" }
+  "payload": { "clientVersion": "0.6.1" }
 }
 ```
 

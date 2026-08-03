@@ -1,27 +1,12 @@
-# Release Notes - v0.6.0
+# Release Notes - v0.6.1
 
-## Phase 1-B2: Independent Official Report System
+## Phase 1-B2 Fix 1: Compact Visual Report
 
-### Added
-
-- Independent A4 report generator.
-- Three-page official report layout.
-- Human-readable evidence reference conversion.
-- Arabic quality-tool names.
-- Fixed-width print-safe improvement plan.
-- Dedicated report toolbar for printing or saving PDF.
-- Dashboard print blocker.
-
-### Changed
-
-- Replaced direct dashboard printing with `فتح التقرير الرسمي`.
-- Limited the official report to priority findings and actionable plan items.
-- Updated app and export version to `0.6.0`.
-
-### Not changed
-
-- Excel normalization logic.
-- Form recognition logic.
-- Supabase Edge Function.
-- Gemini secrets or model configuration.
-- Deterministic calculations.
+- Removed fixed 297mm report-page heights.
+- Prevented blank interleaved print pages.
+- Added dynamic 1/2-page planning based on content volume.
+- Merged findings and plan for short reports.
+- Added compact single-action presentation.
+- Reduced vertical spacing and tightened information hierarchy.
+- Added friendly report titles and improved metadata extraction.
+- No Supabase or Gemini changes required.

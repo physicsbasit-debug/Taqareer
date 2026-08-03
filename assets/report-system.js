@@ -2,7 +2,7 @@
   "use strict";
 
   const APP_NAME = "تقارير";
-  const VERSION = "0.6.0";
+  const VERSION = "0.6.1";
 
   function escapeHtml(value) {
     return String(value ?? "").replace(/[&<>'"]/g, char => ({
@@ -69,11 +69,11 @@
     const title = sourceMeta.reportTitle || sourceMeta.metadata?.title || sourceMeta.title || "";
     return {
       title: clampText(title || `تقرير التحليل التربوي - ${context.type?.name || "نموذج تربوي"}`, 180),
-      school: capture([/المدرسة\s*[:：-]?\s*([^|]{3,90})/i, /مدرسة\s+([^|]{3,90})/i]),
-      subject: capture([/المادة\s*[:：-]?\s*([^|]{2,60})/i, /لمادة\s+([^|]{2,60})/i]),
+      school: capture([/المدرسة\s*[:：-]?\s*([^|]{3,90})/i, /([^|]{3,70}الصفوف\s*\([^)]*\))/i, /مدرسة\s+([^|]{3,90})/i]),
+      subject: capture([/مادة\s+دراسية\s*\(\s*([^)]+?)\s*\)/i, /المادة\s*[:：-]?\s*\(?\s*([^)|]{2,45})/i, /لمادة\s+\(?\s*([^)|]{2,45})/i]),
       grade: capture([/الصف\s*[:：-]?\s*([^|\-]{1,35})/i]),
       academicYear: capture([/(20\d{2}\s*[\/]\s*20\d{2})/, /العام\s*الدراس[يى]\s*[:：-]?\s*([^|\-]{4,15})/i]),
-      period: capture([/الفصل\s*الدراس[يى]\s*[:：-]?\s*(الأول|الاول|الثاني)/i, /الفترة\s*[:：-]?\s*([^|\-]{2,35})/i]),
+      period: capture([/امتحان\s+نهاية\s+الفصل\s+الدراس[يى]\s+(الأول|الاول|الثاني)/i, /الفصل\s*الدراس[يى]\s*[:：-]?\s*(الأول|الاول|الثاني)/i, /الفترة\s*[:：-]?\s*([^|\-]{2,35})/i]),
       sourceName: context.sourceName || "—"
     };
   }
@@ -293,7 +293,8 @@
       cautions: reportCautions(context),
       analysisMode: context.aiResult ? "تحليل هجين: حسابات حتمية وقراءة تربوية ذكية" : "تحليل حتمي محلي",
       completeness: context.quality?.completeness ?? 0,
-      sourceName: context.sourceName || "—"
+      sourceName: context.sourceName || "—",
+      analysisKind: analysis.kind || "unknown"
     };
   }
 
@@ -373,12 +374,132 @@
     return cautions.map(item => `<li>${escapeHtml(item)}</li>`).join("");
   }
 
+  function shortReportTitle(data) {
+    const subject = data.meta.subject && !/غير محدد/.test(data.meta.subject) ? data.meta.subject : "";
+    const grade = data.meta.grade && !/غير محدد/.test(data.meta.grade) ? data.meta.grade : "";
+    if (data.analysisKind === "scores") return ["تقرير تحليل نتائج", subject ? `مادة ${subject}` : "مكوّن تقويمي", grade ? `- الصف ${grade}` : ""].filter(Boolean).join(" ");
+    if (data.analysisKind === "narrative") return ["تقرير التحليل الإشرافي السردي", subject ? `- ${subject}` : ""].filter(Boolean).join(" ");
+    if (data.analysisKind === "levels") return ["تقرير توزيع مستويات الأداء", subject ? `- ${subject}` : ""].filter(Boolean).join(" ");
+    return `تقرير التحليل التربوي - ${data.typeName}`;
+  }
+
+  function reportLayout(data) {
+    const findingsChars = data.findings.reduce((sum, item) => sum + String(item.title || "").length + String(item.statement || "").length + String(item.evidence || "").length + String(item.impact || "").length, 0);
+    const planChars = data.plan.reduce((sum, item) => sum + String(item.action || "").length + String(item.successIndicator || "").length, 0);
+    const single = data.findings.length <= 2 && data.plan.length <= 1 && data.qualityTools.length <= 1 && findingsChars <= 1500 && planChars <= 800 && data.executiveSummary.length <= 950;
+    const mode = single ? "single" : "double";
+    return { mode, single, extended: false, totalPages: single ? 1 : 2 };
+  }
+
+  function renderCompactFindings(findings, startIndex = 0) {
+    if (!findings.length) return `<div class="empty-state">لم تُنتج استنتاجات قابلة للإدراج في التقرير الرسمي.</div>`;
+    return findings.map((item, index) => {
+      const evidence = item.evidence || item.statement || "يحتاج الدليل إلى مراجعة قبل الاعتماد.";
+      return `<article class="insight-card">
+        <div class="insight-number">${startIndex + index + 1}</div>
+        <div class="insight-body">
+          <div class="insight-head"><h3>${escapeHtml(item.title)}</h3><span>${escapeHtml(item.confidence)}</span></div>
+          ${item.statement ? `<p>${escapeHtml(clampText(item.statement, 260))}</p>` : ""}
+          <div class="insight-evidence"><strong>الدليل:</strong> ${escapeHtml(clampText(evidence, 260))}</div>
+          ${item.impact ? `<div class="insight-impact"><strong>الأثر:</strong> ${escapeHtml(clampText(item.impact, 220))}</div>` : ""}
+        </div>
+      </article>`;
+    }).join("");
+  }
+
+  function renderPlanBlock(plan) {
+    if (!plan.length) return `<div class="empty-state compact">لا توجد خطة تحسين جاهزة للاعتماد.</div>`;
+    if (plan.length === 1) {
+      const item = plan[0];
+      return `<article class="single-action">
+        <div class="single-action-top"><span class="priority ${normalize(item.priority).includes("عالي") ? "high" : "medium"}">${escapeHtml(item.priority)}</span><h3>${escapeHtml(item.action)}</h3></div>
+        <div class="single-action-meta">
+          <div><span>المسؤول</span><strong>${escapeHtml(item.responsibleRole)}</strong></div>
+          <div><span>الإطار الزمني</span><strong>${escapeHtml(item.timeframe)}</strong></div>
+          <div><span>مؤشر النجاح</span><strong>${escapeHtml(item.successIndicator)}</strong></div>
+        </div>
+      </article>`;
+    }
+    return `<table class="plan-table"><thead><tr><th>الأولوية</th><th>الإجراء</th><th>المسؤول</th><th>الزمن</th><th>مؤشر النجاح</th></tr></thead><tbody>${renderPlan(plan)}</tbody></table>`;
+  }
+
+  function renderDecisionSupport(data) {
+    const tools = data.qualityTools.length ? `<section class="support-box"><h3>أدوات الجودة</h3><div class="tool-list">${renderTools(data.qualityTools)}</div></section>` : "";
+    const cautions = `<section class="support-box"><h3>حدود التحليل</h3><ul class="caution-list">${renderCautions(data.cautions)}</ul></section>`;
+    return `<div class="support-grid ${data.qualityTools.length ? "" : "single"}">${tools}${cautions}</div>`;
+  }
+
+  function reportHeader(data, title, subtitle = "") {
+    return `<div class="page-accent"></div>
+      <header class="report-header">
+        <div class="brand"><div class="brand-mark">ت</div><div><strong>${APP_NAME}</strong><span>منصة التحليل التربوي الذكي</span></div></div>
+        <div class="header-title"><h2>${escapeHtml(title)}</h2>${subtitle ? `<span>${escapeHtml(subtitle)}</span>` : ""}</div>
+        <div class="report-code">${escapeHtml(data.reportId)}<br>${escapeHtml(data.generatedAt)}</div>
+      </header>`;
+  }
+
+  function pageFooter(data, page, total) {
+    return `<footer class="page-footer"><span>${APP_NAME} - تقرير رسمي قابل للمراجعة</span><span>صفحة ${page} من ${total}</span></footer>`;
+  }
+
   function buildReportHtml(context, options = {}) {
     const data = buildReportData(context);
     const autoPrint = options.autoPrint === true;
-    const totalPages = 3;
+    const layout = reportLayout(data);
+    const totalPages = layout.totalPages;
     const chartTotal = data.chartItems.reduce((sum, item) => sum + Number(item.value || 0), 0);
-    const reportTitle = data.meta.title || `تقرير التحليل التربوي - ${data.typeName}`;
+    const reportTitle = shortReportTitle(data);
+    const sourceTitle = data.meta.title && normalize(data.meta.title) !== normalize(reportTitle) ? data.meta.title : "";
+    const overviewFindings = layout.single ? [] : data.findings.slice(0, 2);
+    const detailFindings = layout.single ? data.findings : data.findings.slice(2);
+
+    const overviewCore = `
+      ${reportHeader(data, "التقرير التحليلي", data.typeName)}
+      <div class="title-zone"><h1>${escapeHtml(reportTitle)}</h1>${sourceTitle ? `<p>${escapeHtml(clampText(sourceTitle, 220))}</p>` : ""}</div>
+      <div class="meta-grid">${renderMeta(data.meta, data)}</div>
+      <div class="executive-row">
+        <div class="executive-copy"><div class="mini-title">الملخص التنفيذي</div><h2>${escapeHtml(data.executiveTitle)}</h2><p>${escapeHtml(data.executiveSummary)}</p></div>
+        <div class="judgment ${escapeHtml(data.judgment.tone)}"><span>الحكم العام</span><strong>${escapeHtml(data.judgment.label)}</strong><small>${escapeHtml(data.judgment.note)}</small></div>
+      </div>
+      <div class="metrics">${renderMetrics(data.metrics)}</div>
+      <div class="chart-box"><div class="chart-heading"><strong>${escapeHtml(data.chartTitle)}</strong><span>${escapeHtml(chartTotal)} سجلًا أو تكرارًا</span></div><div class="chart">${renderChart(data.chartItems)}</div></div>
+      <div class="method-note"><strong>منهجية القراءة:</strong> ${escapeHtml(data.analysisMode)}. اكتمال البيانات الأساسية ${escapeHtml(data.completeness)}%. لا تُنسب الأسباب الجذرية إلى الدرجات وحدها دون أدلة إضافية.</div>
+      ${overviewFindings.length ? `<div class="section-divider overview-divider"><span>أبرز النتائج</span></div><div class="insights-grid overview-insights">${renderCompactFindings(overviewFindings, 0)}</div>` : ""}`;
+
+    const compactDecisionCore = `
+      <div class="section-divider"><span>النتائج ذات الأولوية وخطة التحسين</span></div>
+      <div class="insights-grid compact-insights">${renderCompactFindings(data.findings)}</div>
+      ${renderPlanBlock(data.plan)}
+      ${renderDecisionSupport(data)}
+      <div class="followup-strip"><strong>إعادة القياس:</strong> ينفذ بعد التدخل باستخدام الأداة نفسها أو أداة مكافئة، مع مقارنة المؤشرات قبل التنفيذ وبعده.</div>
+      <div class="approval"><div>إعداد التقرير</div><div>مراجعة واعتماد</div><div>تاريخ المتابعة</div></div>`;
+
+    const pageOne = layout.single
+      ? `<section class="report-sheet single-sheet">${overviewCore}${compactDecisionCore}${pageFooter(data, 1, totalPages)}</section>`
+      : `<section class="report-sheet">${overviewCore}${pageFooter(data, 1, totalPages)}</section>`;
+
+    const findingsPage = layout.single ? "" : `<section class="report-sheet">
+      ${reportHeader(data, "القراءة التربوية واتخاذ القرار", data.typeName)}
+      <div class="section-heading"><div><span>النتائج الرئيسة</span><h1>الاستنتاجات ذات الأولوية</h1></div><p>مختصرة، مسندة، ومهيأة لاتخاذ إجراء واضح.</p></div>
+      <div class="insights-grid">${renderCompactFindings(detailFindings, overviewFindings.length)}</div>
+      ${layout.extended ? `<div class="professional-note"><strong>تنبيه مهني:</strong> الثقة تعبّر عن قوة الإسناد داخل البيانات المتاحة، ولا تعني إثبات السببية أو تشخيص حالة فردية.</div>` : `
+      <div class="section-divider"><span>خطة التحسين والمتابعة</span></div>
+      ${renderPlanBlock(data.plan)}
+      ${renderDecisionSupport(data)}
+      <div class="followup-strip"><strong>إعادة القياس:</strong> ينفذ بعد التدخل باستخدام الأداة نفسها أو أداة مكافئة، مع مقارنة المؤشرات قبل التنفيذ وبعده.</div>
+      <div class="approval"><div>إعداد التقرير</div><div>مراجعة واعتماد</div><div>تاريخ المتابعة</div></div>`}
+      ${pageFooter(data, 2, totalPages)}
+    </section>`;
+
+    const planPage = layout.extended ? `<section class="report-sheet">
+      ${reportHeader(data, "خطة التحسين والمتابعة", "إجراءات قابلة للتنفيذ والقياس")}
+      <div class="section-heading compact"><div><span>الخطة المقترحة</span><h1>من النتائج إلى التنفيذ</h1></div><p>ترتيب عملي للأولوية والمسؤول والزمن ومؤشر النجاح.</p></div>
+      ${renderPlanBlock(data.plan)}
+      ${renderDecisionSupport(data)}
+      <div class="followup-strip"><strong>إعادة القياس:</strong> ينفذ بعد التدخل باستخدام الأداة نفسها أو أداة مكافئة، مع مقارنة المؤشرات قبل التنفيذ وبعده.</div>
+      <div class="approval"><div>إعداد التقرير</div><div>مراجعة واعتماد</div><div>تاريخ المتابعة</div></div>
+      ${pageFooter(data, 3, totalPages)}
+    </section>` : "";
 
     return `<!doctype html>
 <html lang="ar" dir="rtl">
@@ -387,132 +508,43 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${escapeHtml(reportTitle)} | ${APP_NAME}</title>
   <style>
-    :root{--navy:#172a55;--royal:#294897;--teal:#15796f;--gold:#b8862d;--ink:#182238;--muted:#5e687b;--line:#d9dee7;--soft:#f5f7fa;--danger:#a33a31;--warning:#8a620e;--positive:#12675f}
+    :root{--navy:#14284f;--royal:#27499a;--teal:#14796f;--gold:#bb8a2c;--ink:#182238;--muted:#5f697b;--line:#d8dee8;--soft:#f5f7fa;--danger:#a33b33;--warning:#8a620e;--positive:#12675f}
     *{box-sizing:border-box}
-    html,body{margin:0;background:#eef1f5;color:var(--ink);font-family:Tahoma,Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    html,body{margin:0;background:#edf1f6;color:var(--ink);font-family:Tahoma,Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
     body{direction:rtl}
-    .report-toolbar{position:sticky;top:0;z-index:20;display:flex;justify-content:center;gap:10px;padding:12px;background:rgba(23,42,85,.95);box-shadow:0 5px 18px rgba(0,0,0,.15)}
-    .report-toolbar button{border:0;border-radius:8px;padding:10px 18px;font-weight:800;cursor:pointer}
-    .report-toolbar .print{background:#fff;color:var(--navy)}
-    .report-toolbar .close{background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.3)}
-    .report-document{width:210mm;margin:16px auto;background:#fff;box-shadow:0 12px 36px rgba(18,30,55,.15)}
-    .report-page{position:relative;width:210mm;height:297mm;padding:13mm 13mm 14mm;overflow:hidden;background:#fff;page-break-after:always}
-    .report-page:last-child{page-break-after:auto}
-    .page-accent{height:4px;background:linear-gradient(90deg,var(--navy),var(--royal),var(--teal));margin:-13mm -13mm 8mm}
-    .report-header{display:grid;grid-template-columns:1fr auto;align-items:start;gap:15px;padding-bottom:5mm;border-bottom:1.5px solid var(--navy)}
-    .brand{display:flex;align-items:center;gap:10px}
-    .brand-mark{width:40px;height:40px;display:grid;place-items:center;border-radius:8px;color:#fff;background:var(--navy);font-size:23px;font-weight:900}
-    .brand strong{display:block;font-size:19px;color:var(--navy)}
-    .brand span{display:block;margin-top:2px;color:var(--muted);font-size:10px}
-    .report-code{text-align:left;direction:ltr;color:var(--muted);font-size:9px;line-height:1.7}
-    .report-title{margin:6mm 0 3mm;font-size:22px;line-height:1.45;color:var(--navy)}
-    .report-subtitle{margin:0;color:var(--muted);font-size:11px;line-height:1.7}
-    .meta-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin:5mm 0;border:1px solid var(--line);background:#fff}
-    .meta-item{min-height:15mm;padding:3mm 4mm;border-left:1px solid var(--line);border-bottom:1px solid var(--line)}
-    .meta-item:nth-child(3n){border-left:0}.meta-item:nth-last-child(-n+3){border-bottom:0}
-    .meta-item span{display:block;color:var(--muted);font-size:9px}.meta-item strong{display:block;margin-top:2px;font-size:10.5px;line-height:1.5}
-    .section-title{display:flex;align-items:center;gap:8px;margin:0 0 3mm;color:var(--navy);font-size:15px}
-    .section-title:before{content:"";width:4px;height:18px;background:var(--gold);border-radius:2px}
-    .executive{display:grid;grid-template-columns:1fr 47mm;gap:5mm;margin-bottom:5mm}
-    .executive-copy{padding:5mm;border:1px solid var(--line);border-right:4px solid var(--royal);background:#fbfcfe}
-    .executive-copy h2{margin:0 0 2mm;font-size:15px;color:var(--navy)}
-    .executive-copy p{margin:0;font-size:10.5px;line-height:1.85;color:#3f4a5d}
-    .judgment{display:flex;flex-direction:column;justify-content:center;padding:5mm;color:#fff;background:var(--navy)}
-    .judgment.positive{background:var(--positive)}.judgment.warning{background:var(--warning)}.judgment.danger{background:var(--danger)}
-    .judgment span{font-size:9px;opacity:.8}.judgment strong{margin:2mm 0;font-size:16px;line-height:1.45}.judgment small{font-size:9px;line-height:1.6;opacity:.9}
-    .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:3mm;margin:0 0 5mm}
-    .metric-card{padding:4mm;border:1px solid var(--line);border-top:3px solid var(--royal);background:#fff}
-    .metric-card span{display:block;color:var(--muted);font-size:9px}.metric-card strong{display:block;margin:2mm 0 1mm;color:var(--navy);font-size:19px}.metric-card small{display:block;color:var(--teal);font-size:8.5px}
-    .chart-box{padding:4mm 5mm;border:1px solid var(--line);background:#fff}
-    .chart-heading{display:flex;justify-content:space-between;align-items:center;margin-bottom:3mm}
-    .chart-heading strong{color:var(--navy);font-size:12px}.chart-heading span{color:var(--muted);font-size:9px}
-    .chart{display:grid;gap:2.3mm}
-    .chart-row{display:grid;grid-template-columns:34mm 1fr 14mm;align-items:center;gap:3mm}
-    .chart-label{font-size:9px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.chart-track{height:8px;background:#e8ebf0;overflow:hidden}.chart-track span{display:block;height:100%;background:linear-gradient(90deg,var(--royal),var(--teal))}.chart-value{text-align:left;font-size:9px;font-weight:800;color:var(--navy)}
-    .method-note{margin-top:4mm;padding:3mm 4mm;border-right:3px solid var(--teal);background:#f2f8f7;color:#43505d;font-size:8.8px;line-height:1.7}
-    .finding-list{display:grid;gap:3mm}
-    .finding-row{display:grid;grid-template-columns:9mm 1fr;border:1px solid var(--line);background:#fff;break-inside:avoid}
-    .finding-index{display:grid;place-items:center;color:#fff;background:var(--navy);font-size:12px;font-weight:900}
-    .finding-content{padding:3.5mm 4mm}
-    .finding-heading{display:flex;justify-content:space-between;gap:10px;align-items:start}.finding-heading h3{margin:0;color:var(--navy);font-size:11.5px;line-height:1.5}.finding-heading span{flex:none;padding:1mm 2mm;background:#e9f5f2;color:var(--teal);font-size:8px;font-weight:800}
-    .finding-statement{margin:1.8mm 0 2mm;color:#333e52;font-size:9.2px;line-height:1.65}
-    .finding-content dl{display:grid;grid-template-columns:1fr 1fr;gap:3mm;margin:0}.finding-content dl div{padding-top:2mm;border-top:1px solid #edf0f4}.finding-content dt{color:var(--gold);font-size:8px;font-weight:800}.finding-content dd{margin:1mm 0 0;color:#4b5669;font-size:8.7px;line-height:1.55}
-    .plan-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:8.2px}
-    .plan-table th{padding:2.5mm 2mm;color:#fff;background:var(--navy);text-align:right}.plan-table td{padding:2.6mm 2mm;border:1px solid var(--line);vertical-align:top;line-height:1.55;overflow-wrap:anywhere}.plan-table th:nth-child(1){width:13mm}.plan-table th:nth-child(2){width:64mm}.plan-table th:nth-child(3){width:29mm}.plan-table th:nth-child(4){width:25mm}.plan-table th:nth-child(5){width:auto}
-    .priority{display:inline-block;padding:1mm 2mm;font-size:7.8px;font-weight:800;color:#75520a;background:#fff2c9}.priority.high{color:#8c2c26;background:#fde5e2}
-    .two-columns{display:grid;grid-template-columns:1fr 1fr;gap:5mm;margin-top:5mm}.info-box{padding:4mm;border:1px solid var(--line);background:#fbfcfe}.info-box h3{margin:0 0 2mm;color:var(--navy);font-size:11px}.tool-list{display:grid;gap:2mm}.tool-item{padding:2.5mm;border-right:3px solid var(--teal);background:#f2f8f7}.tool-item strong{display:block;color:var(--navy);font-size:9.3px}.tool-item p{margin:1mm 0 0;color:#4d586a;font-size:8.3px;line-height:1.5}.caution-list{margin:0;padding:0 5mm 0 0}.caution-list li{margin:0 0 1.8mm;color:#4b5669;font-size:8.5px;line-height:1.55}
-    .approval{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6mm;margin-top:6mm}.approval div{padding-top:8mm;border-top:1px solid #788397;color:#596477;text-align:center;font-size:8.5px}
-    .page-footer{position:absolute;right:13mm;left:13mm;bottom:6mm;display:flex;justify-content:space-between;padding-top:2mm;border-top:1px solid var(--line);color:#727c8d;font-size:8px}
-    .empty-state{padding:8mm;border:1px dashed var(--line);color:var(--muted);text-align:center;font-size:10px}.empty-state.compact{padding:4mm;font-size:8.5px}
-    @page{size:A4;margin:0}
-    @media print{
-      html,body{background:#fff}.report-toolbar{display:none!important}.report-document{width:210mm;margin:0;box-shadow:none}.report-page{margin:0}
-    }
-    @media screen and (max-width:860px){.report-document{width:100%;margin:0}.report-page{width:100%;height:auto;min-height:297mm;padding:24px}.page-accent{margin:-24px -24px 25px}.meta-grid{grid-template-columns:1fr 1fr}.meta-item:nth-child(n){border:1px solid var(--line)}.executive{grid-template-columns:1fr}.metrics{grid-template-columns:1fr 1fr}.two-columns{grid-template-columns:1fr}.report-page{overflow:visible}.page-footer{position:static;margin-top:20px}}
+    .report-toolbar{position:sticky;top:0;z-index:20;display:flex;justify-content:center;gap:10px;padding:10px;background:rgba(20,40,79,.96);box-shadow:0 4px 16px rgba(0,0,0,.14)}
+    .report-toolbar button{border:0;border-radius:7px;padding:9px 16px;font-weight:800;cursor:pointer}.report-toolbar .print{background:#fff;color:var(--navy)}.report-toolbar .close{background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.3)}
+    .report-document{width:210mm;margin:14px auto}
+    .report-sheet{width:210mm;margin:0 auto 14px;padding:9mm 11mm 8mm;background:#fff;box-shadow:0 10px 30px rgba(20,40,79,.12);break-after:page;page-break-after:always}
+    .report-sheet:last-child{break-after:auto;page-break-after:auto}
+    .page-accent{height:3px;background:linear-gradient(90deg,var(--navy),var(--royal),var(--teal));margin:-9mm -11mm 5mm}
+    .report-header{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:4mm;padding-bottom:3mm;border-bottom:1px solid var(--navy)}
+    .brand{display:flex;align-items:center;gap:2mm}.brand-mark{width:9mm;height:9mm;display:grid;place-items:center;border-radius:2mm;color:#fff;background:var(--navy);font-size:16px;font-weight:900}.brand strong{display:block;font-size:13px;color:var(--navy)}.brand span{display:block;color:var(--muted);font-size:7.5px}
+    .header-title{text-align:center}.header-title h2{margin:0;color:var(--navy);font-size:13px}.header-title span{display:block;margin-top:1mm;color:var(--muted);font-size:8px}.report-code{text-align:left;direction:ltr;color:var(--muted);font-size:7.5px;line-height:1.55}
+    .title-zone{padding:4mm 0 3mm}.title-zone h1{margin:0;color:var(--navy);font-size:18px;line-height:1.35}.title-zone p{margin:1.5mm 0 0;color:var(--muted);font-size:8.5px;line-height:1.55}
+    .meta-grid{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line);margin-bottom:3.5mm}.meta-item{padding:2.2mm 3mm;border-left:1px solid var(--line);border-bottom:1px solid var(--line);min-height:10mm}.meta-item:nth-child(3n){border-left:0}.meta-item:nth-last-child(-n+3){border-bottom:0}.meta-item span{display:block;color:var(--muted);font-size:7.5px}.meta-item strong{display:block;margin-top:.8mm;font-size:8.7px;line-height:1.35}
+    .executive-row{display:grid;grid-template-columns:1fr 41mm;gap:3mm;margin-bottom:3mm}.executive-copy{padding:3.2mm 4mm;border:1px solid var(--line);border-right:3px solid var(--royal);background:#fbfcfe}.mini-title{color:var(--gold);font-size:8px;font-weight:800}.executive-copy h2{margin:1mm 0 1.2mm;color:var(--navy);font-size:12px}.executive-copy p{margin:0;color:#404b5e;font-size:8.8px;line-height:1.6}.judgment{display:flex;flex-direction:column;justify-content:center;padding:3.2mm;color:#fff;background:var(--navy)}.judgment.positive{background:var(--positive)}.judgment.warning{background:var(--warning)}.judgment.danger{background:var(--danger)}.judgment span{font-size:7.5px;opacity:.82}.judgment strong{margin:1.2mm 0;font-size:13px;line-height:1.35}.judgment small{font-size:7.5px;line-height:1.45;opacity:.92}
+    .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:2mm;margin-bottom:3mm}.metric-card{padding:2.4mm 3mm;border:1px solid var(--line);border-top:2px solid var(--royal)}.metric-card span{display:block;color:var(--muted);font-size:7.5px}.metric-card strong{display:block;margin:1mm 0 .5mm;color:var(--navy);font-size:15px}.metric-card small{display:block;color:var(--teal);font-size:7.2px}
+    .chart-box{padding:3mm 4mm;border:1px solid var(--line)}.chart-heading{display:flex;justify-content:space-between;margin-bottom:2mm}.chart-heading strong{color:var(--navy);font-size:10px}.chart-heading span{color:var(--muted);font-size:7.5px}.chart{display:grid;gap:1.5mm}.chart-row{display:grid;grid-template-columns:29mm 1fr 12mm;align-items:center;gap:2mm}.chart-label{font-size:7.8px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.chart-track{height:6px;background:#e8ebf0;overflow:hidden}.chart-track span{display:block;height:100%;background:linear-gradient(90deg,var(--royal),var(--teal))}.chart-value{text-align:left;font-size:7.8px;font-weight:800;color:var(--navy)}
+    .method-note,.professional-note{margin-top:2.5mm;padding:2.2mm 3mm;border-right:3px solid var(--teal);background:#f2f8f7;color:#43505d;font-size:7.6px;line-height:1.55}
+    .section-heading{display:flex;justify-content:space-between;align-items:end;gap:6mm;padding:4mm 0 3mm}.section-heading.compact{padding-bottom:2mm}.section-heading span{color:var(--gold);font-size:8px;font-weight:800}.section-heading h1{margin:1mm 0 0;color:var(--navy);font-size:17px}.section-heading p{margin:0;color:var(--muted);font-size:8px;max-width:65mm;text-align:left}
+    .insights-grid{display:grid;grid-template-columns:1fr 1fr;gap:2.5mm}.insight-card{display:grid;grid-template-columns:7mm 1fr;border:1px solid var(--line);break-inside:avoid;background:#fff}.insight-number{display:grid;place-items:center;color:#fff;background:var(--navy);font-size:10px;font-weight:900}.insight-body{padding:2.7mm 3mm}.insight-head{display:flex;justify-content:space-between;gap:2mm;align-items:start}.insight-head h3{margin:0;color:var(--navy);font-size:9.5px;line-height:1.4}.insight-head span{flex:none;padding:.6mm 1.5mm;background:#e9f5f2;color:var(--teal);font-size:6.8px;font-weight:800}.insight-body p{margin:1mm 0;color:#3f4a5d;font-size:7.7px;line-height:1.5}.insight-evidence,.insight-impact{margin-top:1mm;padding-top:1mm;border-top:1px solid #edf0f4;color:#4b5669;font-size:7.4px;line-height:1.45}.insight-evidence strong,.insight-impact strong{color:var(--gold)}
+    .section-divider{display:flex;align-items:center;gap:3mm;margin:4mm 0 2.5mm;color:var(--navy);font-size:11px;font-weight:800}.section-divider:after{content:"";height:1px;flex:1;background:var(--line)}
+    .single-action{border:1px solid var(--line);border-right:4px solid var(--gold);padding:3mm 4mm;break-inside:avoid}.single-action-top{display:flex;align-items:start;gap:3mm}.single-action-top h3{margin:0;color:var(--navy);font-size:10px;line-height:1.5}.single-action-meta{display:grid;grid-template-columns:1fr 1fr 1.5fr;gap:2mm;margin-top:2.5mm}.single-action-meta div{padding:2mm;background:var(--soft)}.single-action-meta span{display:block;color:var(--muted);font-size:6.8px}.single-action-meta strong{display:block;margin-top:.7mm;font-size:7.6px;line-height:1.4}
+    .plan-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:7.5px}.plan-table th{padding:2mm 1.7mm;color:#fff;background:var(--navy);text-align:right}.plan-table td{padding:2mm 1.7mm;border:1px solid var(--line);vertical-align:top;line-height:1.42;overflow-wrap:anywhere}.plan-table th:nth-child(1){width:12mm}.plan-table th:nth-child(2){width:62mm}.plan-table th:nth-child(3){width:27mm}.plan-table th:nth-child(4){width:23mm}.plan-table th:nth-child(5){width:auto}.priority{display:inline-block;padding:.7mm 1.5mm;font-size:6.8px;font-weight:800;color:#75520a;background:#fff2c9}.priority.high{color:#8c2c26;background:#fde5e2}
+    .support-grid{display:grid;grid-template-columns:1fr 1fr;gap:3mm;margin-top:3mm}.support-grid.single{grid-template-columns:1fr}.support-box{padding:2.8mm 3mm;border:1px solid var(--line);background:#fbfcfe}.support-box h3{margin:0 0 1.5mm;color:var(--navy);font-size:9px}.tool-list{display:grid;grid-template-columns:1fr 1fr;gap:1.5mm}.tool-item{padding:1.8mm;border-right:2px solid var(--teal);background:#f2f8f7}.tool-item strong{display:block;color:var(--navy);font-size:7.5px}.tool-item p{margin:.7mm 0 0;color:#4d586a;font-size:6.8px;line-height:1.4}.caution-list{margin:0;padding:0 4mm 0 0}.caution-list li{margin:0 0 1mm;color:#4b5669;font-size:7.2px;line-height:1.45}
+    .followup-strip{margin-top:3mm;padding:2.5mm 3mm;border:1px solid #d8caa3;background:#fffaf0;color:#4b5669;font-size:7.6px;line-height:1.5}.followup-strip strong{color:var(--navy)}
+    .approval{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5mm;margin-top:4mm}.approval div{padding-top:5mm;border-top:1px solid #788397;color:#596477;text-align:center;font-size:7.2px}.page-footer{display:flex;justify-content:space-between;margin-top:4mm;padding-top:1.8mm;border-top:1px solid var(--line);color:#727c8d;font-size:7px}.empty-state{padding:5mm;border:1px dashed var(--line);color:var(--muted);text-align:center;font-size:8px}.empty-state.compact{padding:2.5mm;font-size:7.5px}
+    .single-sheet .title-zone{padding-top:3mm;padding-bottom:2mm}.single-sheet .meta-grid{margin-bottom:2.5mm}.single-sheet .executive-row{margin-bottom:2.5mm}.single-sheet .metrics{margin-bottom:2.5mm}.single-sheet .chart-box{padding-top:2.5mm;padding-bottom:2.5mm}.single-sheet .method-note{margin-top:2mm}.single-sheet .section-divider{margin-top:3mm;margin-bottom:2mm}.single-sheet .compact-insights{gap:2mm}.single-sheet .insight-body{padding:2.2mm 2.6mm}.single-sheet .insight-body p{display:none}.single-sheet .single-action{margin-top:2mm;padding:2.5mm 3mm}.single-sheet .support-grid{margin-top:2mm}.single-sheet .support-box{padding:2.2mm 2.6mm}.single-sheet .followup-strip{margin-top:2mm;padding:2mm 2.5mm}.single-sheet .approval{margin-top:3mm}.single-sheet .approval div{padding-top:3.5mm}.single-sheet .page-footer{margin-top:3mm}
+    .overview-divider{margin-top:2.5mm;margin-bottom:1.8mm}.overview-insights{gap:2mm}.overview-insights .insight-body{padding:2.1mm 2.5mm}.overview-insights .insight-body p{display:none}.overview-insights .insight-evidence,.overview-insights .insight-impact{font-size:7px}
+    @page{size:A4;margin:9mm 10mm 10mm}
+    @media print{html,body{background:#fff}.report-toolbar{display:none!important}.report-document{width:auto;margin:0}.report-sheet{width:auto;margin:0;padding:0;box-shadow:none}.page-accent{margin:0 0 5mm}.report-sheet{break-after:page;page-break-after:always}.report-sheet:last-child{break-after:auto;page-break-after:auto}}
+    @media screen and (max-width:860px){.report-document,.report-sheet{width:100%}.report-sheet{padding:22px;margin:0 0 10px}.page-accent{margin:-22px -22px 18px}.report-header{grid-template-columns:auto 1fr}.report-code{display:none}.header-title{text-align:right}.meta-grid,.metrics,.insights-grid,.support-grid,.single-action-meta{grid-template-columns:1fr 1fr}.executive-row{grid-template-columns:1fr}.tool-list{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
-  <div class="report-toolbar">
-    <button class="print" onclick="window.print()">طباعة التقرير أو حفظه PDF</button>
-    <button class="close" onclick="window.close()">إغلاق</button>
-  </div>
-  <main class="report-document">
-    <section class="report-page">
-      <div class="page-accent"></div>
-      <header class="report-header">
-        <div class="brand"><div class="brand-mark">ت</div><div><strong>${APP_NAME}</strong><span>منصة التحليل التربوي الذكي</span></div></div>
-        <div class="report-code">${escapeHtml(data.reportId)}<br>${escapeHtml(data.generatedAt)}</div>
-      </header>
-      <h1 class="report-title">${escapeHtml(reportTitle)}</h1>
-      <p class="report-subtitle">تقرير تحليلي رسمي مبني على البيانات المرفوعة، مع فصل الحسابات الحتمية عن القراءة التربوية الذكية وإبقاء النتائج قابلة للمراجعة.</p>
-      <div class="meta-grid">${renderMeta(data.meta, data)}</div>
-      <h2 class="section-title">الملخص التنفيذي</h2>
-      <div class="executive">
-        <div class="executive-copy"><h2>${escapeHtml(data.executiveTitle)}</h2><p>${escapeHtml(data.executiveSummary)}</p></div>
-        <div class="judgment ${escapeHtml(data.judgment.tone)}"><span>الحكم العام</span><strong>${escapeHtml(data.judgment.label)}</strong><small>${escapeHtml(data.judgment.note)}</small></div>
-      </div>
-      <div class="metrics">${renderMetrics(data.metrics)}</div>
-      <div class="chart-box">
-        <div class="chart-heading"><strong>${escapeHtml(data.chartTitle)}</strong><span>${escapeHtml(chartTotal)} سجلًا أو تكرارًا</span></div>
-        <div class="chart">${renderChart(data.chartItems)}</div>
-      </div>
-      <div class="method-note"><strong>منهجية القراءة:</strong> ${escapeHtml(data.analysisMode)}. بلغت جودة اكتمال البيانات الأساسية ${escapeHtml(data.completeness)}%. لا تُستنتج الأسباب الجذرية من الدرجات وحدها ما لم تتوفر أدلة نوعية أو تحليل مهاري إضافي.</div>
-      <footer class="page-footer"><span>${APP_NAME} - تقرير تحليلي رسمي</span><span>صفحة 1 من ${totalPages}</span></footer>
-    </section>
-
-    <section class="report-page">
-      <div class="page-accent"></div>
-      <header class="report-header">
-        <div class="brand"><div class="brand-mark">ت</div><div><strong>الاستنتاجات الرئيسة</strong><span>${escapeHtml(data.typeName)}</span></div></div>
-        <div class="report-code">${escapeHtml(data.reportId)}</div>
-      </header>
-      <h1 class="report-title">النتائج ذات الأولوية</h1>
-      <p class="report-subtitle">اختيرت النتائج الأعلى قيمة لاتخاذ القرار، وحُذفت الرموز التقنية والتكرارات التي لا تضيف معنى تربويًا للتقرير الرسمي.</p>
-      <div class="finding-list">${renderFindings(data.findings)}</div>
-      <div class="method-note"><strong>تنبيه مهني:</strong> درجة الثقة تعبّر عن قوة الإسناد داخل البيانات المتاحة، ولا تعني إثبات علاقة سببية أو تشخيص حالة فردية دون أدلة إضافية.</div>
-      <footer class="page-footer"><span>${APP_NAME} - النتائج والاستنتاجات</span><span>صفحة 2 من ${totalPages}</span></footer>
-    </section>
-
-    <section class="report-page">
-      <div class="page-accent"></div>
-      <header class="report-header">
-        <div class="brand"><div class="brand-mark">ت</div><div><strong>خطة التحسين والمتابعة</strong><span>إجراءات قابلة للتنفيذ والقياس</span></div></div>
-        <div class="report-code">${escapeHtml(data.reportId)}</div>
-      </header>
-      <h1 class="report-title">الخطة المقترحة</h1>
-      <table class="plan-table">
-        <thead><tr><th>الأولوية</th><th>الإجراء</th><th>المسؤول</th><th>الإطار الزمني</th><th>مؤشر النجاح</th></tr></thead>
-        <tbody>${renderPlan(data.plan)}</tbody>
-      </table>
-      <div class="two-columns">
-        <section class="info-box"><h3>أدوات الجودة المستخدمة</h3><div class="tool-list">${renderTools(data.qualityTools)}</div></section>
-        <section class="info-box"><h3>حدود التحليل وضوابط الاعتماد</h3><ul class="caution-list">${renderCautions(data.cautions)}</ul></section>
-      </div>
-      <section class="info-box" style="margin-top:5mm"><h3>توصية إعادة القياس</h3><p style="margin:0;color:#4b5669;font-size:9px;line-height:1.7">يُعاد القياس بعد تنفيذ الإجراءات ذات الأولوية وفي مدة تتناسب مع طبيعة التدخل، مع استخدام الأداة نفسها أو أداة مكافئة، ومقارنة المؤشرات قبل التدخل وبعده بدل الاكتفاء بوصف التنفيذ.</p></section>
-      <div class="approval"><div>إعداد التقرير</div><div>مراجعة واعتماد</div><div>تاريخ المتابعة</div></div>
-      <footer class="page-footer"><span>${APP_NAME} - خطة التحسين</span><span>صفحة 3 من ${totalPages}</span></footer>
-    </section>
-  </main>
+  <div class="report-toolbar"><button class="print" onclick="window.print()">طباعة التقرير أو حفظه PDF</button><button class="close" onclick="window.close()">إغلاق</button></div>
+  <main class="report-document">${pageOne}${findingsPage}${planPage}</main>
   ${autoPrint ? `<script>window.addEventListener("load",()=>setTimeout(()=>window.print(),250));<\/script>` : ""}
 </body>
 </html>`;
