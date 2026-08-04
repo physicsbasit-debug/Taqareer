@@ -115,6 +115,10 @@
     return invoke("enrich", payload);
   }
 
+  async function enrichSegmentDetailed(payload) {
+    return invoke("enrich_segment", payload);
+  }
+
   async function enrich(payload) {
     const response = await enrichDetailed(payload);
     return response.result;
@@ -135,7 +139,7 @@
   }
 
   async function ping() {
-    const response = await invoke("ping", { clientVersion: "0.9.1" });
+    const response = await invoke("ping", { clientVersion: "0.9.2" });
     return response;
   }
 
@@ -150,6 +154,7 @@
     analyzeDetailed,
     enrich,
     enrichDetailed,
+    enrichSegmentDetailed,
     extractVisual,
     classify,
     classifyDetailed,

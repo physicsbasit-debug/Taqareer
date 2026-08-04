@@ -16,7 +16,7 @@ const sandbox={window:{},globalThis:null,localStorage:new StorageMock(),crypto:w
 sandbox.globalThis=sandbox;
 vm.createContext(sandbox);vm.runInContext(code,sandbox);
 const api=sandbox.window.TaqareerPerformance;
-assert.strictEqual(api.VERSION,'0.9.1');
+assert.strictEqual(api.VERSION,'0.9.2');
 (async()=>{
   const a=await api.makeKey('analysis',{b:2,a:1});
   const b=await api.makeKey('analysis',{a:1,b:2});

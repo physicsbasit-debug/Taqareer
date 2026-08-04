@@ -76,8 +76,9 @@
   const state = {
     headers: [], rows: [], sourceName: "", rawText: "", narrativeText: "", delimiter: ",", type: formTypes.at(-1), confidence: 0,
     quality: { blockers: [], warnings: [], info: [], completeness: 0 },
-    analysis: null, reconciledAnalysis: null, aiResult: null, aiError: "", aiUsed: false, aiPending: false,
-    performance: { spans: [], cacheHit: false, payloadChars: 0, aiUsage: null, aiModel: "", aiServerTiming: null },
+    analysis: null, reconciledAnalysis: null, aiResult: null, aiError: "", aiWarning: "", aiUsed: false, aiPending: false,
+    aiSegments: { results: {}, failures: {}, statuses: {} },
+    performance: { spans: [], cacheHit: false, payloadChars: 0, aiUsage: null, aiModel: "", aiServerTiming: null, segmentTimings: {} },
     localRecognition: null, aiRecognition: null, recognitionStatus: "محلي", recognitionRequestId: 0, analysisRequestId: 0,
     sampleMaxScore: null, pendingSource: null, sourceMeta: null, pendingManualFileName: "", pendingVisualPreview: null
   };
@@ -101,7 +102,7 @@
   function clearMessage(id) { $(id).classList.add("hidden"); }
 
   function perfApi() { return window.TaqareerPerformance || null; }
-  function resetPerformance() { state.performance = { spans: [], cacheHit: false, payloadChars: 0, aiUsage: null, aiModel: "", aiServerTiming: null }; }
+  function resetPerformance() { state.performance = { spans: [], cacheHit: false, payloadChars: 0, aiUsage: null, aiModel: "", aiServerTiming: null, segmentTimings: {} }; }
   function recordSpan(span) { if (span) state.performance.spans.push(span); return span; }
   function formatDuration(ms) { return perfApi()?.formatDuration?.(ms) || `${Math.round(Number(ms) || 0)} مللي ثانية`; }
   function yieldToUi() { return new Promise(resolve => requestAnimationFrame(() => resolve())); }
@@ -380,7 +381,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "0.9.1",
+      appVersion: "0.9.2",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -927,10 +928,10 @@
     if (!reconciliationContract) throw new Error("محرك المصالحة التحليلية غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "0.9.1",
+      appVersion: "0.9.2",
       pipeline: {
-        mode: "deep-analysis-delta-v3",
-        instruction: "المحرك الحتمي يثبت الحسابات والبنية. قدّم قراءة تربوية عميقة لمحاور العقد، ثم رقعًا حقلية عالية القيمة فقط، دون إنشاء خطة أو دورة متابعة موازية."
+        mode: "segmented-deep-analysis-v4",
+        instruction: "المحرك الحتمي يثبت الحسابات والبنية. يقسم Gemini التحليل إلى قراءة تشخيصية واستنتاجات وتدخلات وحوكمة، ثم تُدمج الأجزاء الآمنة في عقد واحد دون إنشاء عناصر موازية."
       },
       source: {
         name: state.sourceName,
@@ -1019,45 +1020,89 @@
   }
 
 
+  function segmentLabels() {
+    return window.TaqareerDeepOrchestrator?.LABELS || {
+      diagnostic: "القراءة التشخيصية",
+      findings: "الاستنتاجات التربوية",
+      interventions: "التدخلات التنفيذية",
+      governance: "الجودة والمتابعة"
+    };
+  }
+
+  function segmentProgressText(statuses = {}) {
+    const labels = segmentLabels();
+    const entries = Object.entries(statuses);
+    const done = entries.filter(([, value]) => value?.status === "success").length;
+    const failed = entries.filter(([, value]) => value?.status === "failed").length;
+    const pending = entries.filter(([, value]) => value?.status === "pending").map(([key]) => labels[key] || key);
+    if (pending.length) return `اكتمل ${done} من 4 · يجري الآن: ${pending.join("، ")}`;
+    if (failed) return `اكتمل ${done} من 4 · تعثر ${failed}`;
+    return `اكتملت الأجزاء الأربعة`;
+  }
+
+  function applyAiDelta(delta, payload) {
+    state.aiResult = delta;
+    state.reconciledAnalysis = window.TaqareerReconciliation.reconcile(state.analysis, delta, {
+      availableEvidenceRefs: payload.availableEvidenceRefs || []
+    });
+    const countCheck = window.TaqareerReconciliation.validateCounts(state.analysis, state.reconciledAnalysis);
+    if (!countCheck.ok) throw new Error(`رفض محرك المصالحة نتيجة غيّرت بنية العقد: ${countCheck.errors.join("، ")}`);
+    state.aiUsed = Boolean(state.reconciledAnalysis?._reconciliation?.aiApplied);
+    return state.reconciledAnalysis;
+  }
+
   async function enrichAnalysisWithAi({ force = false } = {}) {
     if (!aiReady()) return null;
     if (!window.TaqareerReconciliation?.reconcile) throw new Error("محرك المصالحة التحليلية غير محمل.");
+    if (!window.TaqareerDeepOrchestrator?.run) throw new Error("منسق التحليل العميق المقسّم غير محمل.");
     const maskPersonalData = $("maskPersonalDataInput")?.checked !== false;
     const payload = buildAiAnalysisPayload(maskPersonalData);
-    const cacheKey = perfApi() ? await perfApi().makeKey("analysis-deep-delta-v3", payload) : "";
-    const cached = !force && cacheKey ? perfApi().cacheGet(cacheKey) : null;
-    const applyDelta = (delta) => {
-      state.aiResult = delta;
-      state.reconciledAnalysis = window.TaqareerReconciliation.reconcile(state.analysis, delta, {
-        availableEvidenceRefs: payload.availableEvidenceRefs || []
-      });
-      const countCheck = window.TaqareerReconciliation.validateCounts(state.analysis, state.reconciledAnalysis);
-      if (!countCheck.ok) throw new Error(`رفض محرك المصالحة نتيجة غيّرت بنية العقد: ${countCheck.errors.join("، ")}`);
-      state.aiUsed = Boolean(state.reconciledAnalysis?._reconciliation?.aiApplied);
-      state.aiError = "";
-      return state.reconciledAnalysis;
+    const previous = state.aiSegments?.results || {};
+    const previousFailures = Object.keys(state.aiSegments?.failures || {});
+    const retryFailedOnly = force && previousFailures.length > 0;
+    state.aiWarning = "";
+
+    const outcome = await window.TaqareerDeepOrchestrator.run({
+      basePayload: payload,
+      ai: window.TaqareerAI,
+      performanceApi: perfApi(),
+      previousResults: retryFailedOnly ? previous : {},
+      retrySegments: retryFailedOnly ? previousFailures : undefined,
+      force: force && !retryFailedOnly,
+      onProgress: progress => {
+        state.aiSegments = {
+          results: progress.results || state.aiSegments.results || {},
+          failures: progress.failures || state.aiSegments.failures || {},
+          statuses: progress.statuses || {}
+        };
+        if (progress.delta && (progress.delta.deepAnalysisUnits?.length || progress.delta.patches?.length)) {
+          try { applyAiDelta(progress.delta, payload); } catch { /* لا نوقف بقية الأجزاء بسبب تحديث مرحلي */ }
+        }
+        if (state.aiPending) renderResults();
+      }
+    });
+
+    state.aiSegments = { results: outcome.results, failures: outcome.failures, statuses: outcome.statuses };
+    applyAiDelta(outcome.delta, payload);
+    state.performance.cacheHit = outcome.cacheHits === 4;
+    state.performance.payloadChars = outcome.payloadChars;
+    state.performance.segmentTimings = outcome.statuses;
+    state.performance.aiModel = Object.values(outcome.results).find(item => item?.model)?.model || "Gemini";
+    state.performance.aiUsage = Object.fromEntries(Object.entries(outcome.results).map(([key, item]) => [key, item?.usage || null]));
+    state.performance.aiServerTiming = {
+      segmented: true,
+      protocolVersion: outcome.protocolVersion,
+      succeededSegments: outcome.succeededSegments,
+      failedSegments: outcome.failedSegments,
+      cacheHits: outcome.cacheHits,
+      totalSegments: 4,
+      segmentTimings: Object.fromEntries(Object.entries(outcome.results).map(([key, item]) => [key, item?.serverTiming || null]))
     };
-    if (cached) {
-      applyDelta(cached.result || cached);
-      state.performance.cacheHit = true;
-      state.performance.aiUsage = cached.usage || null;
-      state.performance.aiModel = cached.model || "Gemini";
-      state.performance.aiServerTiming = cached.serverTiming || null;
-      return state.reconciledAnalysis;
-    }
-    const response = window.TaqareerAI.enrichDetailed
-      ? await window.TaqareerAI.enrichDetailed(payload)
-      : await window.TaqareerAI.analyzeDetailed(payload);
-    applyDelta(response.result);
-    state.performance.cacheHit = false;
-    state.performance.aiUsage = response.usage || null;
-    state.performance.aiModel = response.model || "Gemini";
-    state.performance.aiServerTiming = response.serverTiming || null;
-    if (response.clientTiming?.durationMs !== undefined) {
-      recordSpan({ name: "Gemini Deep Delta", durationMs: response.clientTiming.durationMs, cacheHit: false });
-    }
-    if (cacheKey && state.reconciledAnalysis?._reconciliation?.aiApplied) {
-      perfApi().cacheSet(cacheKey, { result: response.result, usage: response.usage, model: response.model, serverTiming: response.serverTiming || null });
+    recordSpan({ name: "Gemini المقسّم", durationMs: outcome.durationMs, segmented: true });
+    state.aiError = "";
+    if (outcome.partialSuccess) {
+      const labels = segmentLabels();
+      state.aiWarning = `اكتملت المصالحة جزئيًا؛ تعثر: ${outcome.failedSegments.map(key => labels[key] || key).join("، ")}. طُبقت الأجزاء الناجحة ويمكن إعادة المتعثر فقط.`;
     }
     return state.reconciledAnalysis;
   }
@@ -1066,14 +1111,16 @@
     if (!state.analysis || !aiReady()) return;
     state.aiPending = true;
     state.aiError = "";
+    state.aiWarning = "";
     renderResults();
     try {
       await enrichAnalysisWithAi({ force: true });
     } catch (error) {
       state.aiError = error.message || "تعذر التفسير الذكي الحي.";
-      state.aiResult = null;
-      state.reconciledAnalysis = window.TaqareerReconciliation?.canonicalize?.(state.analysis) || state.analysis;
-      state.aiUsed = false;
+      if (!state.aiUsed) {
+        state.aiResult = null;
+        state.reconciledAnalysis = window.TaqareerReconciliation?.canonicalize?.(state.analysis) || state.analysis;
+      }
     } finally {
       state.aiPending = false;
       renderResults();
@@ -1086,8 +1133,10 @@
     state.aiResult = null;
     state.reconciledAnalysis = null;
     state.aiError = "";
+    state.aiWarning = "";
     state.aiUsed = false;
     state.aiPending = false;
+    state.aiSegments = { results: {}, failures: {}, statuses: {} };
     resetPerformance();
     const analysisRequestId = ++state.analysisRequestId;
     const runButton = $("runAnalysisBtn");
@@ -1143,9 +1192,10 @@
           if (analysisRequestId !== state.analysisRequestId) return;
         } catch (error) {
           state.aiError = error.message || "تعذر التحليل الذكي الحي.";
-          state.aiResult = null;
-          state.reconciledAnalysis = window.TaqareerReconciliation?.canonicalize?.(state.analysis) || state.analysis;
-          state.aiUsed = false;
+          if (!state.aiUsed) {
+            state.aiResult = null;
+            state.reconciledAnalysis = window.TaqareerReconciliation?.canonicalize?.(state.analysis) || state.analysis;
+          }
         } finally {
           if (analysisRequestId === state.analysisRequestId) {
             state.aiPending = false;
@@ -1258,12 +1308,20 @@
     const total = spans.findLast ? spans.findLast(item => item.name === "الزمن الكلي") : [...spans].reverse().find(item => item.name === "الزمن الكلي");
     const items = [];
     if (local) items.push(`<span><strong>الحسابات والرسوم</strong>${formatDuration(local.durationMs)}</span>`);
-    if (state.performance.cacheHit) items.push(`<span><strong>التفسير الذكي</strong>مستعاد فورًا من الذاكرة المؤقتة</span>`);
-    else if (gemini) items.push(`<span><strong>Gemini</strong>${formatDuration(gemini.durationMs)}</span>`);
-    if (state.performance.payloadChars) items.push(`<span><strong>حمولة الذكاء</strong>${Math.max(1, Math.round(state.performance.payloadChars / 1024))} كيلوبايت</span>`);
     const server = state.performance.aiServerTiming || {};
-    if (server.compactRetryUsed) items.push(`<span><strong>المصالحة</strong>نجحت بعد محاولة مختصرة آمنة</span>`);
-    if (server.acceptedDeepAnalysisUnits !== undefined) items.push(`<span><strong>العمق المطبق</strong>${server.acceptedDeepAnalysisUnits} قراءات · ${server.acceptedPatches || 0} تحسينات</span>`);
+    if (server.segmented) {
+      const succeeded = server.succeededSegments?.length || 0;
+      const cached = Number(server.cacheHits || 0);
+      if (state.performance.cacheHit) items.push(`<span><strong>Gemini المقسّم</strong>الأجزاء الأربعة من الذاكرة المؤقتة</span>`);
+      else if (gemini) items.push(`<span><strong>Gemini المقسّم</strong>${succeeded}/4 أجزاء · ${formatDuration(gemini.durationMs)}</span>`);
+      if (cached && cached < 4) items.push(`<span><strong>الذاكرة</strong>${cached} من 4 أجزاء مستعادة</span>`);
+    } else {
+      if (state.performance.cacheHit) items.push(`<span><strong>التفسير الذكي</strong>مستعاد فورًا من الذاكرة المؤقتة</span>`);
+      else if (gemini) items.push(`<span><strong>Gemini</strong>${formatDuration(gemini.durationMs)}</span>`);
+      if (server.compactRetryUsed) items.push(`<span><strong>المصالحة</strong>نجحت بعد محاولة مختصرة آمنة</span>`);
+      if (server.acceptedDeepAnalysisUnits !== undefined) items.push(`<span><strong>العمق المطبق</strong>${server.acceptedDeepAnalysisUnits} قراءات · ${server.acceptedPatches || 0} تحسينات</span>`);
+    }
+    if (state.performance.payloadChars) items.push(`<span><strong>حمولة الذكاء</strong>${Math.max(1, Math.round(state.performance.payloadChars / 1024))} كيلوبايت موزعة</span>`);
     if (total) items.push(`<span><strong>الإجمالي</strong>${formatDuration(total.durationMs)}</span>`);
     panel.innerHTML = items.join("");
     panel.classList.toggle("hidden", !items.length);
@@ -1314,20 +1372,27 @@
       return `<article class="diagnostic-section-card"><div class="diagnostic-section-meta"><span>${source}</span><span>ثقة ${escapeHtml(section.confidence || "متوسطة")}</span></div><h5>${escapeHtml(section.title || "قراءة تفسيرية")}</h5><p>${escapeHtml(section.analysis || "")}</p>${evidence && evidence !== "لم يحدد مرجع دليل واضح." ? `<div class="soft-note">الدليل: ${escapeHtml(evidence)}</div>` : ""}${implications.length ? `<h6>الآثار العملية</h6><ul>${implications.map(item=>`<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}${alternatives.length ? `<h6>تفسيرات بديلة محتملة</h6><ul>${alternatives.map(item=>`<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}${requests.length ? `<h6>بيانات مطلوبة للتحقق</h6><ul>${requests.map(item=>`<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}</article>`;
     }).join("");
 
-    $("analysisModeChip").textContent = state.aiPending ? "ظهرت النتائج المحلية · تحسين Gemini جارٍ" : (aiApplied ? "تحليل حتمي متخصص مصالَح مع Gemini" : "تحليل متخصص حتمي عميق");
+    const segmentStatus = state.aiSegments?.statuses || {};
+    $("analysisModeChip").textContent = state.aiPending
+      ? `ظهرت النتائج المحلية · ${segmentProgressText(segmentStatus)}`
+      : (aiApplied ? "تحليل حتمي متخصص مصالَح مع Gemini" : "تحليل متخصص حتمي عميق");
     $("analysisModeChip").className = aiApplied ? "success-chip ai-result-chip" : "success-chip";
     const notice = $("aiResultNotice");
     if (state.aiPending) {
-      notice.classList.remove("hidden", "error");
-      notice.innerHTML = `<strong>ظهرت الحسابات والرسوم فورًا</strong><span>يجري Gemini بناء القراءة التربوية العميقة لمحاور العقد، ثم تحسين الحقول التنفيذية دون إنشاء خطط أو دورات متابعة موازية.</span>`;
+      notice.classList.remove("hidden", "error", "warning");
+      notice.innerHTML = `<strong>ظهرت الحسابات والرسوم فورًا</strong><span>${escapeHtml(segmentProgressText(segmentStatus))}. تُنفذ الأجزاء الصغيرة بالتوازي، ويُدمج كل جزء ناجح فور وصوله دون انتظار بقية الأجزاء.</span>`;
+    } else if (state.aiWarning) {
+      const meta = a._reconciliation || {};
+      notice.classList.remove("hidden", "error"); notice.classList.add("warning");
+      notice.innerHTML = `<strong>اكتملت مصالحة جزئية آمنة</strong><span>${escapeHtml(state.aiWarning)} طُبقت ${meta.appliedDeepAnalyses || 0} قراءات و${meta.appliedPatches || 0} تحسينات دون تغيير الحسابات.</span><button id="retryAiOnlyBtn" class="secondary compact" type="button">إعادة الأجزاء المتعثرة فقط</button>`;
     } else if (aiApplied) {
       const meta = a._reconciliation || {};
-      notice.classList.remove("hidden", "error");
-      notice.innerHTML = `<strong>اكتملت المصالحة التحليلية${state.performance.cacheHit ? " من الذاكرة المؤقتة" : ""}</strong><span>أضيفت ${meta.appliedDeepAnalyses || 0} قراءات تربوية عميقة وطُبقت ${meta.appliedPatches || 0} تحسينات حقلية، مع بقاء ${a.improvementPlan?.length || 0} تدخلات و${a.monitoringPlan?.length || 0} مراحل متابعة فقط.</span>`;
+      notice.classList.remove("hidden", "error", "warning");
+      notice.innerHTML = `<strong>اكتملت المصالحة التحليلية المقسّمة${state.performance.cacheHit ? " من الذاكرة المؤقتة" : ""}</strong><span>أضيفت ${meta.appliedDeepAnalyses || 0} قراءات تربوية عميقة وطُبقت ${meta.appliedPatches || 0} تحسينات حقلية، مع بقاء ${a.improvementPlan?.length || 0} تدخلات و${a.monitoringPlan?.length || 0} مراحل متابعة فقط.</span>`;
     } else if (state.aiError) {
-      notice.classList.remove("hidden"); notice.classList.add("error");
+      notice.classList.remove("hidden", "warning"); notice.classList.add("error");
       notice.innerHTML = `<strong>اكتمل المحرك المتخصص المحلي</strong><span>تعذر تحسين Gemini: ${escapeHtml(state.aiError)}. لم تُفقد النتائج أو أدوات الجودة.</span><button id="retryAiOnlyBtn" class="secondary compact" type="button">إعادة تحسين Gemini فقط</button>`;
-    } else { notice.classList.add("hidden"); notice.classList.remove("error"); }
+    } else { notice.classList.add("hidden"); notice.classList.remove("error", "warning"); }
     bindRetryAiButton();
     renderPerformanceSummary();
 
@@ -1408,7 +1473,7 @@
   function exportAnalysis() {
     const payload = {
       app: "تقارير",
-      version: "0.9.1",
+      version: "0.9.2",
       generatedAt: new Date().toISOString(),
       source: state.sourceName,
       sourceMeta: state.sourceMeta,
@@ -1421,7 +1486,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v0.9.1.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v0.9.2.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
@@ -1432,8 +1497,9 @@
       headers: [], rows: [], sourceName: "", rawText: "", narrativeText: "", delimiter: ",",
       type: formTypes.at(-1), confidence: 0,
       quality: { blockers: [], warnings: [], info: [], completeness: 0 },
-      analysis: null, reconciledAnalysis: null, aiResult: null, aiError: "", aiUsed: false, aiPending: false,
-      performance: { spans: [], cacheHit: false, payloadChars: 0, aiUsage: null, aiModel: "", aiServerTiming: null },
+      analysis: null, reconciledAnalysis: null, aiResult: null, aiError: "", aiWarning: "", aiUsed: false, aiPending: false,
+      aiSegments: { results: {}, failures: {}, statuses: {} },
+      performance: { spans: [], cacheHit: false, payloadChars: 0, aiUsage: null, aiModel: "", aiServerTiming: null, segmentTimings: {} },
       localRecognition: null, aiRecognition: null, recognitionStatus: "محلي", recognitionRequestId: state.recognitionRequestId + 1,
       analysisRequestId: state.analysisRequestId + 1,
       sampleMaxScore: null, pendingSource: null, sourceMeta: null, pendingManualFileName: "", pendingVisualPreview: null

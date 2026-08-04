@@ -1,11 +1,23 @@
-تقارير v0.9.1 - Phase 1-C3 Fix 1: Deep Analysis Delta Protocol
+تقارير v0.9.2 - Phase 1-C3 Fix 2: Segmented Deep Analysis Pipeline
 
-1) فك ضغط changed_files_only وارفع جميع محتوياته إلى جذر مستودع Taqareer مع الاستبدال.
-2) لا تحذف .github/workflows/deploy.yml. حزمة التحديث لا تحتوي .github أو .nojekyll.
-3) انتظر نجاح GitHub Actions ثم نفذ Ctrl + Shift + R.
-4) في Supabase افتح Edge Functions → analyze-educational-form → Code → Edit function.
-5) احذف الكود القديم والصق محتوى SUPABASE_FUNCTION_GEMINI_V0_7_1.txt كاملًا ثم اضغط Deploy function.
-6) لا توجد أسرار جديدة، ولا SQL، ولا جداول، ولا Storage.
-7) أعد تحليل aaaa.xlsx. يجب أن تظهر الحسابات فورًا، ثم رسالة اكتمال المصالحة مع قراءات تربوية عميقة وتحسينات حقلية.
-8) معيار القبول لنتائج الدرجات: 5 استنتاجات، 4 تدخلات، 4 مراحل متابعة، دون تكرار، ودون خطأ JSON.
-9) عند إعادة التحليل بالإعدادات نفسها يجب استخدام الذاكرة المؤقتة، ما لم تضغط زر إعادة تحسين Gemini فقط.
+أولًا: GitHub
+1) فك ضغط حزمة changed-files-only.
+2) ارفع جميع محتوياتها إلى جذر مستودع Taqareer.
+3) وافق على استبدال الملفات.
+4) انتظر نجاح GitHub Actions.
+
+ثانيًا: Supabase
+1) افتح Edge Functions.
+2) افتح analyze-educational-form ثم Code ثم Edit function.
+3) احذف الكود القديم.
+4) الصق محتوى SUPABASE_FUNCTION_GEMINI_V0_8_0.txt كاملًا.
+5) اضغط Deploy function.
+
+ثالثًا: اختبار القبول
+1) افتح التطبيق بتحديث قوي Ctrl + Shift + R.
+2) أدخل رمز الوصول إذا طلبه التطبيق.
+3) نفذ تحليلًا جديدًا.
+4) تحقق من ظهور تقدم أربعة أجزاء.
+5) عند فشل جزء، استخدم زر إعادة الأجزاء المتعثرة فقط.
+
+لا SQL ولا أسرار جديدة ولا تعديل لملف .github.

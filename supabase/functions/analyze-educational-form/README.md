@@ -1,13 +1,23 @@
-# analyze-educational-form v0.7.1
+# analyze-educational-form
 
-تدعم الوظيفة: `ping`, `classify`, `vision_extract`, `enrich`، إضافة إلى `analyze` القديم للتوافق.
+وظيفة Supabase Edge لتقارير v0.9.2.
 
-واجهة تقارير v0.9.1 تستخدم `enrich` بعقد Deep Analysis Delta v3:
+## العمليات
 
-- `deepAnalysisUnits` لقراءات تربوية عميقة مرتبطة بمحاور موجودة.
-- `patches` لتحسين حقول محددة داخل عناصر العقد المحلي.
-- تحقق من `targetId` والحقل ومراجع الأدلة.
-- رفض `MAX_TOKENS` وتنفيذ محاولة مختصرة واحدة.
-- لا تغيير للحسابات ولا إنشاء خطط أو متابعة موازية.
+- `ping`
+- `classify`
+- `vision_extract`
+- `analyze` للتوافق القديم
+- `enrich` للتوافق مع v0.9.1
+- `enrich_segment` للمسار الإنتاجي الحالي
 
-لا توجد أسرار أو SQL جديدة.
+## enrich_segment
+
+يستقبل `payload.segment` بقيمة واحدة من:
+
+- `diagnostic`
+- `findings`
+- `interventions`
+- `governance`
+
+كل جزء يملك تعليماته وميزانيته وحدوده ومحاولته المختصرة الخاصة. لا ترسل العملية مخطط استجابة معقدًا إلى Gemini؛ يتحقق الخادم من JSON والمعرفات والأدلة والحقول قبل إعادة النتيجة.

@@ -1,34 +1,44 @@
-Phase 1-C3 Fix 1 v0.9.1 changed files
+Phase 1-C3 Fix 2 v0.9.2 - Segmented Deep Analysis Pipeline
 
-index.html
-manifest.json
-README.md
+رفع جميع الملفات التالية فوق جذر المستودع الحالي:
+
 APPLY_INSTRUCTIONS.txt
 CHANGED_FILES_MANIFEST.txt
+README.md
+SUPABASE_FUNCTION_GEMINI_V0_8_0.txt
+index.html
+manifest.json
+
+assets/ai-client.js
 assets/analysis-reconciliation.js
 assets/app.js
-assets/ai-client.js
+assets/deep-analysis-orchestrator.js
 assets/deep-analysis.js
 assets/performance-pipeline.js
 assets/report-system.js
 assets/styles.css
-supabase/functions/analyze-educational-form/index.ts
+
 supabase/functions/analyze-educational-form/README.md
-SUPABASE_FUNCTION_GEMINI_V0_7_1.txt
-docs/ANALYTICAL_RECONCILIATION_ARCHITECTURE.md
-docs/DEEP_ANALYSIS_DELTA_PROTOCOL.md
+supabase/functions/analyze-educational-form/index.ts
+
 docs/AI_CONTRACT.md
 docs/AI_SETUP.md
+docs/ANALYTICAL_RECONCILIATION_ARCHITECTURE.md
 docs/RELEASE_NOTES.md
+docs/SEGMENTED_DEEP_ANALYSIS_PIPELINE.md
 docs/TEST_REPORT.md
-docs/taqareer_v0_9_1_deep_analysis_delta_preview.pdf
-tests/reconciliation-contract.test.js
+docs/taqareer_v0_9_2_segmented_deep_analysis_preview.html
+docs/taqareer_v0_9_2_segmented_deep_analysis_preview.pdf
+
+tests/browser-segmented-pipeline.manual.py
 tests/edge-enrichment-contract.test.js
-tests/edge-semantic-retry.test.js
+tests/edge-segmented-enrichment.test.js
 tests/fast-payload-contract.test.js
+tests/fixtures/segmented-deep-analysis-v092.json
+tests/generate-v092-preview.js
 tests/performance-pipeline.test.js
+tests/reconciliation-contract.test.js
 tests/report-generation.test.js
-tests/browser-reconciliation.manual.py
-tests/browser-fast-pipeline.manual.py
-tests/generate-v091-preview.js
-tests/fixtures/deep-analysis-delta-v091.json
+tests/segmented-orchestrator.test.js
+
+لا تحتوي الحزمة على .github أو .nojekyll أو GITHUB_WORKFLOW_VISIBLE.
