@@ -7,7 +7,7 @@ assert.ok(source.includes('operation === "enrich_segment"'));
 assert.ok(source.includes('validateDeepAnalysisDelta'));
 assert.ok(source.includes('callDeepEnrichment'));
 assert.ok(source.includes('callSegmentEnrichment'));
-assert.ok(source.includes('SEGMENT_PROTOCOL_VERSION = "4.1.0"'));
+assert.ok(source.includes('SEGMENT_PROTOCOL_VERSION = "4.2.0"'));
 assert.ok(source.includes('class SegmentGenerationError'));
 assert.ok(source.includes('taskId'));
 assert.ok(source.includes('scope'));
@@ -16,3 +16,6 @@ assert.ok(source.includes('responseSchemaSent: false'));
 assert.ok(source.includes('isolated-json-mode-server-validated'));
 assert.ok(source.includes('failureType'));
 console.log('PASS edge supports isolated task enrichment, server-side validation, and structured failure diagnostics');
+
+assert.ok(source.includes('QUALITY_MICROTASK_VERSION = "1.0.0"'));
+assert.ok(source.includes('scope === "quality-tool"'));
