@@ -1,11 +1,50 @@
 (() => {
   "use strict";
 
-  const VERSION = "0.9.0";
-  const CONTRACT_VERSION = "2.0.0";
+  const VERSION = "0.9.1";
+  const CONTRACT_VERSION = "3.0.0";
 
   const SCORE_TYPES = new Set(["student_results", "assessment_component", "cross_subject"]);
   const LOCKED_SCORE_COUNTS = Object.freeze({ diagnosticSections: 4, findings: 5, interventions: 4, monitoring: 4 });
+
+  const PATCH_FIELD_POLICY = Object.freeze({
+    executive: new Set(["executiveTitle", "executiveSummary"]),
+    profile: new Set(["method", "dataAdequacy", "dimensions", "decisionUses"]),
+    finding: new Set(["statement", "educationalImpact", "recommendedAction", "limitations", "confidence", "severity", "evidenceRefs"]),
+    qualityTool: new Set(["reason", "interpretation", "requiredData"]),
+    intervention: new Set(["action", "implementationSteps", "responsibleRole", "timeframe", "successIndicator", "monitoringMethod", "contingency", "resources", "evidenceRefs"]),
+    monitoring: new Set(["measure", "owner"]),
+  });
+
+  const TEXT_LIMITS = Object.freeze({
+    executiveTitle: 180,
+    executiveSummary: 1400,
+    method: 900,
+    dataAdequacy: 700,
+    statement: 900,
+    educationalImpact: 900,
+    recommendedAction: 900,
+    reason: 700,
+    interpretation: 900,
+    action: 1200,
+    responsibleRole: 300,
+    timeframe: 220,
+    successIndicator: 700,
+    monitoringMethod: 650,
+    contingency: 800,
+    measure: 650,
+    owner: 260,
+  });
+
+  const ARRAY_LIMITS = Object.freeze({
+    dimensions: 8,
+    decisionUses: 8,
+    limitations: 4,
+    requiredData: 5,
+    implementationSteps: 5,
+    resources: 5,
+    evidenceRefs: 8,
+  });
 
   function clone(value) {
     return value === undefined ? undefined : structuredClone(value);
@@ -35,7 +74,7 @@
 
   function uniqueStrings(items) {
     const seen = new Set();
-    return (Array.isArray(items) ? items : []).filter(item => {
+    return (Array.isArray(items) ? items : []).map(item => String(item ?? "").trim()).filter(item => {
       const key = normalize(item);
       if (!key || seen.has(key)) return false;
       seen.add(key);
@@ -76,29 +115,35 @@
       return {
         family,
         lockedCounts: LOCKED_SCORE_COUNTS,
-        allowAdditionalFindings: 0,
-        allowAdditionalInterventions: 0,
-        allowAdditionalMonitoring: 0,
-        allowAdditionalTools: 0,
+        maxDeepAnalysisUnits: 4,
+        maxPatches: 24,
+        maxAdditionalFindings: 0,
+      };
+    }
+    if (family === "supervision_narrative" || family === "student_work" || family === "survey") {
+      return {
+        family,
+        lockedCounts: null,
+        maxDeepAnalysisUnits: 7,
+        maxPatches: 32,
+        maxAdditionalFindings: 1,
       };
     }
     if (family === "adaptive") {
       return {
         family,
         lockedCounts: null,
-        allowAdditionalFindings: 2,
-        allowAdditionalInterventions: 2,
-        allowAdditionalMonitoring: 1,
-        allowAdditionalTools: 1,
+        maxDeepAnalysisUnits: 6,
+        maxPatches: 30,
+        maxAdditionalFindings: 2,
       };
     }
     return {
       family,
       lockedCounts: null,
-      allowAdditionalFindings: 1,
-      allowAdditionalInterventions: 0,
-      allowAdditionalMonitoring: 0,
-      allowAdditionalTools: 1,
+      maxDeepAnalysisUnits: 6,
+      maxPatches: 28,
+      maxAdditionalFindings: 1,
     };
   }
 
@@ -145,6 +190,10 @@
       ...item,
       id: item.id || diagnosticId(item, index),
       source: item.source || "deterministic",
+      implications: uniqueStrings(item.implications || []),
+      limitations: uniqueStrings(item.limitations || []),
+      alternativeExplanations: uniqueStrings(item.alternativeExplanations || []),
+      dataRequests: uniqueStrings(item.dataRequests || []),
     }));
     result.findings = (result.findings || []).map((item, index) => ({
       ...item,
@@ -153,17 +202,20 @@
       statement: item.statement || item.title || "",
       educationalImpact: item.educationalImpact || item.impact || "",
       recommendedAction: item.recommendedAction || item.action || "",
-      limitations: Array.isArray(item.limitations) ? item.limitations : [],
+      limitations: uniqueStrings(item.limitations || []),
     }));
     result.qualityTools = (result.qualityTools || []).map((item, index) => ({
       ...item,
       id: item.id || `tool.${index + 1}.${hash(item.name)}`,
       source: item.source || "deterministic",
+      requiredData: uniqueStrings(item.requiredData || []),
     }));
     result.improvementPlan = (result.improvementPlan || []).map((item, index) => ({
       ...item,
       id: item.id || interventionId(item, index),
       source: item.source || "deterministic",
+      implementationSteps: uniqueStrings(item.implementationSteps || []),
+      resources: uniqueStrings(item.resources || []),
     }));
     result.monitoringPlan = (result.monitoringPlan || []).map((item, index) => ({
       ...item,
@@ -178,8 +230,11 @@
       contractVersion: CONTRACT_VERSION,
       family: familyOf(result),
       aiApplied: false,
+      appliedDeepAnalyses: 0,
+      appliedPatches: 0,
       appliedEnhancements: 0,
       rejectedEnhancements: 0,
+      rejectionReasons: [],
       addedFindings: 0,
       addedInterventions: 0,
       addedMonitoring: 0,
@@ -188,8 +243,14 @@
     return result;
   }
 
-  function targetSummary(item, fields) {
-    const output = { id: item.id };
+  function trimText(value, limit) {
+    const text = String(value ?? "").trim();
+    if (!text) return "";
+    return text.length <= limit ? text : `${text.slice(0, Math.max(0, limit - 1)).trim()}…`;
+  }
+
+  function compactTarget(item, type, fields) {
+    const output = { id: item.id, targetType: type, allowedFields: [...(PATCH_FIELD_POLICY[type] || [])] };
     fields.forEach(field => {
       if (item[field] !== undefined) output[field] = item[field];
     });
@@ -201,32 +262,50 @@
     const policy = policyFor(analysis);
     return {
       version: CONTRACT_VERSION,
-      mode: "delta-only",
+      mode: "deep-analysis-delta",
       family: policy.family,
       rules: {
         localCalculationsAreAuthoritative: true,
+        deepInterpretationBelongsToGemini: true,
         doNotCreateParallelPlans: true,
         doNotCreateParallelMonitoringCycles: true,
         targetIdsAreMandatory: true,
+        onePatchPerTargetField: true,
         lockedCounts: policy.lockedCounts,
-        additionalLimits: {
-          findings: policy.allowAdditionalFindings,
-          interventions: policy.allowAdditionalInterventions,
-          monitoring: policy.allowAdditionalMonitoring,
-          tools: policy.allowAdditionalTools,
-        },
+        maxDeepAnalysisUnits: policy.maxDeepAnalysisUnits,
+        maxPatches: policy.maxPatches,
+        maxAdditionalFindings: policy.maxAdditionalFindings,
       },
       executive: {
+        id: "executive",
+        targetType: "executive",
+        allowedFields: [...PATCH_FIELD_POLICY.executive],
         title: analysis.executiveTitle || "",
         summary: analysis.executiveSummary || "",
       },
-      analysisProfile: analysis.analysisProfile || {},
-      targets: {
-        diagnosticSections: analysis.diagnosticSections.map(item => targetSummary(item, ["title", "analysis", "evidenceRefs", "implications", "limitations", "confidence"])),
-        findings: analysis.findings.map(item => targetSummary(item, ["title", "statement", "evidenceRefs", "confidence", "educationalImpact", "recommendedAction", "limitations", "severity"])),
-        qualityTools: analysis.qualityTools.map(item => targetSummary(item, ["name", "reason", "conditionsMet", "interpretation"])),
-        interventions: analysis.improvementPlan.map(item => targetSummary(item, ["priority", "issue", "targetGroup", "action", "responsibleRole", "timeframe", "successIndicator", "monitoringMethod", "contingency", "evidenceRefs"])),
-        monitoring: analysis.monitoringPlan.map(item => targetSummary(item, ["stage", "timing", "measure", "owner"])),
+      profile: {
+        id: "profile",
+        targetType: "profile",
+        allowedFields: [...PATCH_FIELD_POLICY.profile],
+        method: analysis.analysisProfile?.method || "",
+        dataAdequacy: analysis.analysisProfile?.dataAdequacy || "",
+        dimensions: analysis.analysisProfile?.dimensions || [],
+        decisionUses: analysis.analysisProfile?.decisionUse || analysis.analysisProfile?.decisionUses || [],
+      },
+      deepAnalysisTargets: analysis.diagnosticSections.slice(0, policy.maxDeepAnalysisUnits).map(item => ({
+        id: item.id,
+        title: item.title,
+        currentAnalysis: trimText(item.analysis, 1100),
+        evidenceRefs: (item.evidenceRefs || []).slice(0, 8),
+        currentImplications: (item.implications || []).slice(0, 4),
+        currentLimitations: (item.limitations || []).slice(0, 4),
+        confidence: item.confidence || "متوسطة",
+      })),
+      patchTargets: {
+        findings: analysis.findings.map(item => compactTarget(item, "finding", ["title", "statement", "evidenceRefs", "confidence", "educationalImpact", "recommendedAction", "limitations", "severity"])),
+        qualityTools: analysis.qualityTools.map(item => compactTarget(item, "qualityTool", ["name", "reason", "conditionsMet", "interpretation", "requiredData"])),
+        interventions: analysis.improvementPlan.map(item => compactTarget(item, "intervention", ["priority", "issue", "targetGroup", "action", "responsibleRole", "timeframe", "successIndicator", "monitoringMethod", "contingency", "evidenceRefs"])),
+        monitoring: analysis.monitoringPlan.map(item => compactTarget(item, "monitoring", ["stage", "timing", "measure", "owner"])),
       },
     };
   }
@@ -235,100 +314,164 @@
     return uniqueStrings([...(local || []), ...(incoming || [])]).filter(ref => !allowedEvidence || allowedEvidence.has(String(ref)));
   }
 
-  function mergeArrayField(target, patch, field) {
-    if (Array.isArray(patch?.[field]) && patch[field].length) {
-      target[field] = uniqueStrings([...(target[field] || []), ...patch[field]]);
+  function clampItems(items, limit, perItemLimit = 480) {
+    return uniqueStrings(items || []).slice(0, limit).map(item => trimText(item, perItemLimit));
+  }
+
+  function buildTargetMaps(result) {
+    return {
+      executive: new Map([["executive", result]]),
+      profile: new Map([["profile", result.analysisProfile]]),
+      finding: new Map(result.findings.map(item => [item.id, item])),
+      qualityTool: new Map(result.qualityTools.map(item => [item.id, item])),
+      intervention: new Map(result.improvementPlan.map(item => [item.id, item])),
+      monitoring: new Map(result.monitoringPlan.map(item => [item.id, item])),
+    };
+  }
+
+  function patchValue(patch, field) {
+    const arrayField = new Set(["dimensions", "decisionUses", "limitations", "requiredData", "implementationSteps", "resources", "evidenceRefs"]).has(field);
+    if (arrayField) return Array.isArray(patch?.items) ? patch.items : [];
+    return String(patch?.text ?? "").trim();
+  }
+
+  function applyPatch(target, targetType, field, patch, allowedEvidence) {
+    const value = patchValue(patch, field);
+    if (field === "evidenceRefs") {
+      const refs = mergeEvidence(target.evidenceRefs, value, allowedEvidence);
+      if (!refs.length) return false;
+      target.evidenceRefs = refs.slice(0, ARRAY_LIMITS.evidenceRefs);
+      target.source = "deterministic+gemini";
+      return true;
     }
+    if (["dimensions", "decisionUses", "limitations", "requiredData", "implementationSteps", "resources"].includes(field)) {
+      const items = clampItems(value, ARRAY_LIMITS[field] || 4);
+      if (!items.length) return false;
+      const localKey = targetType === "profile" && field === "decisionUses" ? "decisionUse" : field;
+      target[localKey] = uniqueStrings([...(target[localKey] || []), ...items]).slice(0, ARRAY_LIMITS[field] || 4);
+      if (targetType !== "profile") target.source = "deterministic+gemini";
+      return true;
+    }
+    if (field === "confidence") {
+      if (!["مرتفعة", "متوسطة", "منخفضة"].includes(value)) return false;
+      target.confidence = value;
+      target.source = "deterministic+gemini";
+      return true;
+    }
+    if (field === "severity") {
+      if (!["high", "medium", "low"].includes(value)) return false;
+      target.severity = value;
+      target.source = "deterministic+gemini";
+      return true;
+    }
+    const limit = TEXT_LIMITS[field] || 900;
+    const text = trimText(value, limit);
+    if (!text) return false;
+    if (targetType === "executive") {
+      if (field === "executiveTitle") target.executiveTitle = text;
+      else if (field === "executiveSummary") target.executiveSummary = text;
+      else return false;
+    } else {
+      target[field] = text;
+      if (targetType !== "profile") target.source = "deterministic+gemini";
+    }
+    return true;
   }
 
-  function applyText(target, patch, fields) {
-    let applied = 0;
-    fields.forEach(field => {
-      const value = String(patch?.[field] ?? "").trim();
-      if (value) {
-        target[field] = value;
-        applied += 1;
-      }
-    });
-    if (applied) target.source = "deterministic+gemini";
-    return applied;
-  }
-
-  function applyEnhancements(items, enhancements, config) {
-    const byId = new Map(items.map(item => [item.id, item]));
+  function applyDeepAnalyses(result, units, allowedEvidence, policy) {
+    const byId = new Map(result.diagnosticSections.map(item => [item.id, item]));
+    const seen = new Set();
     let applied = 0;
     let rejected = 0;
-    (Array.isArray(enhancements) ? enhancements : []).forEach(patch => {
-      const target = byId.get(String(patch?.targetId || ""));
-      if (!target) { rejected += 1; return; }
-      applied += applyText(target, patch, config.textFields || []);
-      (config.arrayFields || []).forEach(field => mergeArrayField(target, patch, field));
-      if (patch?.evidenceRefs) target.evidenceRefs = mergeEvidence(target.evidenceRefs, patch.evidenceRefs, config.allowedEvidence);
-      if (patch?.confidence) target.confidence = patch.confidence;
-      if (patch?.severity) target.severity = patch.severity;
-    });
-    return { applied, rejected };
+    const reasons = [];
+    for (const unit of (Array.isArray(units) ? units : []).slice(0, policy.maxDeepAnalysisUnits)) {
+      const targetId = String(unit?.targetId || "");
+      if (!targetId || seen.has(targetId)) { rejected += 1; reasons.push("deep:duplicate-or-empty-target"); continue; }
+      seen.add(targetId);
+      const target = byId.get(targetId);
+      if (!target) { rejected += 1; reasons.push(`deep:unknown:${targetId}`); continue; }
+      const analysis = trimText(unit?.analysis, 2200);
+      const evidenceRefs = mergeEvidence(target.evidenceRefs, unit?.evidenceRefs || [], allowedEvidence).slice(0, 8);
+      if (!analysis || !evidenceRefs.length) { rejected += 1; reasons.push(`deep:missing-analysis-or-evidence:${targetId}`); continue; }
+      target.analysis = analysis;
+      target.evidenceRefs = evidenceRefs;
+      target.confidence = ["مرتفعة", "متوسطة", "منخفضة"].includes(unit?.confidence) ? unit.confidence : target.confidence;
+      target.implications = clampItems(unit?.implications, 4, 520);
+      target.alternativeExplanations = clampItems(unit?.alternativeExplanations, 3, 520);
+      target.limitations = clampItems(unit?.limitations, 4, 520);
+      target.dataRequests = clampItems(unit?.dataRequests, 4, 520);
+      target.source = "deterministic+gemini";
+      applied += 1;
+    }
+    return { applied, rejected, reasons };
   }
 
-  function addNovelFindings(result, additional, limit, allowedEvidence) {
-    if (!limit) return 0;
-    let added = 0;
-    for (const item of Array.isArray(additional) ? additional : []) {
-      if (added >= limit) break;
-      const title = String(item?.title || "").trim();
-      if (!title) continue;
-      const duplicate = result.findings.some(existing => similarity(`${existing.title} ${existing.statement}`, `${title} ${item.statement || ""}`) >= 0.48);
-      if (duplicate) continue;
-      const evidenceRefs = mergeEvidence([], item.evidenceRefs || [], allowedEvidence);
-      if (!evidenceRefs.length) continue;
-      result.findings.push({
-        id: `finding.ai.${hash(title)}`,
-        title,
-        statement: String(item.statement || title),
-        evidenceRefs,
-        confidence: item.confidence || "متوسطة",
-        educationalImpact: String(item.educationalImpact || ""),
-        recommendedAction: String(item.recommendedAction || ""),
-        limitations: uniqueStrings(item.limitations || []),
-        severity: item.severity || "medium",
-        source: "gemini-novel",
-      });
-      added += 1;
+  function applyPatches(result, patches, allowedEvidence, policy) {
+    const maps = buildTargetMaps(result);
+    const seen = new Set();
+    let applied = 0;
+    let rejected = 0;
+    const reasons = [];
+    for (const patch of (Array.isArray(patches) ? patches : []).slice(0, policy.maxPatches)) {
+      const targetType = String(patch?.targetType || "");
+      const targetId = String(patch?.targetId || "");
+      const field = String(patch?.field || "");
+      const key = `${targetType}:${targetId}:${field}`;
+      if (!targetType || !targetId || !field || seen.has(key)) { rejected += 1; reasons.push(`patch:duplicate-or-empty:${key}`); continue; }
+      seen.add(key);
+      const allowedFields = PATCH_FIELD_POLICY[targetType];
+      if (!allowedFields || !allowedFields.has(field)) { rejected += 1; reasons.push(`patch:forbidden-field:${key}`); continue; }
+      const target = maps[targetType]?.get(targetId);
+      if (!target) { rejected += 1; reasons.push(`patch:unknown-target:${key}`); continue; }
+      const patchEvidence = Array.isArray(patch?.evidenceRefs) ? patch.evidenceRefs : [];
+      if (patchEvidence.length && !patchEvidence.some(ref => allowedEvidence.has(String(ref)))) {
+        rejected += 1; reasons.push(`patch:invalid-evidence:${key}`); continue;
+      }
+      if (applyPatch(target, targetType, field, patch, allowedEvidence)) applied += 1;
+      else { rejected += 1; reasons.push(`patch:empty-or-invalid:${key}`); }
     }
-    return added;
+    return { applied, rejected, reasons };
+  }
+
+  function reconcileV2(localAnalysis, delta, options = {}) {
+    // توافق آمن مع نتائج v0.9.0 المخزنة سابقًا. لا يُستخدم في الطلبات الجديدة.
+    const result = canonicalize(localAnalysis);
+    const allowedEvidence = new Set((options.availableEvidenceRefs || []).map(String));
+    const converted = { contractVersion: "2-compat", deepAnalysisUnits: [], patches: [], additionalCautions: delta.additionalCautions || [], missingDataRequests: delta.missingDataRequests || [] };
+    (delta.diagnosticEnhancements || []).forEach(item => converted.deepAnalysisUnits.push({
+      targetId: item.targetId,
+      analysis: item.analysis,
+      evidenceRefs: item.evidenceRefs || [],
+      confidence: item.confidence,
+      implications: item.implications || [],
+      alternativeExplanations: [],
+      limitations: item.limitations || [],
+      dataRequests: [],
+    }));
+    const groups = [
+      ["finding", delta.findingEnhancements || [], ["statement", "educationalImpact", "recommendedAction", "limitations", "confidence", "severity", "evidenceRefs"]],
+      ["qualityTool", delta.qualityToolEnhancements || [], ["reason", "interpretation", "requiredData"]],
+      ["intervention", delta.interventionEnhancements || [], ["action", "responsibleRole", "timeframe", "successIndicator", "monitoringMethod", "contingency", "evidenceRefs"]],
+      ["monitoring", delta.monitoringEnhancements || [], ["measure", "owner"]],
+    ];
+    groups.forEach(([targetType, items, fields]) => items.forEach(item => fields.forEach(field => {
+      const value = item[field];
+      if (value === undefined || value === null || value === "" || (Array.isArray(value) && !value.length)) return;
+      converted.patches.push({ targetType, targetId: item.targetId, field, text: Array.isArray(value) ? "" : String(value), items: Array.isArray(value) ? value : [], evidenceRefs: item.evidenceRefs || [] });
+    })));
+    return reconcile(result, converted, { ...options, allowedEvidenceOverride: allowedEvidence });
   }
 
   function reconcile(localAnalysis, delta, options = {}) {
+    if (delta && typeof delta === "object" && !Array.isArray(delta.deepAnalysisUnits) && !Array.isArray(delta.patches)) {
+      return reconcileV2(localAnalysis, delta, options);
+    }
     const result = canonicalize(localAnalysis);
     if (!delta || typeof delta !== "object") return result;
     const policy = policyFor(result);
-    const allowedEvidence = new Set((options.availableEvidenceRefs || []).map(String));
-    let applied = 0;
-    let rejected = 0;
-
-    const executive = delta.executiveEnhancement || {};
-    if (String(executive.title || "").trim()) { result.executiveTitle = String(executive.title).trim(); applied += 1; }
-    if (String(executive.summary || "").trim()) { result.executiveSummary = String(executive.summary).trim(); applied += 1; }
-
-    const profile = delta.profileEnhancement || {};
-    result.analysisProfile = { ...(result.analysisProfile || {}) };
-    if (String(profile.method || "").trim()) { result.analysisProfile.method = String(profile.method).trim(); applied += 1; }
-    if (String(profile.dataAdequacy || "").trim()) { result.analysisProfile.dataAdequacy = String(profile.dataAdequacy).trim(); applied += 1; }
-    if (Array.isArray(profile.dimensions)) result.analysisProfile.dimensions = uniqueStrings([...(result.analysisProfile.dimensions || []), ...profile.dimensions]).slice(0, 10);
-    if (Array.isArray(profile.decisionUses)) result.analysisProfile.decisionUse = uniqueStrings([...(result.analysisProfile.decisionUse || result.analysisProfile.decisionUses || []), ...profile.decisionUses]).slice(0, 10);
-
-    for (const outcome of [
-      applyEnhancements(result.diagnosticSections, delta.diagnosticEnhancements, { textFields: ["analysis"], arrayFields: ["implications", "limitations"], allowedEvidence }),
-      applyEnhancements(result.findings, delta.findingEnhancements, { textFields: ["statement", "educationalImpact", "recommendedAction"], arrayFields: ["limitations"], allowedEvidence }),
-      applyEnhancements(result.qualityTools, delta.qualityToolEnhancements, { textFields: ["reason", "interpretation"], arrayFields: ["requiredData"], allowedEvidence }),
-      applyEnhancements(result.improvementPlan, delta.interventionEnhancements, { textFields: ["action", "responsibleRole", "timeframe", "successIndicator", "monitoringMethod", "contingency"], arrayFields: [], allowedEvidence }),
-      applyEnhancements(result.monitoringPlan, delta.monitoringEnhancements, { textFields: ["measure", "owner"], arrayFields: [], allowedEvidence }),
-    ]) {
-      applied += outcome.applied;
-      rejected += outcome.rejected;
-    }
-
-    const addedFindings = addNovelFindings(result, delta.additionalFindings, policy.allowAdditionalFindings, allowedEvidence);
+    const allowedEvidence = options.allowedEvidenceOverride || new Set((options.availableEvidenceRefs || []).map(String));
+    const deepOutcome = applyDeepAnalyses(result, delta.deepAnalysisUnits, allowedEvidence, policy);
+    const patchOutcome = applyPatches(result, delta.patches, allowedEvidence, policy);
 
     result.limitations = uniqueStrings([
       ...(result.limitations || []),
@@ -337,7 +480,6 @@
     ]);
     result.cautions = uniqueStrings([...(result.cautions || []), ...(delta.additionalCautions || [])]);
     result.dataRequests = uniqueStrings([...(result.dataRequests || []), ...(delta.missingDataRequests || [])]);
-    result.suggestedNewType = delta.suggestedNewType || result.suggestedNewType;
 
     if (result.improvementPlan[0]) {
       const first = result.improvementPlan[0];
@@ -349,13 +491,18 @@
       };
     }
 
+    const appliedEnhancements = deepOutcome.applied + patchOutcome.applied;
     result._reconciliation = {
       contractVersion: CONTRACT_VERSION,
+      responseContractVersion: String(delta.contractVersion || "unknown"),
       family: policy.family,
-      aiApplied: applied > 0 || addedFindings > 0,
-      appliedEnhancements: applied,
-      rejectedEnhancements: rejected,
-      addedFindings,
+      aiApplied: appliedEnhancements > 0,
+      appliedDeepAnalyses: deepOutcome.applied,
+      appliedPatches: patchOutcome.applied,
+      appliedEnhancements,
+      rejectedEnhancements: deepOutcome.rejected + patchOutcome.rejected,
+      rejectionReasons: [...deepOutcome.reasons, ...patchOutcome.reasons].slice(0, 20),
+      addedFindings: 0,
       addedInterventions: 0,
       addedMonitoring: 0,
       addedTools: 0,
@@ -384,6 +531,7 @@
   window.TaqareerReconciliation = {
     VERSION,
     CONTRACT_VERSION,
+    PATCH_FIELD_POLICY,
     canonicalize,
     buildContract,
     reconcile,

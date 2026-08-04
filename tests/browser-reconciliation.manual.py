@@ -1,5 +1,5 @@
-"""Manual Chromium acceptance for the v0.9.0 reconciliation UI.
-Requires Python Playwright and system Chromium. It uses set_content so no local file navigation is needed.
+"""Chromium acceptance for v0.9.1 Deep Analysis Delta UI.
+Uses set_content and a mocked valid deep pedagogical delta. No network is required.
 """
 import asyncio
 import json
@@ -11,22 +11,38 @@ ROOT = Path(__file__).resolve().parents[1]
 HTML = re.sub(r'<link rel="stylesheet"[^>]+>', '', (ROOT / 'index.html').read_text())
 HTML = re.sub(r'<script[^>]*src="[^"]+"[^>]*></script>', '', HTML)
 DELTA = {
-    "executiveEnhancement": {"title": "حكم مصالَح", "summary": "تحسين موجز دون تقرير موازٍ."},
-    "findingEnhancements": [{
-        "targetId": "finding.mastery_spread",
-        "statement": "تعزيز الاستنتاج دون تغيير الحساب.",
-        "educationalImpact": "قرار أدق.",
-        "recommendedAction": "تدخل متدرج."
-    }],
-    "interventionEnhancements": [
-        {"targetId": "intervention.deep_gap", "action": "إجراء عميق محسن."},
-        {"targetId": "intervention.moderate_gap", "action": "إجراء متوسط محسن."},
-        {"targetId": "intervention.near_mastery", "action": "إجراء قريب محسن."},
-        {"targetId": "intervention.mastery_enrichment", "action": "إثراء محسن."}
+    "contractVersion": "3.0.0",
+    "deepAnalysisUnits": [
+        {
+            "targetId": "diagnostic.measurement_quality",
+            "analysis": "تسمح البيانات بتقدير حجم فجوة الإتقان وتوزيعها بدرجة ثقة مرتفعة، لكنها لا تكشف المهارات أو المفاهيم المسببة للتعثر. تربويًا، يصلح هذا المستوى من البيانات لتحديد جرعة التدخل والفئات المستهدفة، بينما يتطلب تشخيص المحتوى تحليل مفردات الاختبار وعينات من أعمال الطلبة.",
+            "evidenceRefs": ["metric:n", "metric:masteryPct"],
+            "confidence": "مرتفعة",
+            "implications": ["اعتماد التجزئة العلاجية الحالية بوصفها قرار فرز أولي.", "جمع أدلة أداء نوعية قبل تحديد المحتوى العلاجي."],
+            "alternativeExplanations": ["قد تعكس النتيجة صعوبة أداة القياس أو عدم اتساقها مع فرص التعلم، وليس ضعف الفهم وحده."],
+            "limitations": ["الدرجات الإجمالية لا تحدد موضع الخطأ المعرفي."],
+            "dataRequests": ["تحليل مفردات الاختبار وربطها بالمهارات."]
+        },
+        {
+            "targetId": "diagnostic.distribution_center",
+            "analysis": "تقارب المتوسط والوسيط يشير إلى مركز أداء واضح، لكن التشتت الواسع يعني أن المتوسط لا يمثل احتياجات جميع الطلبة. وجود كتلة كبيرة في الفجوة العميقة مع مجموعة متقنة يفرض تدخلًا متمايزًا لا برنامجًا موحدًا.",
+            "evidenceRefs": ["metric:mean", "metric:median", "metric:sd"],
+            "confidence": "مرتفعة",
+            "implications": ["استخدام الربيعات وفئات الإتقان لتوزيع الطلبة إلى مسارات تدخل مختلفة."],
+            "alternativeExplanations": ["قد يرتبط التشتت بتفاوت الخبرة السابقة أو الحضور أو فرص الممارسة."],
+            "limitations": ["لا تتوافر متغيرات تفسيرية لاختبار أسباب التفاوت."],
+            "dataRequests": ["بيانات الحضور والنتائج السابقة وعينات الأعمال."]
+        }
     ],
-    "monitoringEnhancements": [{"targetId": "monitoring.short_followup", "measure": "متابعة محسنة."}],
-    "diagnosticEnhancements": [], "additionalFindings": [], "qualityToolEnhancements": [],
-    "additionalCautions": [], "missingDataRequests": []
+    "patches": [
+        {"targetType":"executive","targetId":"executive","field":"executiveSummary","text":"تتطلب النتيجة تدخلًا سريعًا متعدد المسارات، مع حماية المتقنين من الركود وفصل التشخيص المحتوائي عن قرار التجزئة الأولي.","items":[],"evidenceRefs":["metric:masteryPct"]},
+        {"targetType":"finding","targetId":"finding.mastery_spread","field":"educationalImpact","text":"انخفاض الانتشار بهذا الحجم يعني أن التدخل الصفي العام وحده غير كافٍ، ويجب الجمع بين إعادة التدريس المكثف ومسار قريب من الإتقان وإثراء المتقنين.","items":[],"evidenceRefs":["metric:masteryPct","metric:n"]},
+        {"targetType":"intervention","targetId":"intervention.deep_gap","field":"implementationSteps","text":"","items":["اختبار تشخيصي قصير للمتطلبات السابقة.","إعادة تدريس في مجموعات صغيرة.","اختبارات خروج أسبوعية وتعديل المجموعات."],"evidenceRefs":["metric:deepGapPct"]},
+        {"targetType":"intervention","targetId":"intervention.deep_gap","field":"resources","text":"","items":["بنك أسئلة تشخيصي.","سجل انتقال أسبوعي بين الفئات."],"evidenceRefs":["metric:deepGapPct"]},
+        {"targetType":"monitoring","targetId":"monitoring.short_followup","field":"measure","text":"قياس انتقال الطلبة بين الفئات الأربع أسبوعيًا مع مقارنة نتائج مهمات قصيرة متكافئة.","items":[],"evidenceRefs":[]}
+    ],
+    "additionalCautions": ["لا يجوز تفسير التفاوت بوصفه أثرًا للمعلم أو المنهج دون بيانات إضافية."],
+    "missingDataRequests": ["تحليل مفردات الاختبار وربطها بالمهارات."]
 }
 
 async def main():
@@ -43,7 +59,7 @@ async def main():
         await page.evaluate("""delta => {
           const original = window.TaqareerAI;
           window.TaqareerAI = {...original, isConfigured:()=>true, getConfig:()=>({enabled:true}),
-            enrichDetailed:async()=>({ok:true,result:delta,model:'mock-delta'}),
+            enrichDetailed:async()=>({ok:true,result:delta,model:'mock-deep-delta',serverTiming:{geminiMs:8500,attemptNumber:1,compactRetryUsed:false,acceptedDeepAnalyses:2,acceptedPatches:5}}),
             saveConfig:()=>{}, clearConfig:()=>{}, ping:async()=>({ok:true})};
         }""", DELTA)
         await page.add_script_tag(content=(ROOT / 'assets/app.js').read_text())
@@ -54,18 +70,22 @@ async def main():
         await page.fill('#maxScoreInput', '60')
         await page.fill('#masteryThresholdInput', '75')
         await page.click('#runAnalysisBtn')
-        await page.wait_for_function("document.querySelector('#aiResultNotice') && !document.querySelector('#aiResultNotice').classList.contains('hidden')")
+        await page.wait_for_function("document.querySelector('#aiResultNotice')?.textContent.includes('اكتملت المصالحة التحليلية')")
         result = {
             "notice": await page.locator('#aiResultNotice').inner_text(),
             "findings": await page.locator('#findings > *').count(),
             "interventions": await page.locator('#improvementPlanBody tr').count(),
             "monitoring": await page.locator('#monitoringPlanGrid > *').count(),
+            "diagnostics": await page.locator('#diagnosticSectionsGrid > *').count(),
+            "deepAlternativeVisible": await page.locator('#diagnosticSectionsGrid').inner_text(),
             "errors": errors,
         }
-        print(json.dumps(result, ensure_ascii=False, indent=2))
+        print(json.dumps({k:(v if k != 'deepAlternativeVisible' else ('تفسيرات بديلة محتملة' in v)) for k,v in result.items()}, ensure_ascii=False, indent=2))
         assert result['findings'] == 5
         assert result['interventions'] == 4
         assert result['monitoring'] == 4
+        assert result['diagnostics'] == 4
+        assert 'تفسيرات بديلة محتملة' in result['deepAlternativeVisible']
         assert not errors
         await browser.close()
 

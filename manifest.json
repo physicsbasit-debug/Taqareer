@@ -1,8 +1,8 @@
 {
   "app": "تقارير",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "phase": "Phase 1-C3 - Analytical Reconciliation Architecture",
-  "releaseName": "Canonical Deterministic Contract with Targeted Gemini Delta Enrichment",
+  "releaseName": "Deep Analysis Delta Protocol with Semantic Retry and Field Reconciliation",
   "buildType": "static-github-pages-plus-supabase-edge-function",
   "supportedInputs": {
     "table": [

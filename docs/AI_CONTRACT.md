@@ -1,51 +1,52 @@
-# عقد الذكاء الاصطناعي v0.9.0
+# عقد الذكاء الاصطناعي v0.9.1
 
 ## العمليات
 
 - `ping`: اختبار الاتصال.
 - `classify`: تحقق دلالي عند الحاجة.
 - `vision_extract`: استخراج بصري.
-- `enrich`: العملية الحالية للتحليل العميق المصالَح.
+- `enrich`: التحليل التربوي العميق والمصالحة.
 - `analyze`: مسار قديم محفوظ للتوافق فقط.
 
 ## طلب `enrich`
 
 يرسل التطبيق:
 
-- ملفًا تحليليًا مركزًا محسوبًا من كامل البيانات.
-- مراجع الأدلة المتاحة.
-- `reconciliationContract` ويتضمن العناصر المستهدفة ومعرفاتها.
-- تعليمات صريحة بأن الحسابات والعناصر الأساسية حتمية ومقفلة.
+- مؤشرات ورسومًا محسوبة من كامل البيانات.
+- عينة سياقية محدودة بدل السجلات الخام كاملة.
+- مراجع الأدلة المسموح استخدامها.
+- `reconciliationContract` بمعرفات الأهداف والحقول المسموح تحسينها.
+- محاور `deepAnalysisTargets` الخاصة بنوع الاستمارة.
 
 ## استجابة `enrich`
 
-```json
-{
-  "executiveEnhancement": {},
-  "profileEnhancement": {},
-  "diagnosticEnhancements": [{ "targetId": "diagnostic.measurement_quality" }],
-  "findingEnhancements": [{ "targetId": "finding.mastery_spread" }],
-  "additionalFindings": [],
-  "qualityToolEnhancements": [{ "targetId": "tool-id" }],
-  "interventionEnhancements": [{ "targetId": "intervention.deep_gap" }],
-  "monitoringEnhancements": [{ "targetId": "monitoring.short_followup" }],
-  "additionalCautions": [],
-  "missingDataRequests": [],
-  "suggestedNewType": { "needed": false }
-}
-```
+تستخدم عقد `Deep Analysis Delta v3`:
+
+- `deepAnalysisUnits`: تفسير تربوي عميق، آثار، بدائل، حدود، وبيانات مطلوبة.
+- `patches`: تحسين حقل واحد داخل عنصر موجود.
+- `additionalCautions`.
+- `missingDataRequests`.
 
 ## محظورات العقد
 
 - لا إعادة حساب الأعداد أو النسب.
-- لا إنشاء خطة تدخل موازية عند وجود تدخل مستهدف.
+- لا إنشاء خطة تدخل موازية.
 - لا إنشاء دورة متابعة ثانية.
 - لا استخدام `targetId` غير موجود.
+- لا تعديل حقل غير مسموح.
 - لا الاستشهاد بمرجع دليل غير مرسل.
 - لا تحويل فرضية سببية إلى حقيقة.
 
-## ميزانية التنفيذ
+## سياسة الإخراج
 
-- `classify`: `gemini-2.5-flash-lite`، تفكير 0.
-- `enrich`: نموذج `GEMINI_MODEL`، تفكير 768، حد إخراج 4200.
-- `analyze` القديم: تفكير 1024، محفوظ للتوافق ولا تستخدمه الواجهة الحالية.
+- `STOP`: يمكن تحليل JSON.
+- `MAX_TOKENS`: الرد مقطوع، وتنفذ محاولة مختصرة واحدة.
+- JSON تالف: محاولة مختصرة واحدة.
+- بعد فشل المحاولة المختصرة يبقى التحليل المحلي كاملًا.
+
+## الميزانية
+
+- `classify`: Flash-Lite، تفكير 0.
+- `enrich` الأول: تفكير 512، إخراج 4800.
+- `enrich` المختصر: تفكير 256، إخراج 3800.
+- `analyze` القديم: محفوظ للتوافق ولا تستخدمه الواجهة الحالية.

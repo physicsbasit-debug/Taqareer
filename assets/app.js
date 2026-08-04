@@ -77,7 +77,7 @@
     headers: [], rows: [], sourceName: "", rawText: "", narrativeText: "", delimiter: ",", type: formTypes.at(-1), confidence: 0,
     quality: { blockers: [], warnings: [], info: [], completeness: 0 },
     analysis: null, reconciledAnalysis: null, aiResult: null, aiError: "", aiUsed: false, aiPending: false,
-    performance: { spans: [], cacheHit: false, payloadChars: 0, aiUsage: null, aiModel: "" },
+    performance: { spans: [], cacheHit: false, payloadChars: 0, aiUsage: null, aiModel: "", aiServerTiming: null },
     localRecognition: null, aiRecognition: null, recognitionStatus: "محلي", recognitionRequestId: 0, analysisRequestId: 0,
     sampleMaxScore: null, pendingSource: null, sourceMeta: null, pendingManualFileName: "", pendingVisualPreview: null
   };
@@ -101,7 +101,7 @@
   function clearMessage(id) { $(id).classList.add("hidden"); }
 
   function perfApi() { return window.TaqareerPerformance || null; }
-  function resetPerformance() { state.performance = { spans: [], cacheHit: false, payloadChars: 0, aiUsage: null, aiModel: "" }; }
+  function resetPerformance() { state.performance = { spans: [], cacheHit: false, payloadChars: 0, aiUsage: null, aiModel: "", aiServerTiming: null }; }
   function recordSpan(span) { if (span) state.performance.spans.push(span); return span; }
   function formatDuration(ms) { return perfApi()?.formatDuration?.(ms) || `${Math.round(Number(ms) || 0)} مللي ثانية`; }
   function yieldToUi() { return new Promise(resolve => requestAnimationFrame(() => resolve())); }
@@ -380,7 +380,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "0.9.0",
+      appVersion: "0.9.1",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -927,10 +927,10 @@
     if (!reconciliationContract) throw new Error("محرك المصالحة التحليلية غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "0.9.0",
+      appVersion: "0.9.1",
       pipeline: {
-        mode: "reconciled-delta-analysis",
-        instruction: "المحرك الحتمي هو العقد الأساسي. أعد تحسينات Delta مرتبطة بمعرفات العقد فقط، ولا تنشئ خطة أو دورة متابعة موازية."
+        mode: "deep-analysis-delta-v3",
+        instruction: "المحرك الحتمي يثبت الحسابات والبنية. قدّم قراءة تربوية عميقة لمحاور العقد، ثم رقعًا حقلية عالية القيمة فقط، دون إنشاء خطة أو دورة متابعة موازية."
       },
       source: {
         name: state.sourceName,
@@ -1024,7 +1024,7 @@
     if (!window.TaqareerReconciliation?.reconcile) throw new Error("محرك المصالحة التحليلية غير محمل.");
     const maskPersonalData = $("maskPersonalDataInput")?.checked !== false;
     const payload = buildAiAnalysisPayload(maskPersonalData);
-    const cacheKey = perfApi() ? await perfApi().makeKey("analysis-delta-v2", payload) : "";
+    const cacheKey = perfApi() ? await perfApi().makeKey("analysis-deep-delta-v3", payload) : "";
     const cached = !force && cacheKey ? perfApi().cacheGet(cacheKey) : null;
     const applyDelta = (delta) => {
       state.aiResult = delta;
@@ -1042,6 +1042,7 @@
       state.performance.cacheHit = true;
       state.performance.aiUsage = cached.usage || null;
       state.performance.aiModel = cached.model || "Gemini";
+      state.performance.aiServerTiming = cached.serverTiming || null;
       return state.reconciledAnalysis;
     }
     const response = window.TaqareerAI.enrichDetailed
@@ -1051,10 +1052,13 @@
     state.performance.cacheHit = false;
     state.performance.aiUsage = response.usage || null;
     state.performance.aiModel = response.model || "Gemini";
+    state.performance.aiServerTiming = response.serverTiming || null;
     if (response.clientTiming?.durationMs !== undefined) {
-      recordSpan({ name: "Gemini Delta", durationMs: response.clientTiming.durationMs, cacheHit: false });
+      recordSpan({ name: "Gemini Deep Delta", durationMs: response.clientTiming.durationMs, cacheHit: false });
     }
-    if (cacheKey) perfApi().cacheSet(cacheKey, { result: response.result, usage: response.usage, model: response.model });
+    if (cacheKey && state.reconciledAnalysis?._reconciliation?.aiApplied) {
+      perfApi().cacheSet(cacheKey, { result: response.result, usage: response.usage, model: response.model, serverTiming: response.serverTiming || null });
+    }
     return state.reconciledAnalysis;
   }
 
@@ -1250,13 +1254,16 @@
     if (!panel) return;
     const spans = state.performance.spans || [];
     const local = spans.find(item => item.name === "التحليل المحلي والرسوم");
-    const gemini = spans.find(item => item.name === "Gemini");
+    const gemini = spans.find(item => String(item.name || "").startsWith("Gemini"));
     const total = spans.findLast ? spans.findLast(item => item.name === "الزمن الكلي") : [...spans].reverse().find(item => item.name === "الزمن الكلي");
     const items = [];
     if (local) items.push(`<span><strong>الحسابات والرسوم</strong>${formatDuration(local.durationMs)}</span>`);
     if (state.performance.cacheHit) items.push(`<span><strong>التفسير الذكي</strong>مستعاد فورًا من الذاكرة المؤقتة</span>`);
     else if (gemini) items.push(`<span><strong>Gemini</strong>${formatDuration(gemini.durationMs)}</span>`);
     if (state.performance.payloadChars) items.push(`<span><strong>حمولة الذكاء</strong>${Math.max(1, Math.round(state.performance.payloadChars / 1024))} كيلوبايت</span>`);
+    const server = state.performance.aiServerTiming || {};
+    if (server.compactRetryUsed) items.push(`<span><strong>المصالحة</strong>نجحت بعد محاولة مختصرة آمنة</span>`);
+    if (server.acceptedDeepAnalysisUnits !== undefined) items.push(`<span><strong>العمق المطبق</strong>${server.acceptedDeepAnalysisUnits} قراءات · ${server.acceptedPatches || 0} تحسينات</span>`);
     if (total) items.push(`<span><strong>الإجمالي</strong>${formatDuration(total.durationMs)}</span>`);
     panel.innerHTML = items.join("");
     panel.classList.toggle("hidden", !items.length);
@@ -1302,7 +1309,9 @@
       const evidence = humanizeEvidenceRefs(section.evidenceRefs || []);
       const implications = Array.isArray(section.implications) ? section.implications : [];
       const source = String(section.source || "deterministic").includes("gemini") ? "محرك متخصص + Gemini" : "محرك متخصص";
-      return `<article class="diagnostic-section-card"><div class="diagnostic-section-meta"><span>${source}</span><span>ثقة ${escapeHtml(section.confidence || "متوسطة")}</span></div><h5>${escapeHtml(section.title || "قراءة تفسيرية")}</h5><p>${escapeHtml(section.analysis || "")}</p>${evidence && evidence !== "لم يحدد مرجع دليل واضح." ? `<div class="soft-note">الدليل: ${escapeHtml(evidence)}</div>` : ""}${implications.length ? `<ul>${implications.map(item=>`<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}</article>`;
+      const alternatives = Array.isArray(section.alternativeExplanations) ? section.alternativeExplanations : [];
+      const requests = Array.isArray(section.dataRequests) ? section.dataRequests : [];
+      return `<article class="diagnostic-section-card"><div class="diagnostic-section-meta"><span>${source}</span><span>ثقة ${escapeHtml(section.confidence || "متوسطة")}</span></div><h5>${escapeHtml(section.title || "قراءة تفسيرية")}</h5><p>${escapeHtml(section.analysis || "")}</p>${evidence && evidence !== "لم يحدد مرجع دليل واضح." ? `<div class="soft-note">الدليل: ${escapeHtml(evidence)}</div>` : ""}${implications.length ? `<h6>الآثار العملية</h6><ul>${implications.map(item=>`<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}${alternatives.length ? `<h6>تفسيرات بديلة محتملة</h6><ul>${alternatives.map(item=>`<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}${requests.length ? `<h6>بيانات مطلوبة للتحقق</h6><ul>${requests.map(item=>`<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}</article>`;
     }).join("");
 
     $("analysisModeChip").textContent = state.aiPending ? "ظهرت النتائج المحلية · تحسين Gemini جارٍ" : (aiApplied ? "تحليل حتمي متخصص مصالَح مع Gemini" : "تحليل متخصص حتمي عميق");
@@ -1310,11 +1319,11 @@
     const notice = $("aiResultNotice");
     if (state.aiPending) {
       notice.classList.remove("hidden", "error");
-      notice.innerHTML = `<strong>ظهرت الحسابات والرسوم فورًا</strong><span>يجري Gemini تحسين العقد المحلي نفسه، دون إنشاء خطط أو دورات متابعة موازية.</span>`;
+      notice.innerHTML = `<strong>ظهرت الحسابات والرسوم فورًا</strong><span>يجري Gemini بناء القراءة التربوية العميقة لمحاور العقد، ثم تحسين الحقول التنفيذية دون إنشاء خطط أو دورات متابعة موازية.</span>`;
     } else if (aiApplied) {
       const meta = a._reconciliation || {};
       notice.classList.remove("hidden", "error");
-      notice.innerHTML = `<strong>اكتملت المصالحة التحليلية${state.performance.cacheHit ? " من الذاكرة المؤقتة" : ""}</strong><span>طُبقت ${meta.appliedEnhancements || 0} تحسينات على العقد الأساسي، مع بقاء ${a.improvementPlan?.length || 0} تدخلات و${a.monitoringPlan?.length || 0} مراحل متابعة فقط.</span>`;
+      notice.innerHTML = `<strong>اكتملت المصالحة التحليلية${state.performance.cacheHit ? " من الذاكرة المؤقتة" : ""}</strong><span>أضيفت ${meta.appliedDeepAnalyses || 0} قراءات تربوية عميقة وطُبقت ${meta.appliedPatches || 0} تحسينات حقلية، مع بقاء ${a.improvementPlan?.length || 0} تدخلات و${a.monitoringPlan?.length || 0} مراحل متابعة فقط.</span>`;
     } else if (state.aiError) {
       notice.classList.remove("hidden"); notice.classList.add("error");
       notice.innerHTML = `<strong>اكتمل المحرك المتخصص المحلي</strong><span>تعذر تحسين Gemini: ${escapeHtml(state.aiError)}. لم تُفقد النتائج أو أدوات الجودة.</span><button id="retryAiOnlyBtn" class="secondary compact" type="button">إعادة تحسين Gemini فقط</button>`;
@@ -1399,7 +1408,7 @@
   function exportAnalysis() {
     const payload = {
       app: "تقارير",
-      version: "0.9.0",
+      version: "0.9.1",
       generatedAt: new Date().toISOString(),
       source: state.sourceName,
       sourceMeta: state.sourceMeta,
@@ -1412,7 +1421,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v0.9.0.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v0.9.1.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
@@ -1424,7 +1433,7 @@
       type: formTypes.at(-1), confidence: 0,
       quality: { blockers: [], warnings: [], info: [], completeness: 0 },
       analysis: null, reconciledAnalysis: null, aiResult: null, aiError: "", aiUsed: false, aiPending: false,
-      performance: { spans: [], cacheHit: false, payloadChars: 0, aiUsage: null, aiModel: "" },
+      performance: { spans: [], cacheHit: false, payloadChars: 0, aiUsage: null, aiModel: "", aiServerTiming: null },
       localRecognition: null, aiRecognition: null, recognitionStatus: "محلي", recognitionRequestId: state.recognitionRequestId + 1,
       analysisRequestId: state.analysisRequestId + 1,
       sampleMaxScore: null, pendingSource: null, sourceMeta: null, pendingManualFileName: "", pendingVisualPreview: null
