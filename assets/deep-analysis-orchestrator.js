@@ -1,8 +1,9 @@
 (() => {
   "use strict";
 
-  const VERSION = "0.9.4";
-  const PROTOCOL_VERSION = "4.1.0";
+  const VERSION = "0.9.5";
+  const PROTOCOL_VERSION = "4.2.0";
+  const QUALITY_MICROTASK_VERSION = "1.0.0";
   const ISOLATION_VERSION = "1.0.0";
   const SEGMENTS = Object.freeze(["diagnostic", "findings", "interventions", "governance"]);
   const LABELS = Object.freeze({
@@ -15,7 +16,7 @@
     "diagnostic.full": "القراءة التشخيصية",
     "findings.full": "الاستنتاجات التربوية",
     "interventions.full": "التدخلات التنفيذية",
-    "governance.quality": "أدوات الجودة",
+    "governance.quality": "أدوات الجودة (توافق قديم)",
     "governance.monitoring": "المتابعة والحوكمة",
   });
   const DEFAULT_POLICY = Object.freeze({
@@ -23,6 +24,7 @@
     transientRetries: 1,
     transientDelayMs: 1200,
     jitterMs: 250,
+    qualityConcurrency: 2,
   });
 
   function clone(value) {
@@ -114,6 +116,34 @@
     return result;
   }
 
+  function safeTaskToken(value, fallback = "tool") {
+    const token = String(value || fallback).trim().toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+    return token || fallback;
+  }
+
+  function qualityTasks(contract) {
+    return targetArray(contract, "qualityTools").map((item, index) => {
+      const targetId = String(item?.id || `tool-${index + 1}`);
+      return taskDefinition(
+        `quality.${safeTaskToken(targetId, `tool-${index + 1}`)}`,
+        "governance",
+        "quality-tool",
+        {
+          label: `أداة الجودة: ${String(item?.name || targetId)}`,
+          targetIds: [targetId],
+          qualityToolId: targetId,
+          recoveryMode: "quality-microtask",
+        },
+      );
+    });
+  }
+
+  function isQualityMicrotask(task) {
+    return task?.segment === "governance" && task?.scope === "quality-tool";
+  }
+
   function taskDefinition(id, segment, scope = "full", options = {}) {
     return {
       id,
@@ -124,14 +154,15 @@
       splitDepth: Number(options.splitDepth || 0),
       parentTaskId: options.parentTaskId || "",
       recoveryMode: options.recoveryMode || "normal",
+      qualityToolId: options.qualityToolId || "",
     };
   }
 
-  function initialTasks(segments = SEGMENTS) {
+  function initialTasks(segments = SEGMENTS, contract = {}) {
     const tasks = [];
     for (const segment of segments) {
       if (segment === "governance") {
-        tasks.push(taskDefinition("governance.quality", "governance", "quality", { label: "أدوات الجودة" }));
+        tasks.push(...qualityTasks(contract));
         tasks.push(taskDefinition("governance.monitoring", "governance", "monitoring", { label: "المتابعة والحوكمة" }));
       } else {
         tasks.push(taskDefinition(`${segment}.full`, segment));
@@ -144,7 +175,7 @@
     if (task.segment === "diagnostic") return Array.isArray(contract?.deepAnalysisTargets) ? contract.deepAnalysisTargets : [];
     if (task.segment === "findings") return targetArray(contract, "findings");
     if (task.segment === "interventions") return targetArray(contract, "interventions");
-    if (task.scope === "quality") return targetArray(contract, "qualityTools");
+    if (task.scope === "quality" || task.scope === "quality-tool") return targetArray(contract, "qualityTools");
     if (task.scope === "monitoring") return targetArray(contract, "monitoring");
     return [...targetArray(contract, "qualityTools"), ...targetArray(contract, "monitoring")];
   }
@@ -160,22 +191,29 @@
     const rules = source.rules && typeof source.rules === "object" ? source.rules : {};
     const selected = filterTargets(selectedTargets(source, task), task.targetIds);
     const maxPatches = Math.max(2, Math.min(12, selected.length * 2 + 2));
+    const qualityRules = isQualityMicrotask(task) ? {
+      localCalculationsAreAuthoritative: true,
+      targetIdsAreMandatory: true,
+      onePatchPerTargetField: true,
+      maxDeepAnalysisUnits: 0,
+      maxPatches: 3,
+    } : {
+      ...rules,
+      maxDeepAnalysisUnits: task.segment === "diagnostic" ? Math.max(1, selected.length) : 0,
+      maxPatches: task.segment === "diagnostic" ? 0 : maxPatches,
+    };
     return {
       version: source.version || "3.0.0",
-      mode: "isolated-segment-analysis",
+      mode: isQualityMicrotask(task) ? "quality-microtask" : "isolated-segment-analysis",
       family: source.family || "adaptive",
       task: { id: task.id, segment: task.segment, scope: task.scope, splitDepth: task.splitDepth },
-      rules: {
-        ...rules,
-        maxDeepAnalysisUnits: task.segment === "diagnostic" ? Math.max(1, selected.length) : 0,
-        maxPatches: task.segment === "diagnostic" ? 0 : maxPatches,
-      },
+      rules: qualityRules,
       executive: task.segment === "findings" ? source.executive : null,
       profile: task.segment === "findings" ? source.profile : null,
       deepAnalysisTargets: task.segment === "diagnostic" ? selected : [],
       patchTargets: {
         findings: task.segment === "findings" ? selected : [],
-        qualityTools: task.scope === "quality" ? selected : [],
+        qualityTools: (task.scope === "quality" || task.scope === "quality-tool") ? selected : [],
         interventions: task.segment === "interventions" ? selected : [],
         monitoring: task.scope === "monitoring" ? selected : [],
       },
@@ -186,15 +224,78 @@
     return uniqueStrings((items || []).flatMap(item => item?.evidenceRefs || []));
   }
 
+  const QUALITY_METRIC_HINTS = Object.freeze({
+    distribution: ["n", "mean", "median", "med", "sd", "cv", "skewness", "kurtosis"],
+    boxplot: ["n", "q1", "q3", "iqr", "outlierCount", "min", "max"],
+    gap: ["n", "masteryPct", "thresholdPct", "masteryCount", "additionalStudentsNeeded", "singleStudentImpact"],
+    segmentation: ["n", "masteryPct", "masteryCount", "nonMasteryCount", "nearMasteryPct", "deepGapPct"],
+    sensitivity: ["n", "masteryPct", "thresholdPct", "masteryCutoffScore"],
+    priority: ["n", "masteryPct", "nearMasteryPct", "deepGapPct"],
+  });
+
+  function metricId(item) {
+    return String(item?.id || item?.key || item?.name || "");
+  }
+
+  function qualityMetricHints(tool) {
+    const id = String(tool?.id || "").toLowerCase();
+    const direct = QUALITY_METRIC_HINTS[id];
+    if (direct) return direct;
+    const text = `${tool?.name || ""} ${tool?.reason || ""} ${tool?.interpretation || ""}`.toLowerCase();
+    const hints = [];
+    const map = [
+      [/توزيع|مدرج|انحراف|التواء|تفرطح/, ["n", "mean", "med", "sd", "skewness", "kurtosis"]],
+      [/ربيع|صندوق|متطرف/, ["q1", "q3", "iqr", "outlierCount", "min", "max"]],
+      [/إتقان|فجوة|مستوى/, ["masteryPct", "thresholdPct", "masteryCount", "additionalStudentsNeeded", "nearMasteryPct", "deepGapPct"]],
+      [/أولوية|تدخل/, ["n", "nearMasteryPct", "deepGapPct", "masteryPct"]],
+    ];
+    for (const [pattern, values] of map) if (pattern.test(text)) hints.push(...values);
+    return uniqueStrings(hints);
+  }
+
+  function compactQualityOutput(value, depth = 0) {
+    if (depth > 3) return null;
+    if (Array.isArray(value)) return value.slice(0, 12).map(item => compactQualityOutput(item, depth + 1));
+    if (!value || typeof value !== "object") return value;
+    const output = {};
+    for (const [key, item] of Object.entries(value).slice(0, 16)) output[key] = compactQualityOutput(item, depth + 1);
+    return output;
+  }
+
+  function selectedQualityTool(deterministic, task) {
+    const tools = Array.isArray(deterministic?.qualityTools) ? deterministic.qualityTools : [];
+    const allowed = new Set((task.targetIds || []).map(String));
+    return tools.find(item => allowed.has(String(item?.id || ""))) || null;
+  }
+
+  function qualityEvidenceRefs(tool, allRefs) {
+    const hints = new Set(qualityMetricHints(tool));
+    const metricRefs = (allRefs || []).filter(ref => String(ref).startsWith("metric:"));
+    const selected = metricRefs.filter(ref => hints.has(String(ref).slice(7)));
+    return uniqueStrings(selected.length ? selected : metricRefs.slice(0, 10));
+  }
+
   function compactDeterministic(deterministic, task) {
     const source = deterministic && typeof deterministic === "object" ? deterministic : {};
+    const qualityTool = isQualityMicrotask(task) ? selectedQualityTool(source, task) : null;
+    const hints = new Set(qualityMetricHints(qualityTool));
+    const metrics = Array.isArray(source.metrics) ? source.metrics : [];
+    const selectedMetrics = qualityTool
+      ? metrics.filter(item => hints.has(metricId(item))).slice(0, 12)
+      : metrics.slice(0, 30);
+    const evidenceCatalog = Array.isArray(source.evidenceCatalog) ? source.evidenceCatalog : [];
     const base = {
       kind: source.kind,
-      executiveTitle: source.executiveTitle,
-      executiveSummary: source.executiveSummary,
-      analysisProfile: source.analysisProfile,
-      metrics: Array.isArray(source.metrics) ? source.metrics.slice(0, 30) : [],
-      evidenceCatalog: Array.isArray(source.evidenceCatalog) ? source.evidenceCatalog.slice(0, 100) : [],
+      executiveTitle: task.segment === "findings" ? source.executiveTitle : "",
+      executiveSummary: task.segment === "findings" ? source.executiveSummary : "",
+      analysisProfile: (task.segment === "diagnostic" || task.segment === "findings") ? source.analysisProfile : null,
+      metrics: selectedMetrics,
+      evidenceCatalog: qualityTool
+        ? evidenceCatalog.filter(item => {
+            const ref = String(item?.ref || item?.id || "");
+            return !ref.startsWith("metric:") || hints.has(ref.slice(7));
+          }).slice(0, 18)
+        : evidenceCatalog.slice(0, 100),
     };
     if (task.segment === "diagnostic") {
       base.charts = Array.isArray(source.charts) ? source.charts.slice(0, 8) : [];
@@ -203,14 +304,23 @@
       base.findings = Array.isArray(source.findings) ? source.findings.slice(0, 10) : [];
       base.charts = Array.isArray(source.charts) ? source.charts.slice(0, 5) : [];
     } else if (task.segment === "interventions") {
-      base.findings = Array.isArray(source.findings) ? source.findings.slice(0, 8) : [];
-      base.improvementPlan = Array.isArray(source.improvementPlan) ? source.improvementPlan.slice(0, 8) : [];
+      base.findings = Array.isArray(source.findings) ? source.findings.slice(0, 6).map(item => ({ id: item.id, title: item.title, statement: item.statement, educationalImpact: item.educationalImpact, evidenceRefs: item.evidenceRefs })) : [];
+      base.improvementPlan = Array.isArray(source.improvementPlan) ? source.improvementPlan.slice(0, 6).map(item => ({ id: item.id, issue: item.issue, targetGroup: item.targetGroup, action: item.action, successIndicator: item.successIndicator, evidenceRefs: item.evidenceRefs })) : [];
+    } else if (isQualityMicrotask(task)) {
+      base.qualityTools = qualityTool ? [{ id: qualityTool.id, output: compactQualityOutput(qualityTool.output) }] : [];
+      base.charts = Array.isArray(source.charts)
+        ? source.charts.filter(chart => {
+            const id = String(qualityTool?.id || "").toLowerCase();
+            const text = `${chart?.id || ""} ${chart?.title || ""}`.toLowerCase();
+            return id && (text.includes(id) || qualityMetricHints(qualityTool).some(hint => text.includes(String(hint).toLowerCase())));
+          }).slice(0, 1)
+        : [];
     } else if (task.scope === "quality") {
       base.qualityTools = Array.isArray(source.qualityTools) ? source.qualityTools.slice(0, 10) : [];
       base.charts = Array.isArray(source.charts) ? source.charts.slice(0, 5) : [];
     } else if (task.scope === "monitoring") {
-      base.improvementPlan = Array.isArray(source.improvementPlan) ? source.improvementPlan.slice(0, 8) : [];
-      base.monitoringPlan = Array.isArray(source.monitoringPlan) ? source.monitoringPlan.slice(0, 8) : [];
+      base.improvementPlan = Array.isArray(source.improvementPlan) ? source.improvementPlan.slice(0, 6).map(item => ({ id: item.id, issue: item.issue, action: item.action, timeframe: item.timeframe, successIndicator: item.successIndicator })) : [];
+      base.monitoringPlan = Array.isArray(source.monitoringPlan) ? source.monitoringPlan.slice(0, 6) : [];
       base.cautions = Array.isArray(source.cautions) ? source.cautions.slice(0, 8) : [];
       base.dataRequests = Array.isArray(source.dataRequests) ? source.dataRequests.slice(0, 8) : [];
     }
@@ -221,11 +331,11 @@
     const source = data && typeof data === "object" ? data : {};
     if (task.segment === "diagnostic") {
       if (Array.isArray(source.lines)) return { ...source, lines: source.lines.slice(0, task.splitDepth ? 90 : 180) };
-      return { ...source, sampleRows: Array.isArray(source.sampleRows) ? source.sampleRows.slice(0, task.splitDepth ? 6 : 12) : [] };
+      return { ...source, sampleRows: Array.isArray(source.sampleRows) ? source.sampleRows.slice(0, task.splitDepth ? 4 : 6) : [] };
     }
     if (task.segment === "findings") {
       if (Array.isArray(source.lines)) return { ...source, lines: source.lines.slice(0, 90) };
-      return { ...source, sampleRows: Array.isArray(source.sampleRows) ? source.sampleRows.slice(0, 6) : [] };
+      return { ...source, sampleRows: Array.isArray(source.sampleRows) ? source.sampleRows.slice(0, 4) : [] };
     }
     return {
       mode: "derived-evidence-only",
@@ -235,6 +345,35 @@
     };
   }
 
+  function essentialMetricRefs(task) {
+    const map = {
+      diagnostic: ["n", "mean", "median", "sd", "cv", "q1", "q3", "masteryPct", "thresholdPct", "deepGapPct"],
+      findings: ["n", "mean", "median", "sd", "masteryPct", "thresholdPct", "masteryCount", "nonMasteryCount", "deepGapPct"],
+      interventions: ["n", "masteryPct", "thresholdPct", "masteryCount", "nearMasteryPct", "deepGapPct", "additionalStudentsNeeded"],
+      monitoring: ["n", "mean", "masteryPct", "thresholdPct", "masteryCount", "additionalStudentsNeeded"],
+    };
+    const key = task.scope === "monitoring" ? "monitoring" : task.segment;
+    return (map[key] || ["n"]).map(id => `metric:${id}`);
+  }
+
+  function pruneDeterministicForRefs(value, refs, task) {
+    const output = value && typeof value === "object" ? value : {};
+    const allowedRefs = new Set(uniqueStrings(refs));
+    const allowedMetricIds = new Set([...allowedRefs].filter(ref => ref.startsWith("metric:")).map(ref => ref.slice(7)));
+    if (Array.isArray(output.metrics)) {
+      const selected = output.metrics.filter(item => allowedMetricIds.has(metricId(item)));
+      output.metrics = (selected.length ? selected : output.metrics.slice(0, isQualityMicrotask(task) ? 8 : 12));
+    }
+    if (Array.isArray(output.evidenceCatalog)) {
+      const selected = output.evidenceCatalog.filter(item => allowedRefs.has(String(item?.ref || item?.id || "")));
+      output.evidenceCatalog = (selected.length ? selected : output.evidenceCatalog.slice(0, isQualityMicrotask(task) ? 8 : 18));
+    }
+    if (task.segment === "findings" && Array.isArray(output.charts)) output.charts = output.charts.slice(0, 1);
+    if (task.segment === "diagnostic" && Array.isArray(output.charts)) output.charts = output.charts.slice(0, 4);
+    if (task.segment === "interventions" || task.scope === "monitoring") output.charts = [];
+    return output;
+  }
+
   function buildTaskPayload(basePayload, task) {
     const base = clone(basePayload || {});
     const fullContract = base.reconciliationContract || {};
@@ -242,12 +381,17 @@
     const targets = selectedTargets(trimmedContract, task);
     const targetRefs = evidenceRefsFromTargets(targets);
     const allRefs = uniqueStrings(base.availableEvidenceRefs || []);
-    const relevantRefs = targetRefs.length ? uniqueStrings([...targetRefs, ...allRefs.filter(ref => String(ref).startsWith("metric:"))]) : allRefs;
+    const qualityTool = isQualityMicrotask(task) ? selectedQualityTool(base.deterministicAnalysis || {}, task) : null;
+    const relevantRefs = isQualityMicrotask(task)
+      ? qualityEvidenceRefs(qualityTool, allRefs)
+      : uniqueStrings([...(targetRefs || []), ...essentialMetricRefs(task)]).filter(ref => allRefs.includes(ref) || String(ref).startsWith("metric:"));
+    const deterministicAnalysis = pruneDeterministicForRefs(compactDeterministic(base.deterministicAnalysis, task), relevantRefs, task);
     return {
       locale: base.locale || "ar-OM",
       appVersion: VERSION,
       protocolVersion: PROTOCOL_VERSION,
       isolationVersion: ISOLATION_VERSION,
+      qualityMicrotaskVersion: QUALITY_MICROTASK_VERSION,
       segment: task.segment,
       segmentLabel: LABELS[task.segment],
       taskId: task.id,
@@ -256,18 +400,18 @@
       recoveryMode: task.recoveryMode,
       splitDepth: task.splitDepth,
       pipeline: {
-        mode: "segment-failure-isolation-v1",
+        mode: isQualityMicrotask(task) ? "quality-microtask-v1" : "segment-failure-isolation-v1",
         purpose: task.scope,
         instruction: "حلل المهمة المحددة فقط، ولا تعيد عناصر أو حقولًا خارج العقد المرسل.",
       },
-      source: base.source,
+      source: isQualityMicrotask(task) ? { name: base.source?.name || "" } : base.source,
       recognizedType: base.recognizedType,
-      quality: base.quality,
-      privacy: base.privacy,
-      deterministicAnalysis: compactDeterministic(base.deterministicAnalysis, task),
+      quality: isQualityMicrotask(task) ? undefined : base.quality,
+      privacy: isQualityMicrotask(task) ? undefined : base.privacy,
+      deterministicAnalysis,
       reconciliationContract: trimmedContract,
       availableEvidenceRefs: relevantRefs.slice(0, 120),
-      evidenceReferenceGuide: base.evidenceReferenceGuide || {},
+      evidenceReferenceGuide: isQualityMicrotask(task) ? undefined : (base.evidenceReferenceGuide || {}),
       data: compactData(base.data, task),
     };
   }
@@ -298,6 +442,7 @@
       transientRetries: Math.max(0, Math.min(1, Number(value.transientRetries ?? DEFAULT_POLICY.transientRetries) || 0)),
       transientDelayMs: Math.max(0, Number(value.transientDelayMs ?? DEFAULT_POLICY.transientDelayMs) || 0),
       jitterMs: Math.max(0, Math.min(1000, Number(value.jitterMs ?? DEFAULT_POLICY.jitterMs) || 0)),
+      qualityConcurrency: Math.max(1, Math.min(2, Number(value.qualityConcurrency ?? DEFAULT_POLICY.qualityConcurrency) || DEFAULT_POLICY.qualityConcurrency)),
     };
   }
 
@@ -369,6 +514,7 @@
       const ids = parentTaskIds(taskPlan, segment);
       if (!ids.length) continue;
       const successful = ids.filter(id => taskResults[id]);
+      const fallback = successful.filter(id => taskStatuses[id]?.status === "fallback" || taskResults[id]?.localFallback);
       const failed = ids.filter(id => taskFailures[id]);
       const pending = ids.filter(id => !taskResults[id] && !taskFailures[id]);
       const values = successful.map(id => taskResults[id]);
@@ -399,6 +545,7 @@
         completedTasks: successful.length,
         totalTasks: ids.length,
         failedTasks: failed.length,
+        fallbackTasks: fallback.length,
         attempts,
         durationMs,
         payloadChars,
@@ -435,7 +582,7 @@
       : null;
     let taskPlan = requestedTaskIds && Array.isArray(options.previousTaskPlan) && options.previousTaskPlan.length
       ? clone(options.previousTaskPlan)
-      : initialTasks(retrySegments);
+      : initialTasks(retrySegments, basePayload?.reconciliationContract || {});
     taskPlan = taskPlan.filter(task => retrySegments.includes(task.segment));
 
     for (const [segment, result] of Object.entries(previousResults)) {
@@ -473,7 +620,7 @@
       const payload = buildTaskPayload(basePayload, task);
       const payloadChars = JSON.stringify(payload).length;
       totalPayloadChars += payloadChars;
-      const cacheKey = performanceApi?.makeKey ? await performanceApi.makeKey(`deep-task-v4.1:${task.id}`, payload) : "";
+      const cacheKey = performanceApi?.makeKey ? await performanceApi.makeKey(`deep-task-v4.2:${task.id}`, payload) : "";
       const cached = !force && !context.forceNetwork && cacheKey && performanceApi?.cacheGet ? performanceApi.cacheGet(cacheKey) : null;
       const attempts = Number(taskStatuses[task.id]?.attempts || 0) + 1;
       taskStatuses[task.id] = {
@@ -522,6 +669,29 @@
         return true;
       } catch (error) {
         const failure = classifyFailure(error);
+        if (isQualityMicrotask(task) && failure.contentFailure) {
+          const durationMs = Math.max(0, (globalThis.performance?.now?.() ?? Date.now()) - taskStarted);
+          taskResults[task.id] = {
+            result: { ...emptyDelta(), segment: "governance", validation: { acceptedDeepAnalysisUnits: 0, acceptedPatches: 0 } },
+            usage: null,
+            model: "local-deterministic-fallback",
+            serverTiming: { taskId: task.id, scope: task.scope, localFallback: true, failureType: failure.failureType, payloadChars },
+            cacheHit: false,
+            localFallback: true,
+          };
+          delete taskFailures[task.id];
+          taskStatuses[task.id] = {
+            ...taskStatuses[task.id],
+            status: "fallback",
+            durationMs,
+            localFallback: true,
+            fallbackReason: failure.message,
+            failureType: failure.failureType,
+            retryable: false,
+          };
+          publish(task.id);
+          return true;
+        }
         taskFailures[task.id] = error;
         taskStatuses[task.id] = {
           ...taskStatuses[task.id],
@@ -543,7 +713,14 @@
     };
 
     const initialQueue = taskPlan.filter(task => !taskResults[task.id] && (!requestedTaskIds || requestedTaskIds.has(task.id)));
-    await runPool(initialQueue, policy.concurrency, task => invokeTask(task));
+    const coreQueue = initialQueue.filter(task => task.segment !== "governance");
+    const monitoringQueue = initialQueue.filter(task => task.scope === "monitoring");
+    const qualityQueue = initialQueue.filter(task => isQualityMicrotask(task) || task.scope === "quality");
+    await runPool(coreQueue, policy.concurrency, task => invokeTask(task));
+    await Promise.all([
+      runPool(monitoringQueue, 1, task => invokeTask(task)),
+      runPool(qualityQueue, policy.qualityConcurrency, task => invokeTask(task)),
+    ]);
 
     const failedFullTasks = taskPlan.filter(task => taskFailures[task.id] && task.scope === "full" && taskStatuses[task.id]?.contentFailure);
     for (const task of failedFullTasks) {
@@ -577,6 +754,9 @@
     const failedSegments = SEGMENTS.filter(segment => ["failed", "partial"].includes(parent.statuses[segment]?.status));
     const succeededTasks = taskPlan.filter(task => taskResults[task.id]).map(task => task.id);
     const failedTaskIds = taskPlan.filter(task => taskFailures[task.id]).map(task => task.id);
+    const localFallbackTasks = taskPlan.filter(task => taskStatuses[task.id]?.status === "fallback").map(task => task.id);
+    const qualityTaskIds = taskPlan.filter(task => isQualityMicrotask(task)).map(task => task.id);
+    const enhancedQualityTasks = qualityTaskIds.filter(id => taskStatuses[id]?.status === "success");
     if (!succeededTasks.length) {
       const message = failedTaskIds.map(id => `${taskStatuses[id]?.label || id}: ${taskStatuses[id]?.error || "تعذر التحليل"}`).join(" | ");
       throw new Error(message || "تعذرت مهام التحليل الذكي كلها.");
@@ -585,6 +765,7 @@
     return {
       protocolVersion: PROTOCOL_VERSION,
       isolationVersion: ISOLATION_VERSION,
+      qualityMicrotaskVersion: QUALITY_MICROTASK_VERSION,
       delta: mergeSegmentResults(parent.results, parent.statuses),
       results: parent.results,
       statuses: parent.statuses,
@@ -602,6 +783,7 @@
       payloadChars: totalPayloadChars,
       durationMs: Math.max(0, (globalThis.performance?.now?.() ?? Date.now()) - startedAt),
       cacheHits: succeededTasks.filter(id => taskResults[id]?.cacheHit).length,
+      qualityMicrotasks: { total: qualityTaskIds.length, enhanced: enhancedQualityTasks.length, localFallback: localFallbackTasks.length, taskIds: qualityTaskIds },
       automaticRecovery: {
         enabled: true,
         mode: "adaptive-isolation-not-identical-retry",
@@ -611,6 +793,7 @@
         recoveredSegments: uniqueStrings(isolationHistory.map(item => item.segment).filter(segment => parent.statuses[segment]?.status === "success")),
         exhaustedSegments: failedSegments,
         failedTaskIds,
+        localFallbackTasks,
       },
     };
   }
@@ -619,11 +802,14 @@
     VERSION,
     PROTOCOL_VERSION,
     ISOLATION_VERSION,
+    QUALITY_MICROTASK_VERSION,
     SEGMENTS,
     LABELS,
     TASK_LABELS,
     DEFAULT_POLICY,
     initialTasks,
+    qualityTasks,
+    isQualityMicrotask,
     buildTaskPayload,
     splitTask,
     classifyFailure,

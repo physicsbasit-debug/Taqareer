@@ -381,7 +381,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "0.9.4",
+      appVersion: "0.9.5",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -928,7 +928,7 @@
     if (!reconciliationContract) throw new Error("محرك المصالحة التحليلية غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "0.9.4",
+      appVersion: "0.9.5",
       pipeline: {
         mode: "segmented-deep-analysis-v4",
         instruction: "المحرك الحتمي يثبت الحسابات والبنية. يقسم Gemini التحليل إلى قراءة تشخيصية واستنتاجات وتدخلات وحوكمة، ثم تُدمج الأجزاء الآمنة في عقد واحد دون إنشاء عناصر موازية."
@@ -1034,7 +1034,7 @@
       "diagnostic.full": "القراءة التشخيصية",
       "findings.full": "الاستنتاجات التربوية",
       "interventions.full": "التدخلات التنفيذية",
-      "governance.quality": "أدوات الجودة",
+      "governance.quality": "أدوات الجودة (توافق قديم)",
       "governance.monitoring": "المتابعة والحوكمة"
     };
   }
@@ -1103,7 +1103,7 @@
       retrySegments: retryFailedOnly && !failedTaskIds.length ? previousFailures : undefined,
       retryTaskIds: retryFailedOnly && failedTaskIds.length ? failedTaskIds : undefined,
       force: force && !retryFailedOnly,
-      isolationPolicy: { concurrency: 3, transientRetries: 1, transientDelayMs: 1200, jitterMs: 250 },
+      isolationPolicy: { concurrency: 3, qualityConcurrency: 2, transientRetries: 1, transientDelayMs: 1200, jitterMs: 250 },
       onProgress: progress => {
         if (requestId !== state.analysisRequestId) return;
         state.aiSegments = {
@@ -1156,7 +1156,8 @@
       totalTasks: outcome.taskPlan.length,
       taskTimings: Object.fromEntries(Object.entries(outcome.taskResults).map(([key, item]) => [key, item?.serverTiming || null])),
       taskStatuses: outcome.taskStatuses,
-      automaticRecovery: outcome.automaticRecovery || null
+      automaticRecovery: outcome.automaticRecovery || null,
+      qualityMicrotasks: outcome.qualityMicrotasks || null
     };
     recordSpan({ name: "Gemini المعزول", durationMs: outcome.durationMs, segmented: true, isolated: true });
     state.aiError = "";
@@ -1381,6 +1382,8 @@
       const isolated = Array.isArray(recovery.isolatedSegments) ? recovery.isolatedSegments.length : 0;
       if (isolated) items.push(`<span><strong>عزل الفشل</strong>فُكك ${isolated} محور بدل تكرار الطلب نفسه</span>`);
       if (recovery.transientRetriesUsed) items.push(`<span><strong>استعادة الاتصال</strong>${recovery.transientRetriesUsed} محاولة مؤقتة فقط</span>`);
+      const quality = server.qualityMicrotasks || {};
+      if (Number(quality.total || 0)) items.push(`<span><strong>أدوات الجودة</strong>${quality.enhanced || 0}/${quality.total} محسنة بالذكاء${quality.localFallback ? ` · ${quality.localFallback} محلية آمنة` : ""}</span>`);
     } else {
       if (state.performance.cacheHit) items.push(`<span><strong>التفسير الذكي</strong>مستعاد فورًا من الذاكرة المؤقتة</span>`);
       else if (gemini) items.push(`<span><strong>Gemini</strong>${formatDuration(gemini.durationMs)}</span>`);
@@ -1456,7 +1459,11 @@
       notice.classList.remove("hidden", "error", "warning");
       const recovery = state.performance.aiServerTiming?.automaticRecovery || {};
       const isolatedCount = Array.isArray(recovery.isolatedSegments) ? recovery.isolatedSegments.length : 0;
-      notice.innerHTML = `<strong>اكتملت المصالحة التحليلية المعزولة${state.performance.cacheHit ? " من الذاكرة المؤقتة" : ""}</strong><span>أضيفت ${meta.appliedDeepAnalyses || 0} قراءات تربوية عميقة وطُبقت ${meta.appliedPatches || 0} تحسينات حقلية، مع بقاء ${a.improvementPlan?.length || 0} تدخلات و${a.monitoringPlan?.length || 0} مراحل متابعة فقط.${isolatedCount ? ` عُزل ${isolatedCount} محور متعثر إلى مهام أصغر بدل تكرار الطلب نفسه.` : ""}</span>`;
+      const quality = state.performance.aiServerTiming?.qualityMicrotasks || {};
+      const qualityText = Number(quality.total || 0)
+        ? ` حُسنت ${quality.enhanced || 0} من ${quality.total} أدوات جودة بالذكاء${quality.localFallback ? `، وتعتمد ${quality.localFallback} على التفسير المحلي الآمن` : ""}.`
+        : "";
+      notice.innerHTML = `<strong>اكتملت المصالحة التحليلية المعزولة${state.performance.cacheHit ? " من الذاكرة المؤقتة" : ""}</strong><span>أضيفت ${meta.appliedDeepAnalyses || 0} قراءات تربوية عميقة وطُبقت ${meta.appliedPatches || 0} تحسينات حقلية، مع بقاء ${a.improvementPlan?.length || 0} تدخلات و${a.monitoringPlan?.length || 0} مراحل متابعة فقط.${qualityText}${isolatedCount ? ` عُزل ${isolatedCount} محور متعثر إلى مهام أصغر بدل تكرار الطلب نفسه.` : ""}</span>`;
     } else if (state.aiError) {
       notice.classList.remove("hidden", "warning"); notice.classList.add("error");
       notice.innerHTML = `<strong>اكتمل المحرك المتخصص المحلي</strong><span>تعذر تحسين Gemini: ${escapeHtml(state.aiError)}. لم تُفقد النتائج أو أدوات الجودة.</span><button id="retryAiOnlyBtn" class="secondary compact" type="button">إعادة تحسين Gemini فقط</button>`;
@@ -1541,7 +1548,7 @@
   function exportAnalysis() {
     const payload = {
       app: "تقارير",
-      version: "0.9.4",
+      version: "0.9.5",
       generatedAt: new Date().toISOString(),
       source: state.sourceName,
       sourceMeta: state.sourceMeta,
@@ -1554,7 +1561,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v0.9.4.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v0.9.5.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
