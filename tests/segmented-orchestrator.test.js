@@ -10,9 +10,10 @@ const sandbox={window:{},console,structuredClone,JSON,Math,Date,Set,Map,Object,A
 sandbox.globalThis=sandbox;sandbox.window=sandbox;vm.createContext(sandbox);
 for(const file of ['performance-pipeline.js','deep-analysis-orchestrator.js']) vm.runInContext(fs.readFileSync(path.join(root,'assets',file),'utf8'),sandbox);
 const api=sandbox.TaqareerDeepOrchestrator;
-assert.strictEqual(api.VERSION,'0.9.4');
-assert.strictEqual(api.PROTOCOL_VERSION,'4.1.0');
+assert.strictEqual(api.VERSION,'0.9.5');
+assert.strictEqual(api.PROTOCOL_VERSION,'4.2.0');
 assert.strictEqual(api.ISOLATION_VERSION,'1.0.0');
+assert.strictEqual(api.QUALITY_MICROTASK_VERSION,'1.0.0');
 
 const contract={
   version:'3.0.0',family:'scores',rules:{maxDeepAnalysisUnits:4,maxPatches:24},
@@ -27,9 +28,11 @@ const contract={
 };
 const basePayload={locale:'ar-OM',source:{name:'x'},recognizedType:{id:'assessment_component'},quality:{},privacy:{},data:{sampleRows:[{_evidenceRef:'row:1'}],rowCount:1},deterministicAnalysis:{metrics:[{id:'n',value:1,evidenceRef:'metric:n'}],charts:[],evidenceCatalog:[{ref:'metric:n',text:'1'}]},reconciliationContract:contract,availableEvidenceRefs:['metric:n','row:1']};
 
-const initial=api.initialTasks();
-assert.deepStrictEqual(JSON.parse(JSON.stringify(initial.map(t=>t.id))),['diagnostic.full','findings.full','interventions.full','governance.quality','governance.monitoring']);
+const initial=api.initialTasks(api.SEGMENTS,contract);
+assert.deepStrictEqual(JSON.parse(JSON.stringify(initial.map(t=>t.id))),['diagnostic.full','findings.full','interventions.full','quality.tool-a','governance.monitoring']);
+assert.strictEqual(initial[3].scope,'quality-tool');
 assert.strictEqual(api.buildTaskPayload(basePayload,initial[3]).reconciliationContract.patchTargets.qualityTools.length,1);
+assert.strictEqual(api.buildTaskPayload(basePayload,initial[3]).reconciliationContract.patchTargets.qualityTools[0].id,'tool.a');
 assert.strictEqual(api.buildTaskPayload(basePayload,initial[3]).reconciliationContract.patchTargets.monitoring.length,0);
 assert.strictEqual(api.buildTaskPayload(basePayload,initial[4]).reconciliationContract.patchTargets.monitoring.length,1);
 
@@ -39,7 +42,7 @@ const ai={async enrichSegmentDetailed(payload){
   if(payload.taskId==='findings.full'){
     const e=new Error('توقفت مهمة findings.full عند حد الإخراج.');e.status=503;e.code='SEGMENT_OUTPUT_EXHAUSTED';e.retryable=true;e.failureType='output_exhausted';e.details={failureType:'output_exhausted',taskId:payload.taskId};throw e;
   }
-  return {result:{contractVersion:'4.1.0',segment:payload.segment,deepAnalysisUnits:[],patches:[],additionalCautions:[],missingDataRequests:[],validation:{}},model:'test',clientTiming:{durationMs:1}};
+  return {result:{contractVersion:'4.2.0',segment:payload.segment,deepAnalysisUnits:[],patches:[],additionalCautions:[],missingDataRequests:[],validation:{}},model:'test',clientTiming:{durationMs:1}};
 }};
 
 (async()=>{
@@ -52,5 +55,5 @@ const ai={async enrichSegmentDetailed(payload){
   assert.deepStrictEqual(JSON.parse(JSON.stringify(result.automaticRecovery.isolatedSegments)),['findings']);
   assert.strictEqual(result.failedTaskIds.length,0);
   assert.strictEqual(result.succeededSegments.length,4);
-  console.log('PASS orchestrator isolates governance by design and decomposes content failures instead of repeating the same request');
+  console.log('PASS orchestrator creates one quality microtask per tool and decomposes core content failures without identical retry');
 })().catch(e=>{console.error(e);process.exit(1);});

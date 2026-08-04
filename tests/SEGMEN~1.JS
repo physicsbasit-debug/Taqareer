@@ -1,0 +1,16 @@
+const fs=require('fs');const path=require('path');const assert=require('assert');
+const app=fs.readFileSync(path.join(__dirname,'..','assets','app.js'),'utf8');
+const orchestrator=fs.readFileSync(path.join(__dirname,'..','assets','deep-analysis-orchestrator.js'),'utf8');
+const edge=fs.readFileSync(path.join(__dirname,'..','supabase','functions','analyze-educational-form','index.ts'),'utf8');
+assert.ok(orchestrator.includes('qualityTasks'));
+assert.ok(orchestrator.includes('quality-tool'));
+assert.ok(orchestrator.includes('local-deterministic-fallback'));
+assert.ok(orchestrator.includes('governance.monitoring'));
+assert.ok(orchestrator.includes('splitTask'));
+assert.ok(orchestrator.includes('adaptive-isolation-not-identical-retry'));
+assert.ok(app.includes('failureSummary'));
+assert.ok(app.includes('إعادة المهام المتعثرة فقط'));
+assert.ok(edge.includes('SegmentGenerationError'));
+assert.ok(edge.includes('attempts: attemptDiagnostics'));
+assert.ok(edge.includes('failureType'));
+console.log('PASS segment isolation plus quality microtask local-safe fallback contract');
