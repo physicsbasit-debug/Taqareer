@@ -1,4 +1,4 @@
-"""Chromium acceptance for v0.9.2 segmented deep-analysis pipeline.
+"""Chromium acceptance for v0.9.3 segmented deep-analysis pipeline.
 Verifies immediate local results, partial success, retry of the failed segment only,
 and final reconciliation without duplicate interventions or monitoring cycles.
 No network is required.
@@ -94,7 +94,7 @@ async def main():
               const segment = payload.segment;
               calls[segment] += 1;
               await new Promise(r=>setTimeout(r, segment === 'diagnostic' ? 240 : 160));
-              if(segment === 'governance' && calls[segment] === 1) throw new Error('تعثر تجريبي في جزء الحوكمة');
+              if(segment === 'governance' && calls[segment] <= 3) { const error = new Error('تعثر تجريبي في جزء الحوكمة'); error.status=503; error.retryable=true; throw error; }
               return {ok:true,result:segmentResults[segment],model:'mock-segmented',usage:null,
                 serverTiming:{segment,geminiMs:160,attemptNumber:1,compactRetryUsed:false},
                 clientTiming:{durationMs:160}};
@@ -117,10 +117,10 @@ async def main():
         assert 'ظهرت الحسابات والرسوم فورًا' in pending, pending
         assert await page.locator('#metrics .metric').count() > 0
 
-        await page.wait_for_function("document.querySelector('#aiResultNotice')?.textContent.includes('اكتملت مصالحة جزئية آمنة')", timeout=8000)
+        await page.wait_for_function("document.querySelector('#aiResultNotice')?.textContent.includes('اكتملت مصالحة جزئية آمنة')", timeout=15000)
         partial_notice = await page.locator('#aiResultNotice').inner_text()
         calls_before = await page.evaluate('window.__segmentCalls()')
-        assert calls_before == {'diagnostic':1,'findings':1,'interventions':1,'governance':1}, calls_before
+        assert calls_before == {'diagnostic':1,'findings':1,'interventions':1,'governance':3}, calls_before
         assert 'الجودة والمتابعة' in partial_notice, partial_notice
         assert await page.locator('#findings > *').count() == 5
         assert await page.locator('#improvementPlanBody tr').count() == 4
@@ -128,9 +128,9 @@ async def main():
         assert 'تفسيرات بديلة محتملة' in await page.locator('#diagnosticSectionsGrid').inner_text()
 
         await page.click('#retryAiOnlyBtn')
-        await page.wait_for_function("document.querySelector('#aiResultNotice')?.textContent.includes('اكتملت المصالحة التحليلية المقسّمة')", timeout=8000)
+        await page.wait_for_function("document.querySelector('#aiResultNotice')?.textContent.includes('اكتملت المصالحة التحليلية المقسّمة')", timeout=15000)
         calls_after = await page.evaluate('window.__segmentCalls()')
-        assert calls_after == {'diagnostic':1,'findings':1,'interventions':1,'governance':2}, calls_after
+        assert calls_after == {'diagnostic':1,'findings':1,'interventions':1,'governance':4}, calls_after
         final_notice = await page.locator('#aiResultNotice').inner_text()
         timing = await page.locator('#analysisTimingPanel').inner_text()
         assert 'المقسّمة' in final_notice

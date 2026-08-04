@@ -77,7 +77,7 @@
     headers: [], rows: [], sourceName: "", rawText: "", narrativeText: "", delimiter: ",", type: formTypes.at(-1), confidence: 0,
     quality: { blockers: [], warnings: [], info: [], completeness: 0 },
     analysis: null, reconciledAnalysis: null, aiResult: null, aiError: "", aiWarning: "", aiUsed: false, aiPending: false,
-    aiSegments: { results: {}, failures: {}, statuses: {} },
+    aiSegments: { results: {}, failures: {}, statuses: {}, recovery: null },
     performance: { spans: [], cacheHit: false, payloadChars: 0, aiUsage: null, aiModel: "", aiServerTiming: null, segmentTimings: {} },
     localRecognition: null, aiRecognition: null, recognitionStatus: "محلي", recognitionRequestId: 0, analysisRequestId: 0,
     sampleMaxScore: null, pendingSource: null, sourceMeta: null, pendingManualFileName: "", pendingVisualPreview: null
@@ -381,7 +381,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "0.9.2",
+      appVersion: "0.9.3",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -928,7 +928,7 @@
     if (!reconciliationContract) throw new Error("محرك المصالحة التحليلية غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "0.9.2",
+      appVersion: "0.9.3",
       pipeline: {
         mode: "segmented-deep-analysis-v4",
         instruction: "المحرك الحتمي يثبت الحسابات والبنية. يقسم Gemini التحليل إلى قراءة تشخيصية واستنتاجات وتدخلات وحوكمة، ثم تُدمج الأجزاء الآمنة في عقد واحد دون إنشاء عناصر موازية."
@@ -1034,9 +1034,22 @@
     const entries = Object.entries(statuses);
     const done = entries.filter(([, value]) => value?.status === "success").length;
     const failed = entries.filter(([, value]) => value?.status === "failed").length;
+    const waiting = entries.filter(([, value]) => value?.status === "recovery_wait");
+    const recovering = entries.filter(([, value]) => value?.status === "recovering");
     const pending = entries.filter(([, value]) => value?.status === "pending").map(([key]) => labels[key] || key);
+    if (waiting.length) {
+      const round = Math.max(...waiting.map(([, value]) => Number(value?.automaticRetries || 1)));
+      const max = Math.max(...waiting.map(([, value]) => Number(value?.maxAutomaticRetries || 2)));
+      const names = waiting.map(([key]) => labels[key] || key);
+      return `اكتمل ${done} من 4 · استعادة تلقائية ${round}/${max} بعد لحظات: ${names.join("، ")}`;
+    }
+    if (recovering.length) {
+      const round = Math.max(...recovering.map(([, value]) => Number(value?.automaticRetries || 1)));
+      const names = recovering.map(([key]) => labels[key] || key);
+      return `اكتمل ${done} من 4 · تجري الاستعادة التلقائية ${round}: ${names.join("، ")}`;
+    }
     if (pending.length) return `اكتمل ${done} من 4 · يجري الآن: ${pending.join("، ")}`;
-    if (failed) return `اكتمل ${done} من 4 · تعثر ${failed}`;
+    if (failed) return `اكتمل ${done} من 4 · تعثر ${failed} بعد استنفاد الاستعادة الآلية`;
     return `اكتملت الأجزاء الأربعة`;
   }
 
@@ -1051,7 +1064,7 @@
     return state.reconciledAnalysis;
   }
 
-  async function enrichAnalysisWithAi({ force = false } = {}) {
+  async function enrichAnalysisWithAi({ force = false, requestId = state.analysisRequestId } = {}) {
     if (!aiReady()) return null;
     if (!window.TaqareerReconciliation?.reconcile) throw new Error("محرك المصالحة التحليلية غير محمل.");
     if (!window.TaqareerDeepOrchestrator?.run) throw new Error("منسق التحليل العميق المقسّم غير محمل.");
@@ -1070,10 +1083,12 @@
       retrySegments: retryFailedOnly ? previousFailures : undefined,
       force: force && !retryFailedOnly,
       onProgress: progress => {
+        if (requestId !== state.analysisRequestId) return;
         state.aiSegments = {
           results: progress.results || state.aiSegments.results || {},
           failures: progress.failures || state.aiSegments.failures || {},
-          statuses: progress.statuses || {}
+          statuses: progress.statuses || {},
+          recovery: progress.recovery || state.aiSegments.recovery || null
         };
         if (progress.delta && (progress.delta.deepAnalysisUnits?.length || progress.delta.patches?.length)) {
           try { applyAiDelta(progress.delta, payload); } catch { /* لا نوقف بقية الأجزاء بسبب تحديث مرحلي */ }
@@ -1082,7 +1097,13 @@
       }
     });
 
-    state.aiSegments = { results: outcome.results, failures: outcome.failures, statuses: outcome.statuses };
+    if (requestId !== state.analysisRequestId) return null;
+    state.aiSegments = {
+      results: outcome.results,
+      failures: outcome.failures,
+      statuses: outcome.statuses,
+      recovery: outcome.automaticRecovery || null
+    };
     applyAiDelta(outcome.delta, payload);
     state.performance.cacheHit = outcome.cacheHits === 4;
     state.performance.payloadChars = outcome.payloadChars;
@@ -1096,13 +1117,17 @@
       failedSegments: outcome.failedSegments,
       cacheHits: outcome.cacheHits,
       totalSegments: 4,
-      segmentTimings: Object.fromEntries(Object.entries(outcome.results).map(([key, item]) => [key, item?.serverTiming || null]))
+      segmentTimings: Object.fromEntries(Object.entries(outcome.results).map(([key, item]) => [key, item?.serverTiming || null])),
+      automaticRecovery: outcome.automaticRecovery || null
     };
     recordSpan({ name: "Gemini المقسّم", durationMs: outcome.durationMs, segmented: true });
     state.aiError = "";
     if (outcome.partialSuccess) {
       const labels = segmentLabels();
-      state.aiWarning = `اكتملت المصالحة جزئيًا؛ تعثر: ${outcome.failedSegments.map(key => labels[key] || key).join("، ")}. طُبقت الأجزاء الناجحة ويمكن إعادة المتعثر فقط.`;
+      const recovery = outcome.automaticRecovery || {};
+      const attempts = Number(recovery.automaticRetriesUsed || 0);
+      const nonRetryable = Array.isArray(recovery.nonRetryableSegments) ? recovery.nonRetryableSegments : [];
+      state.aiWarning = `اكتملت المصالحة جزئيًا بعد ${attempts} محاولة استعادة آلية؛ تعثر: ${outcome.failedSegments.map(key => labels[key] || key).join("، ")}.${nonRetryable.length ? " توجد أخطاء غير قابلة للإعادة الآلية وتحتاج مراجعة الإعدادات." : " استُنفدت المحاولات الآلية ويمكن إعادة المتعثر فقط."}`;
     }
     return state.reconciledAnalysis;
   }
@@ -1114,7 +1139,7 @@
     state.aiWarning = "";
     renderResults();
     try {
-      await enrichAnalysisWithAi({ force: true });
+      await enrichAnalysisWithAi({ force: true, requestId: state.analysisRequestId });
     } catch (error) {
       state.aiError = error.message || "تعذر التفسير الذكي الحي.";
       if (!state.aiUsed) {
@@ -1136,7 +1161,7 @@
     state.aiWarning = "";
     state.aiUsed = false;
     state.aiPending = false;
-    state.aiSegments = { results: {}, failures: {}, statuses: {} };
+    state.aiSegments = { results: {}, failures: {}, statuses: {}, recovery: null };
     resetPerformance();
     const analysisRequestId = ++state.analysisRequestId;
     const runButton = $("runAnalysisBtn");
@@ -1188,7 +1213,7 @@
 
       if (aiReady()) {
         try {
-          await enrichAnalysisWithAi();
+          await enrichAnalysisWithAi({ requestId: analysisRequestId });
           if (analysisRequestId !== state.analysisRequestId) return;
         } catch (error) {
           state.aiError = error.message || "تعذر التحليل الذكي الحي.";
@@ -1315,6 +1340,9 @@
       if (state.performance.cacheHit) items.push(`<span><strong>Gemini المقسّم</strong>الأجزاء الأربعة من الذاكرة المؤقتة</span>`);
       else if (gemini) items.push(`<span><strong>Gemini المقسّم</strong>${succeeded}/4 أجزاء · ${formatDuration(gemini.durationMs)}</span>`);
       if (cached && cached < 4) items.push(`<span><strong>الذاكرة</strong>${cached} من 4 أجزاء مستعادة</span>`);
+      const recovery = server.automaticRecovery || {};
+      const recovered = Array.isArray(recovery.recoveredSegments) ? recovery.recoveredSegments.length : 0;
+      if (recovered) items.push(`<span><strong>الاستعادة الآلية</strong>استُعيد ${recovered} جزء بعد ${recovery.automaticRetriesUsed || 0} محاولة</span>`);
     } else {
       if (state.performance.cacheHit) items.push(`<span><strong>التفسير الذكي</strong>مستعاد فورًا من الذاكرة المؤقتة</span>`);
       else if (gemini) items.push(`<span><strong>Gemini</strong>${formatDuration(gemini.durationMs)}</span>`);
@@ -1388,7 +1416,9 @@
     } else if (aiApplied) {
       const meta = a._reconciliation || {};
       notice.classList.remove("hidden", "error", "warning");
-      notice.innerHTML = `<strong>اكتملت المصالحة التحليلية المقسّمة${state.performance.cacheHit ? " من الذاكرة المؤقتة" : ""}</strong><span>أضيفت ${meta.appliedDeepAnalyses || 0} قراءات تربوية عميقة وطُبقت ${meta.appliedPatches || 0} تحسينات حقلية، مع بقاء ${a.improvementPlan?.length || 0} تدخلات و${a.monitoringPlan?.length || 0} مراحل متابعة فقط.</span>`;
+      const recovery = state.performance.aiServerTiming?.automaticRecovery || {};
+      const recoveredCount = Array.isArray(recovery.recoveredSegments) ? recovery.recoveredSegments.length : 0;
+      notice.innerHTML = `<strong>اكتملت المصالحة التحليلية المقسّمة${state.performance.cacheHit ? " من الذاكرة المؤقتة" : ""}</strong><span>أضيفت ${meta.appliedDeepAnalyses || 0} قراءات تربوية عميقة وطُبقت ${meta.appliedPatches || 0} تحسينات حقلية، مع بقاء ${a.improvementPlan?.length || 0} تدخلات و${a.monitoringPlan?.length || 0} مراحل متابعة فقط.${recoveredCount ? ` استُعيد ${recoveredCount} جزء متعثر تلقائيًا دون تدخل منك.` : ""}</span>`;
     } else if (state.aiError) {
       notice.classList.remove("hidden", "warning"); notice.classList.add("error");
       notice.innerHTML = `<strong>اكتمل المحرك المتخصص المحلي</strong><span>تعذر تحسين Gemini: ${escapeHtml(state.aiError)}. لم تُفقد النتائج أو أدوات الجودة.</span><button id="retryAiOnlyBtn" class="secondary compact" type="button">إعادة تحسين Gemini فقط</button>`;
@@ -1473,7 +1503,7 @@
   function exportAnalysis() {
     const payload = {
       app: "تقارير",
-      version: "0.9.2",
+      version: "0.9.3",
       generatedAt: new Date().toISOString(),
       source: state.sourceName,
       sourceMeta: state.sourceMeta,
@@ -1486,7 +1516,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v0.9.2.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v0.9.3.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
@@ -1498,7 +1528,7 @@
       type: formTypes.at(-1), confidence: 0,
       quality: { blockers: [], warnings: [], info: [], completeness: 0 },
       analysis: null, reconciledAnalysis: null, aiResult: null, aiError: "", aiWarning: "", aiUsed: false, aiPending: false,
-      aiSegments: { results: {}, failures: {}, statuses: {} },
+      aiSegments: { results: {}, failures: {}, statuses: {}, recovery: null },
       performance: { spans: [], cacheHit: false, payloadChars: 0, aiUsage: null, aiModel: "", aiServerTiming: null, segmentTimings: {} },
       localRecognition: null, aiRecognition: null, recognitionStatus: "محلي", recognitionRequestId: state.recognitionRequestId + 1,
       analysisRequestId: state.analysisRequestId + 1,

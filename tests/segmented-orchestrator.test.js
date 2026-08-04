@@ -19,7 +19,7 @@ for(const file of ['performance-pipeline.js','deep-analysis-orchestrator.js']){
   vm.runInContext(fs.readFileSync(path.join(root,'assets',file),'utf8'),sandbox);
 }
 const api=sandbox.TaqareerDeepOrchestrator;
-assert.strictEqual(api.VERSION,'0.9.2');
+assert.strictEqual(api.VERSION,'0.9.3');
 assert.strictEqual(api.PROTOCOL_VERSION,'4.0.0');
 const contract={
   version:'3.0.0',family:'scores',rules:{maxDeepAnalysisUnits:4,maxPatches:24,lockedCounts:{findings:5,interventions:4,monitoring:4}},
@@ -52,7 +52,7 @@ const ai={
   }
 };
 (async()=>{
-  const first=await api.run({basePayload,ai,performanceApi:sandbox.TaqareerPerformance});
+  const first=await api.run({basePayload,ai,performanceApi:sandbox.TaqareerPerformance,recoveryPolicy:{enabled:false}});
   assert.strictEqual(first.partialSuccess,true);
   assert.deepStrictEqual(JSON.parse(JSON.stringify(first.failedSegments)),['governance']);
   assert.strictEqual(first.delta.deepAnalysisUnits.length,1);
@@ -60,7 +60,7 @@ const ai={
   assert.strictEqual(first.succeededSegments.length,3);
   const previous=first.results;
   ai.enrichSegmentDetailed=async payload=>({result:{contractVersion:'4.0.0',segment:payload.segment,deepAnalysisUnits:[],patches:[{targetType:'monitoring',targetId:'monitoring.a',field:'measure',text:'قياس',items:[],evidenceRefs:['metric:n']}],additionalCautions:[],missingDataRequests:[],validation:{}},model:'test',clientTiming:{durationMs:3}});
-  const second=await api.run({basePayload,ai,performanceApi:sandbox.TaqareerPerformance,previousResults:previous,retrySegments:['governance']});
+  const second=await api.run({basePayload,ai,performanceApi:sandbox.TaqareerPerformance,previousResults:previous,retrySegments:['governance'],recoveryPolicy:{enabled:false}});
   assert.strictEqual(second.allSucceeded,true);
   assert.strictEqual(second.delta.deepAnalysisUnits.length,1);
   assert.strictEqual(second.delta.patches.length,3);

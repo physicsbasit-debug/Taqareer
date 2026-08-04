@@ -1,8 +1,8 @@
 {
   "app": "تقارير",
-  "version": "0.9.2",
-  "phase": "Phase 1-C3 Fix 2 - Segmented Deep Analysis Pipeline",
-  "releaseName": "Segmented Deep Analysis Orchestration with Partial Success and Targeted Retry",
+  "version": "0.9.3",
+  "phase": "Phase 1-C3 - Automatic Segment Recovery Manager",
+  "releaseName": "Automatic Segment Recovery with Progressive Backoff and Retry Classification",
   "buildType": "static-github-pages-plus-supabase-edge-function",
   "supportedInputs": {
     "table": [
@@ -53,7 +53,7 @@
     ],
     "canonicalContract": "deterministic-analysis-is-authoritative",
     "aiContribution": "four-segment-deep-analysis-enrichment-with-target-id-deltas",
-    "reconciliation": "incremental-field-level-merge-with-count-locks-partial-success-and-targeted-retry",
+    "reconciliation": "incremental-field-level-merge-with-count-locks-partial-success-targeted-retry-and-automatic-recovery",
     "routingRule": "form-type-routes-to-its-own-analysis-family-without-forcing-a-unified-procedure"
   },
   "features": [
@@ -89,7 +89,15 @@
     "partial-success-without-result-loss",
     "retry-failed-segments-only",
     "per-segment-cache-and-timing",
-    "per-segment-max-token-compact-retry"
+    "per-segment-max-token-compact-retry",
+    "automatic-failed-segment-recovery",
+    "progressive-retry-backoff-with-jitter",
+    "retry-after-support",
+    "retryable-error-classification",
+    "non-retryable-configuration-guard",
+    "automatic-recovery-progress-ui",
+    "manual-retry-only-after-recovery-exhaustion",
+    "structured-edge-error-metadata"
   ],
   "runtime": {
     "frontend": "GitHub Pages static site",
@@ -115,7 +123,18 @@
       "governance": 256
     },
     "legacyEnrichmentOperation": "enrich",
-    "legacyEnrichmentThinkingBudget": 768
+    "legacyEnrichmentThinkingBudget": 768,
+    "edgeFunctionVersion": "0.8.1",
+    "automaticRecovery": {
+      "maxRetriesAfterInitialRequest": 2,
+      "delaysMs": [
+        900,
+        2400
+      ],
+      "jitterMs": 250,
+      "preserveSuccessfulSegments": true,
+      "retryFailedSegmentsOnly": true
+    }
   },
   "security": {
     "geminiKeyInBrowser": false,
@@ -135,7 +154,9 @@
     "reportOutput": "one reconciled analysis, six print-safe pages for the score fixture",
     "masteryFixture": "268 valid, 48 mastered, 220 not mastered, 17.91044776119403% raw spread, 17.9% display",
     "segmentedPipeline": "four independent AI segments; successful parts reconcile immediately; only failed parts retry",
-    "partialFailure": "local results and successful AI segments remain available when one segment fails"
+    "partialFailure": "local results and successful AI segments remain available when one segment fails",
+    "automaticRecovery": "transient segment fails twice and succeeds on the third client request without a user click",
+    "nonRetryableFailure": "401/configuration failure is not retried automatically"
   },
   "performance": {
     "knownScoreContextRows": 16,
@@ -147,14 +168,16 @@
     "resultsPresentation": "deterministic results first, four Gemini segments in parallel, incremental reconciliation",
     "expectedBenefit": "bounded JSON per segment, no monolithic MAX_TOKENS failure, no duplicated report sections",
     "cacheGranularity": "one cache entry per analysis segment",
-    "retryGranularity": "failed segment only"
+    "retryGranularity": "failed segment only; two automatic recovery rounds before manual retry appears",
+    "recoveryBackoff": "progressive delay with jitter and Retry-After support"
   },
   "backwardCompatibility": {
     "legacyAnalyzeOperation": "retained for older clients",
     "currentFrontendOperation": "enrich_segment",
     "databaseChanges": false,
     "newSecretsRequired": false,
-    "legacyEnrichOperation": "retained for v0.9.1 clients"
+    "legacyEnrichOperation": "retained for v0.9.1 clients",
+    "previousFrontend": "v0.9.2 segmented clients remain compatible with enrich_segment"
   },
   "notYetEnabled": [
     "direct-word-export",

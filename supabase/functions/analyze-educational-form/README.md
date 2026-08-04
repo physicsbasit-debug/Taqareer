@@ -1,23 +1,27 @@
-# analyze-educational-form
+# analyze-educational-form v0.8.1
 
-وظيفة Supabase Edge لتقارير v0.9.2.
+وظيفة Supabase Edge لتقارير v0.9.3.
 
-## العمليات
+تدعم العمليات:
 
 - `ping`
 - `classify`
 - `vision_extract`
-- `analyze` للتوافق القديم
-- `enrich` للتوافق مع v0.9.1
-- `enrich_segment` للمسار الإنتاجي الحالي
+- `analyze` للتوافق
+- `enrich` للتوافق
+- `enrich_segment` للمسار الحالي
 
-## enrich_segment
+أضيف في v0.8.1 عقد أخطاء منظم لتمكين الاستعادة الآلية في المتصفح:
 
-يستقبل `payload.segment` بقيمة واحدة من:
+- `errorCode`
+- `retryable`
+- `operation`
+- `segment`
 
-- `diagnostic`
-- `findings`
-- `interventions`
-- `governance`
+لا توجد أسرار جديدة. تستخدم الوظيفة الأسرار الحالية:
 
-كل جزء يملك تعليماته وميزانيته وحدوده ومحاولته المختصرة الخاصة. لا ترسل العملية مخطط استجابة معقدًا إلى Gemini؛ يتحقق الخادم من JSON والمعرفات والأدلة والحقول قبل إعادة النتيجة.
+- `GEMINI_API_KEY`
+- `GEMINI_MODEL`
+- `GEMINI_CLASSIFIER_MODEL` اختياري
+- `TAQAREER_ACCESS_CODE`
+- `TAQAREER_ALLOWED_ORIGINS`

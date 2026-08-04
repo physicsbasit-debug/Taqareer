@@ -3,6 +3,7 @@
 
   const STORAGE_KEY = "taqareer.ai.config.v1";
   const ACCESS_KEY = "taqareer.ai.access-code.v1";
+  const CLIENT_VERSION = "0.9.3";
   const defaults = window.TAQAREER_CONFIG || {};
 
   function safeJsonParse(value, fallback = {}) {
@@ -89,6 +90,13 @@
         const message = body.error || body.message || `فشل الطلب برمز ${response.status}.`;
         const error = new Error(message);
         error.status = response.status;
+        error.code = body.errorCode || body.code || "";
+        error.retryable = body.retryable;
+        error.operation = body.operation || operation;
+        error.segment = body.segment || payload?.segment || "";
+        error.requestId = body.requestId || response.headers.get("x-request-id") || response.headers.get("x-goog-request-id") || "";
+        const retryAfter = Number(response.headers.get("retry-after") || 0);
+        if (retryAfter > 0) error.retryAfterMs = retryAfter * 1000;
         throw error;
       }
       const finishedAt = globalThis.performance?.now?.() ?? Date.now();
@@ -139,7 +147,7 @@
   }
 
   async function ping() {
-    const response = await invoke("ping", { clientVersion: "0.9.2" });
+    const response = await invoke("ping", { clientVersion: CLIENT_VERSION });
     return response;
   }
 
