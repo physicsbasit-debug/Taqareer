@@ -1,6 +1,4 @@
-"""Chromium acceptance for progressive local results, delayed deep delta and cache reuse.
-Uses set_content to avoid browser navigation policy restrictions.
-"""
+"""Chromium acceptance for instant local results and one optional Gemini request."""
 import asyncio
 import json
 import re
@@ -11,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 HTML = re.sub(r'<link rel="stylesheet"[^>]+>', '', (ROOT / 'index.html').read_text())
 HTML = re.sub(r'<script[^>]*src="[^"]+"[^>]*></script>', '', HTML)
 DELTA = {
-  'contractVersion':'3.0.0',
+  'contractVersion':'5.0.0',
   'deepAnalysisUnits':[{
     'targetId':'diagnostic.measurement_quality',
     'analysis':'قراءة تربوية عميقة تختبر معنى الفجوة وحدود الاستدلال دون إعادة الحسابات.',
@@ -37,14 +35,14 @@ async def main():
       Object.defineProperty(window,'sessionStorage',{value:memoryStorage,configurable:true});
     }""")
     await page.add_style_tag(content=(ROOT/'assets/styles.css').read_text())
-    for name in ['runtime-config.js','xlsx-lite.js','document-lite.js','performance-pipeline.js','ai-client.js','mastery-metrics.js','deep-analysis.js','analysis-reconciliation.js','report-system.js']:
+    for name in ['runtime-config.js','xlsx-lite.js','document-lite.js','performance-pipeline.js','ai-client.js','mastery-metrics.js','deep-analysis.js','analysis-reconciliation.js','deep-analysis-orchestrator.js','report-system.js']:
       await page.add_script_tag(content=(ROOT/'assets'/name).read_text())
     await page.evaluate("""delta => {
       let calls=0;
       window.__aiCalls=()=>calls;
       const original=window.TaqareerAI;
       window.TaqareerAI={...original,isConfigured:()=>true,getConfig:()=>({enabled:true}),
-        enrichDetailed:async()=>{calls++; await new Promise(r=>setTimeout(r,1200)); return {ok:true,result:delta,model:'mock-deep',serverTiming:{geminiMs:1200,payloadChars:9200,attemptNumber:1,compactRetryUsed:false,acceptedDeepAnalysisUnits:1,acceptedPatches:1},clientTiming:{durationMs:1200}}},
+        enhanceFastDetailed:async()=>{calls++; await new Promise(r=>setTimeout(r,1200)); return {ok:true,result:delta,model:'mock-fast',serverTiming:{fastSingle:true,geminiMs:1200,payloadChars:9000,acceptedDeepAnalysisUnits:1,acceptedPatches:1},clientTiming:{durationMs:1200}}},
         saveConfig:()=>{},clearConfig:()=>{},ping:async()=>({ok:true})};
     }""",DELTA)
     await page.add_script_tag(content=(ROOT/'assets/app.js').read_text())
@@ -61,17 +59,16 @@ async def main():
     await run_sample()
     await page.wait_for_selector('#panel-4.active-panel',timeout=900)
     pending=await page.locator('#aiResultNotice').inner_text()
-    assert 'ظهرت الحسابات والرسوم فورًا' in pending,pending
+    assert 'التقرير المحلي جاهز الآن' in pending,pending
     assert await page.locator('#metrics .metric').count()>0
-    await page.wait_for_function("document.querySelector('#aiResultNotice')?.textContent.includes('اكتملت المصالحة التحليلية')",timeout=6000)
+    await page.wait_for_function("document.querySelector('#aiResultNotice')?.textContent.includes('اكتمل التحسين الذكي')",timeout=5000)
     assert await page.evaluate('window.__aiCalls()')==1
     timing=await page.locator('#analysisTimingPanel').inner_text()
-    assert 'الحسابات والرسوم' in timing and 'Gemini' in timing,timing
-    assert 'قراءة تربوية عميقة' in await page.locator('#diagnosticSectionsGrid').inner_text()
+    assert 'جاهزية التقرير' in timing and 'تحسين Gemini' in timing,timing
 
     await page.click('#restartBtn'); await page.wait_for_selector('#panel-1.active-panel')
     await run_sample(); await page.wait_for_selector('#panel-4.active-panel',timeout=900)
-    await page.wait_for_timeout(1800)
+    await page.wait_for_timeout(300)
     second_notice=await page.locator('#aiResultNotice').inner_text()
     second_calls=await page.evaluate('window.__aiCalls()')
     assert 'الذاكرة المؤقتة' in second_notice,(second_notice,second_calls)

@@ -1,12 +1,9 @@
-const fs=require('fs');const vm=require('vm');const path=require('path');const assert=require('assert');const {webcrypto}=require('crypto');
-class StorageMock{constructor(){this.map=new Map();}getItem(k){return this.map.get(k)||null;}setItem(k,v){this.map.set(String(k),String(v));}removeItem(k){this.map.delete(String(k));}}
-const root=path.join(__dirname,'..');const sandbox={window:{},console,structuredClone,JSON,Math,Date,Set,Map,Object,Array,String,Number,WeakSet,TextEncoder,crypto:webcrypto,performance,localStorage:new StorageMock(),setTimeout,clearTimeout};sandbox.globalThis=sandbox;sandbox.window=sandbox;vm.createContext(sandbox);
-for(const file of ['performance-pipeline.js','deep-analysis-orchestrator.js'])vm.runInContext(fs.readFileSync(path.join(root,'assets',file),'utf8'),sandbox);
-const api=sandbox.TaqareerDeepOrchestrator;
-const tools=['distribution','boxplot','gap','segmentation','sensitivity','priority'].map(id=>({id,name:id,allowedFields:['reason','interpretation','requiredData']}));
-const contract={version:'3.0.0',family:'scores',rules:{maxDeepAnalysisUnits:1,maxPatches:20},executive:{id:'executive',allowedFields:[]},profile:{id:'profile',allowedFields:[]},deepAnalysisTargets:[{id:'diagnostic.a'}],patchTargets:{findings:[{id:'finding.a',allowedFields:['educationalImpact']}],interventions:[{id:'intervention.a',allowedFields:['action']}],qualityTools:tools,monitoring:[{id:'monitoring.a',allowedFields:['measure']}]}};
-const tasks=api.initialTasks(api.SEGMENTS,contract);const quality=tasks.filter(api.isQualityMicrotask);
-assert.strictEqual(quality.length,6);assert.ok(!tasks.some(t=>t.id==='governance.quality'));assert.strictEqual(new Set(quality.flatMap(t=>t.targetIds)).size,6);
-const base={locale:'ar-OM',source:{},recognizedType:{id:'assessment_component'},quality:{},privacy:{},data:{rowCount:268},reconciliationContract:contract,availableEvidenceRefs:['metric:n','metric:mean','metric:median','metric:sd','metric:q1','metric:q3','metric:masteryPct','metric:thresholdPct','metric:deepGapPct'],deterministicAnalysis:{kind:'assessment_component',metrics:[{id:'n',value:268},{id:'mean',value:19.5},{id:'median',value:19},{id:'sd',value:9.6},{id:'q1',value:12},{id:'q3',value:26},{id:'masteryPct',value:17.9},{id:'thresholdPct',value:75},{id:'deepGapPct',value:69}],qualityTools:tools.map(t=>({...t,reason:'سبب',interpretation:'محلي',output:{value:1}})),evidenceCatalog:[{ref:'metric:n',text:'268'},{ref:'metric:mean',text:'19.5'},{ref:'metric:masteryPct',text:'17.9'}]}};
-for(const task of quality){const payload=api.buildTaskPayload(base,task);assert.strictEqual(payload.scope,'quality-tool');assert.strictEqual(payload.reconciliationContract.patchTargets.qualityTools.length,1);assert.strictEqual(payload.deterministicAnalysis.qualityTools.length,1);assert.ok(JSON.stringify(payload).length<7000,`${task.id} payload too large`);}
-console.log('PASS creates six bounded per-tool quality microtasks with one contract target and compact payload each');
+const fs=require('fs');const path=require('path');const assert=require('assert');
+const root=path.join(__dirname,'..');
+const app=fs.readFileSync(path.join(root,'assets','app.js'),'utf8');
+const orchestrator=fs.readFileSync(path.join(root,'assets','deep-analysis-orchestrator.js'),'utf8');
+assert.ok(app.includes('single-fast-ai-enhancement-v1'));
+assert.ok(!app.includes('enrich_segment'));
+assert.ok(!orchestrator.includes('runPool('));
+assert.ok(!orchestrator.includes('qualityTasks('));
+console.log('PASS obsolete segmented orchestration is retired in v0.9.6');

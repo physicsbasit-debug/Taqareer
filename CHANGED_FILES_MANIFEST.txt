@@ -1,34 +1,22 @@
-Phase 1-C3 Fix 4 v0.9.5 - Quality Microtask Engine
+Phase 1-C3 Reset v0.9.6 — Single Fast AI Enhancement
 
-assets/deep-analysis-orchestrator.js
 assets/app.js
+assets/ai-client.js
+assets/deep-analysis-orchestrator.js
 assets/deep-analysis.js
 assets/analysis-reconciliation.js
-assets/ai-client.js
-assets/performance-pipeline.js
 assets/report-system.js
+assets/performance-pipeline.js
 index.html
 manifest.json
 README.md
-supabase/functions/analyze-educational-form/index.ts
-supabase/functions/analyze-educational-form/README.md
-SUPABASE_FUNCTION_GEMINI_V0_10_0.txt
-docs/AI_CONTRACT.md
-docs/AI_SETUP.md
-docs/SEGMENTED_DEEP_ANALYSIS_PIPELINE.md
-docs/SEGMENT_FAILURE_ISOLATION.md
-docs/QUALITY_MICROTASK_ENGINE.md
-docs/RELEASE_NOTES.md
-docs/TEST_REPORT.md
-tests/quality-microtask-engine.test.js
-tests/quality-payload-regression.test.js
-tests/edge-quality-microtask.test.js
-tests/automatic-segment-recovery.test.js
-tests/segmented-orchestrator.test.js
-tests/segment-failure-isolation.test.js
-tests/edge-enrichment-contract.test.js
-tests/edge-task-scope-isolation.test.js
-tests/browser-quality-microtask.manual.py
-tests/browser-segment-failure-isolation.manual.py
 APPLY_INSTRUCTIONS.txt
-CHANGED_FILES_MANIFEST.txt
+SUPABASE_FUNCTION_GEMINI_V0_11_0.txt
+supabase/functions/analyze-educational-form/index.ts
+docs/SINGLE_FAST_AI_ENHANCEMENT.md
+docs/TEST_REPORT.md
+tests/app-fast-background-contract.test.js
+tests/edge-fast-enhancement.test.js
+tests/fast-payload-contract.test.js
+tests/single-fast-enhancer.test.js
+tests/browser-fast-pipeline.manual.py

@@ -3,7 +3,7 @@
 
   const STORAGE_KEY = "taqareer.ai.config.v1";
   const ACCESS_KEY = "taqareer.ai.access-code.v1";
-  const CLIENT_VERSION = "0.9.5";
+  const CLIENT_VERSION = "0.9.6";
   const defaults = window.TAQAREER_CONFIG || {};
 
   function safeJsonParse(value, fallback = {}) {
@@ -24,7 +24,7 @@
       endpoint: normalizeEndpoint(stored.endpoint || defaults.aiEndpoint || ""),
       anonKey: String(stored.anonKey || defaults.supabaseAnonKey || "").trim(),
       enabled: stored.enabled !== undefined ? Boolean(stored.enabled) : defaults.aiEnabledByDefault !== false,
-      timeoutMs: Number(stored.timeoutMs || defaults.requestTimeoutMs || 90000)
+      timeoutMs: Number(stored.timeoutMs || defaults.requestTimeoutMs || 90000),
     };
   }
 
@@ -34,7 +34,7 @@
       endpoint: normalizeEndpoint(next.endpoint ?? current.endpoint),
       anonKey: String(next.anonKey ?? current.anonKey).trim(),
       enabled: next.enabled ?? current.enabled,
-      timeoutMs: Number(next.timeoutMs ?? current.timeoutMs)
+      timeoutMs: Number(next.timeoutMs ?? current.timeoutMs),
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
     return merged;
@@ -60,18 +60,17 @@
     return Boolean(config.endpoint && config.anonKey);
   }
 
-  async function invoke(operation, payload) {
+  async function invoke(operation, payload, options = {}) {
     const config = getConfig();
-    if (!config.endpoint || !config.anonKey) {
-      throw new Error("لم يُضبط رابط وظيفة الذكاء الاصطناعي ومفتاح Supabase العام بعد.");
-    }
+    if (!config.endpoint || !config.anonKey) throw new Error("لم يُضبط رابط وظيفة الذكاء الاصطناعي ومفتاح Supabase العام بعد.");
 
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), Math.max(10000, config.timeoutMs));
+    const timeoutMs = Math.max(8000, Number(options.timeoutMs || config.timeoutMs));
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     const headers = {
       "Content-Type": "application/json",
       "apikey": config.anonKey,
-      "Authorization": `Bearer ${config.anonKey}`
+      "Authorization": `Bearer ${config.anonKey}`,
     };
     const accessCode = getAccessCode();
     if (accessCode) headers["x-taqareer-access-code"] = accessCode;
@@ -82,58 +81,35 @@
         method: "POST",
         headers,
         body: JSON.stringify({ operation, payload }),
-        signal: controller.signal
+        signal: controller.signal,
       });
       const bodyText = await response.text();
       const body = safeJsonParse(bodyText, { error: bodyText || "استجابة غير مفهومة من الخادم." });
       if (!response.ok || body.ok === false) {
-        const message = body.error || body.message || `فشل الطلب برمز ${response.status}.`;
-        const error = new Error(message);
+        const error = new Error(body.error || body.message || `فشل الطلب برمز ${response.status}.`);
         error.status = response.status;
         error.code = body.errorCode || body.code || "";
-        error.retryable = body.retryable;
-        error.operation = body.operation || operation;
-        error.segment = body.segment || payload?.segment || "";
+        error.retryable = Boolean(body.retryable);
         error.requestId = body.requestId || response.headers.get("x-request-id") || response.headers.get("x-goog-request-id") || "";
-        error.details = body.details && typeof body.details === "object" ? body.details : {};
-        error.failureType = body.failureType || error.details?.failureType || "";
-        error.taskId = body.taskId || payload?.taskId || "";
-        error.scope = body.scope || payload?.scope || "";
-        const retryAfter = Number(response.headers.get("retry-after") || 0);
-        if (retryAfter > 0) error.retryAfterMs = retryAfter * 1000;
         throw error;
       }
-      const finishedAt = globalThis.performance?.now?.() ?? Date.now();
-      body.clientTiming = { durationMs: Math.max(0, finishedAt - startedAt) };
+      body.clientTiming = { durationMs: Math.max(0, (globalThis.performance?.now?.() ?? Date.now()) - startedAt) };
       return body;
     } catch (error) {
-      if (error?.name === "AbortError") throw new Error("انتهت مهلة الاتصال بالذكاء الاصطناعي. أعد المحاولة أو استخدم التحليل المحلي.");
+      if (error?.name === "AbortError") {
+        const timeoutError = new Error("انتهت مهلة التحسين الذكي؛ بقي التقرير المحلي كاملًا وجاهزًا.");
+        timeoutError.code = "AI_FAST_TIMEOUT";
+        timeoutError.retryable = false;
+        throw timeoutError;
+      }
       throw error;
     } finally {
       clearTimeout(timer);
     }
   }
 
-  async function analyzeDetailed(payload) {
-    return invoke("analyze", payload);
-  }
-
-  async function analyze(payload) {
-    const response = await analyzeDetailed(payload);
-    return response.result;
-  }
-
-  async function enrichDetailed(payload) {
-    return invoke("enrich", payload);
-  }
-
-  async function enrichSegmentDetailed(payload) {
-    return invoke("enrich_segment", payload);
-  }
-
-  async function enrich(payload) {
-    const response = await enrichDetailed(payload);
-    return response.result;
+  async function enhanceFastDetailed(payload) {
+    return invoke("enhance_fast", payload, { timeoutMs: 16000 });
   }
 
   async function extractVisual(payload) {
@@ -142,7 +118,7 @@
   }
 
   async function classifyDetailed(payload) {
-    return invoke("classify", payload);
+    return invoke("classify", payload, { timeoutMs: 20000 });
   }
 
   async function classify(payload) {
@@ -151,8 +127,7 @@
   }
 
   async function ping() {
-    const response = await invoke("ping", { clientVersion: CLIENT_VERSION });
-    return response;
+    return invoke("ping", { clientVersion: CLIENT_VERSION }, { timeoutMs: 12000 });
   }
 
   window.TaqareerAI = {
@@ -162,14 +137,10 @@
     isConfigured,
     setAccessCode,
     getAccessCode,
-    analyze,
-    analyzeDetailed,
-    enrich,
-    enrichDetailed,
-    enrichSegmentDetailed,
+    enhanceFastDetailed,
     extractVisual,
     classify,
     classifyDetailed,
-    ping
+    ping,
   };
 })();

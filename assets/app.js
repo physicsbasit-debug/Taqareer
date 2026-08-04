@@ -381,7 +381,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "0.9.5",
+      appVersion: "0.9.6",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -928,10 +928,10 @@
     if (!reconciliationContract) throw new Error("محرك المصالحة التحليلية غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "0.9.5",
+      appVersion: "0.9.6",
       pipeline: {
-        mode: "segmented-deep-analysis-v4",
-        instruction: "المحرك الحتمي يثبت الحسابات والبنية. يقسم Gemini التحليل إلى قراءة تشخيصية واستنتاجات وتدخلات وحوكمة، ثم تُدمج الأجزاء الآمنة في عقد واحد دون إنشاء عناصر موازية."
+        mode: "single-fast-ai-enhancement-v1",
+        instruction: "المحرك الحتمي ينتج التحليل الكامل فورًا. ينفذ Gemini طلبًا واحدًا اختياريًا ومركزًا لتحسين التفسير والتدخلات دون تغيير الحسابات أو إنشاء عناصر جديدة."
       },
       source: {
         name: state.sourceName,
@@ -1082,89 +1082,41 @@
   async function enrichAnalysisWithAi({ force = false, requestId = state.analysisRequestId } = {}) {
     if (!aiReady()) return null;
     if (!window.TaqareerReconciliation?.reconcile) throw new Error("محرك المصالحة التحليلية غير محمل.");
-    if (!window.TaqareerDeepOrchestrator?.run) throw new Error("منسق عزل مهام التحليل غير محمل.");
+    if (!window.TaqareerDeepOrchestrator?.run) throw new Error("محرك التحسين الذكي السريع غير محمل.");
     const maskPersonalData = $("maskPersonalDataInput")?.checked !== false;
     const payload = buildAiAnalysisPayload(maskPersonalData);
-    const previous = state.aiSegments?.results || {};
-    const previousTaskResults = state.aiSegments?.taskResults || {};
-    const previousTaskPlan = state.aiSegments?.taskPlan || [];
-    const failedTaskIds = state.aiSegments?.failedTaskIds || [];
-    const previousFailures = Object.keys(state.aiSegments?.failures || {});
-    const retryFailedOnly = force && (failedTaskIds.length > 0 || previousFailures.length > 0);
     state.aiWarning = "";
+    state.aiSegments = { status: "pending" };
 
     const outcome = await window.TaqareerDeepOrchestrator.run({
       basePayload: payload,
       ai: window.TaqareerAI,
       performanceApi: perfApi(),
-      previousResults: retryFailedOnly ? previous : {},
-      previousTaskResults: retryFailedOnly ? previousTaskResults : {},
-      previousTaskPlan: retryFailedOnly ? previousTaskPlan : [],
-      retrySegments: retryFailedOnly && !failedTaskIds.length ? previousFailures : undefined,
-      retryTaskIds: retryFailedOnly && failedTaskIds.length ? failedTaskIds : undefined,
-      force: force && !retryFailedOnly,
-      isolationPolicy: { concurrency: 3, qualityConcurrency: 2, transientRetries: 1, transientDelayMs: 1200, jitterMs: 250 },
+      force,
       onProgress: progress => {
         if (requestId !== state.analysisRequestId) return;
-        state.aiSegments = {
-          results: progress.results || state.aiSegments.results || {},
-          failures: progress.failures || state.aiSegments.failures || {},
-          statuses: progress.statuses || {},
-          taskResults: progress.taskResults || state.aiSegments.taskResults || {},
-          taskFailures: progress.taskFailures || state.aiSegments.taskFailures || {},
-          taskStatuses: progress.taskStatuses || {},
-          taskPlan: progress.taskPlan || state.aiSegments.taskPlan || [],
-          failedTaskIds: Object.keys(progress.taskFailures || {}),
-          recovery: progress.isolation || state.aiSegments.recovery || null
-        };
-        if (progress.delta && (progress.delta.deepAnalysisUnits?.length || progress.delta.patches?.length)) {
-          try { applyAiDelta(progress.delta, payload); } catch { /* لا نوقف بقية المهام بسبب تحديث مرحلي */ }
-        }
+        state.aiSegments = { status: progress.status || "pending", cacheHit: Boolean(progress.cacheHit) };
         if (state.aiPending) renderResults();
       }
     });
 
     if (requestId !== state.analysisRequestId) return null;
-    state.aiSegments = {
-      results: outcome.results,
-      failures: outcome.failures,
-      statuses: outcome.statuses,
-      taskResults: outcome.taskResults,
-      taskFailures: outcome.taskFailures,
-      taskStatuses: outcome.taskStatuses,
-      taskPlan: outcome.taskPlan,
-      failedTaskIds: outcome.failedTaskIds,
-      recovery: outcome.automaticRecovery || null
-    };
-    applyAiDelta(outcome.delta, payload);
-    state.performance.cacheHit = outcome.succeededTasks.length > 0 && outcome.cacheHits === outcome.succeededTasks.length;
+    state.aiResult = outcome.delta;
+    state.reconciledAnalysis = window.TaqareerReconciliation.reconcile(state.analysis, outcome.delta, {
+      availableEvidenceRefs: payload.availableEvidenceRefs || []
+    });
+    const countCheck = window.TaqareerReconciliation.validateCounts(state.analysis, state.reconciledAnalysis);
+    if (!countCheck.ok) throw new Error(`رفض محرك المصالحة نتيجة غيّرت بنية العقد: ${countCheck.errors.join("، ")}`);
+    state.aiUsed = Boolean(state.reconciledAnalysis?._reconciliation?.aiApplied);
+    state.performance.cacheHit = Boolean(outcome.cacheHit);
     state.performance.payloadChars = outcome.payloadChars;
-    state.performance.segmentTimings = outcome.taskStatuses;
-    state.performance.aiModel = Object.values(outcome.taskResults).find(item => item?.model)?.model || "Gemini";
-    state.performance.aiUsage = Object.fromEntries(Object.entries(outcome.taskResults).map(([key, item]) => [key, item?.usage || null]));
-    state.performance.aiServerTiming = {
-      segmented: true,
-      isolated: true,
-      protocolVersion: outcome.protocolVersion,
-      isolationVersion: outcome.isolationVersion,
-      succeededSegments: outcome.succeededSegments,
-      failedSegments: outcome.failedSegments,
-      succeededTasks: outcome.succeededTasks,
-      failedTaskIds: outcome.failedTaskIds,
-      cacheHits: outcome.cacheHits,
-      totalSegments: 4,
-      totalTasks: outcome.taskPlan.length,
-      taskTimings: Object.fromEntries(Object.entries(outcome.taskResults).map(([key, item]) => [key, item?.serverTiming || null])),
-      taskStatuses: outcome.taskStatuses,
-      automaticRecovery: outcome.automaticRecovery || null,
-      qualityMicrotasks: outcome.qualityMicrotasks || null
-    };
-    recordSpan({ name: "Gemini المعزول", durationMs: outcome.durationMs, segmented: true, isolated: true });
+    state.performance.segmentTimings = {};
+    state.performance.aiModel = outcome.model || "Gemini";
+    state.performance.aiUsage = outcome.usage || null;
+    state.performance.aiServerTiming = { fastSingle: true, ...(outcome.serverTiming || {}), cacheHit: Boolean(outcome.cacheHit) };
+    recordSpan({ name: "Gemini السريع", durationMs: outcome.durationMs, fastSingle: true });
     state.aiError = "";
-    if (outcome.partialSuccess) {
-      const details = failureSummary(outcome.taskStatuses, outcome.failedTaskIds);
-      state.aiWarning = `اكتملت المصالحة جزئيًا؛ بقيت مهمة معزولة فقط: ${details || "تعذر إكمال جزء محدود"}. لا تعاد الحسابات ولا المهام الناجحة.`;
-    }
+    state.aiWarning = "";
     return state.reconciledAnalysis;
   }
 
@@ -1247,25 +1199,25 @@
       showPanel(4);
       await yieldToUi();
 
+      if (totalTimer) recordSpan(perfApi().endSpan(totalTimer));
+      renderPerformanceSummary();
+
       if (aiReady()) {
-        try {
-          await enrichAnalysisWithAi({ requestId: analysisRequestId });
+        void enrichAnalysisWithAi({ requestId: analysisRequestId }).catch(error => {
           if (analysisRequestId !== state.analysisRequestId) return;
-        } catch (error) {
-          state.aiError = error.message || "تعذر التحليل الذكي الحي.";
+          state.aiError = error.message || "تعذر التحسين الذكي الاختياري.";
           if (!state.aiUsed) {
             state.aiResult = null;
             state.reconciledAnalysis = window.TaqareerReconciliation?.canonicalize?.(state.analysis) || state.analysis;
           }
-        } finally {
-          if (analysisRequestId === state.analysisRequestId) {
-            state.aiPending = false;
-            renderResults();
-          }
-        }
+        }).finally(() => {
+          if (analysisRequestId !== state.analysisRequestId) return;
+          state.aiPending = false;
+          renderResults();
+          renderPerformanceSummary();
+          updateAiStatusUi();
+        });
       }
-      if (totalTimer) recordSpan(perfApi().endSpan(totalTimer));
-      renderPerformanceSummary();
     } catch (error) {
       setMessage("setupMessage", error.message || "تعذر تنفيذ التحليل العميق.", true);
     } finally {
@@ -1365,33 +1317,19 @@
     if (!panel) return;
     const spans = state.performance.spans || [];
     const local = spans.find(item => item.name === "التحليل المحلي والرسوم");
-    const gemini = spans.find(item => String(item.name || "").startsWith("Gemini"));
-    const total = spans.findLast ? spans.findLast(item => item.name === "الزمن الكلي") : [...spans].reverse().find(item => item.name === "الزمن الكلي");
+    const gemini = [...spans].reverse().find(item => String(item.name || "").startsWith("Gemini"));
     const items = [];
-    if (local) items.push(`<span><strong>الحسابات والرسوم</strong>${formatDuration(local.durationMs)}</span>`);
-    const server = state.performance.aiServerTiming || {};
-    if (server.segmented) {
-      const succeeded = server.succeededSegments?.length || 0;
-      const succeededTasks = server.succeededTasks?.length || 0;
-      const totalTasks = Number(server.totalTasks || 0);
-      const cached = Number(server.cacheHits || 0);
-      if (state.performance.cacheHit) items.push(`<span><strong>Gemini المعزول</strong>المهام الناجحة من الذاكرة المؤقتة</span>`);
-      else if (gemini) items.push(`<span><strong>Gemini المعزول</strong>${succeeded}/4 محاور · ${succeededTasks}/${totalTasks || succeededTasks} مهام · ${formatDuration(gemini.durationMs)}</span>`);
-      if (cached) items.push(`<span><strong>الذاكرة</strong>${cached} مهمة مستعادة</span>`);
-      const recovery = server.automaticRecovery || {};
-      const isolated = Array.isArray(recovery.isolatedSegments) ? recovery.isolatedSegments.length : 0;
-      if (isolated) items.push(`<span><strong>عزل الفشل</strong>فُكك ${isolated} محور بدل تكرار الطلب نفسه</span>`);
-      if (recovery.transientRetriesUsed) items.push(`<span><strong>استعادة الاتصال</strong>${recovery.transientRetriesUsed} محاولة مؤقتة فقط</span>`);
-      const quality = server.qualityMicrotasks || {};
-      if (Number(quality.total || 0)) items.push(`<span><strong>أدوات الجودة</strong>${quality.enhanced || 0}/${quality.total} محسنة بالذكاء${quality.localFallback ? ` · ${quality.localFallback} محلية آمنة` : ""}</span>`);
-    } else {
-      if (state.performance.cacheHit) items.push(`<span><strong>التفسير الذكي</strong>مستعاد فورًا من الذاكرة المؤقتة</span>`);
-      else if (gemini) items.push(`<span><strong>Gemini</strong>${formatDuration(gemini.durationMs)}</span>`);
-      if (server.compactRetryUsed) items.push(`<span><strong>المصالحة</strong>نجحت بعد محاولة مختصرة آمنة</span>`);
-      if (server.acceptedDeepAnalysisUnits !== undefined) items.push(`<span><strong>العمق المطبق</strong>${server.acceptedDeepAnalysisUnits} قراءات · ${server.acceptedPatches || 0} تحسينات</span>`);
+    if (local) items.push(`<span><strong>جاهزية التقرير</strong>${formatDuration(local.durationMs)}</span>`);
+    if (state.performance.cacheHit) {
+      items.push(`<span><strong>التحسين الذكي</strong>مستعاد فورًا من الذاكرة</span>`);
+    } else if (gemini) {
+      items.push(`<span><strong>تحسين Gemini</strong>${formatDuration(gemini.durationMs)}</span>`);
     }
-    if (state.performance.payloadChars) items.push(`<span><strong>حمولة الذكاء</strong>${Math.max(1, Math.round(state.performance.payloadChars / 1024))} كيلوبايت موزعة</span>`);
-    if (total) items.push(`<span><strong>الإجمالي</strong>${formatDuration(total.durationMs)}</span>`);
+    const server = state.performance.aiServerTiming || {};
+    if (server.acceptedDeepAnalysisUnits !== undefined) {
+      items.push(`<span><strong>التحسينات المطبقة</strong>${server.acceptedDeepAnalysisUnits || 0} قراءات · ${server.acceptedPatches || 0} تحسينات</span>`);
+    }
+    if (state.performance.payloadChars) items.push(`<span><strong>حمولة الذكاء</strong>${Math.max(1, Math.round(state.performance.payloadChars / 1024))} كيلوبايت</span>`);
     panel.innerHTML = items.join("");
     panel.classList.toggle("hidden", !items.length);
   }
@@ -1441,33 +1379,26 @@
       return `<article class="diagnostic-section-card"><div class="diagnostic-section-meta"><span>${source}</span><span>ثقة ${escapeHtml(section.confidence || "متوسطة")}</span></div><h5>${escapeHtml(section.title || "قراءة تفسيرية")}</h5><p>${escapeHtml(section.analysis || "")}</p>${evidence && evidence !== "لم يحدد مرجع دليل واضح." ? `<div class="soft-note">الدليل: ${escapeHtml(evidence)}</div>` : ""}${implications.length ? `<h6>الآثار العملية</h6><ul>${implications.map(item=>`<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}${alternatives.length ? `<h6>تفسيرات بديلة محتملة</h6><ul>${alternatives.map(item=>`<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}${requests.length ? `<h6>بيانات مطلوبة للتحقق</h6><ul>${requests.map(item=>`<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}</article>`;
     }).join("");
 
-    const segmentStatus = state.aiSegments?.statuses || {};
+    const enhancementStatus = state.aiSegments?.status || "";
     $("analysisModeChip").textContent = state.aiPending
-      ? `ظهرت النتائج المحلية · ${segmentProgressText(segmentStatus, state.aiSegments?.taskStatuses || {})}`
-      : (aiApplied ? "تحليل حتمي متخصص مصالَح مع Gemini" : "تحليل متخصص حتمي عميق");
+      ? "التقرير جاهز · تحسين Gemini اختياري جارٍ"
+      : (aiApplied ? "تحليل متخصص مصالَح مع Gemini" : "تحليل متخصص حتمي عميق");
     $("analysisModeChip").className = aiApplied ? "success-chip ai-result-chip" : "success-chip";
     const notice = $("aiResultNotice");
     if (state.aiPending) {
       notice.classList.remove("hidden", "error", "warning");
-      notice.innerHTML = `<strong>ظهرت الحسابات والرسوم فورًا</strong><span>${escapeHtml(segmentProgressText(segmentStatus, state.aiSegments?.taskStatuses || {}))}. تُنفذ الأجزاء الصغيرة بالتوازي، ويُدمج كل جزء ناجح فور وصوله دون انتظار بقية الأجزاء.</span>`;
-    } else if (state.aiWarning) {
-      const meta = a._reconciliation || {};
-      notice.classList.remove("hidden", "error"); notice.classList.add("warning");
-      notice.innerHTML = `<strong>اكتملت مصالحة جزئية آمنة</strong><span>${escapeHtml(state.aiWarning)} طُبقت ${meta.appliedDeepAnalyses || 0} قراءات و${meta.appliedPatches || 0} تحسينات دون تغيير الحسابات.</span><button id="retryAiOnlyBtn" class="secondary compact" type="button">إعادة المهام المتعثرة فقط</button>`;
+      notice.innerHTML = `<strong>التقرير المحلي جاهز الآن</strong><span>يجري تحسين تربوي اختياري في طلب واحد بالخلفية. يمكنك مراجعة النتائج وفتح التقرير دون انتظار.</span>`;
     } else if (aiApplied) {
       const meta = a._reconciliation || {};
       notice.classList.remove("hidden", "error", "warning");
-      const recovery = state.performance.aiServerTiming?.automaticRecovery || {};
-      const isolatedCount = Array.isArray(recovery.isolatedSegments) ? recovery.isolatedSegments.length : 0;
-      const quality = state.performance.aiServerTiming?.qualityMicrotasks || {};
-      const qualityText = Number(quality.total || 0)
-        ? ` حُسنت ${quality.enhanced || 0} من ${quality.total} أدوات جودة بالذكاء${quality.localFallback ? `، وتعتمد ${quality.localFallback} على التفسير المحلي الآمن` : ""}.`
-        : "";
-      notice.innerHTML = `<strong>اكتملت المصالحة التحليلية المعزولة${state.performance.cacheHit ? " من الذاكرة المؤقتة" : ""}</strong><span>أضيفت ${meta.appliedDeepAnalyses || 0} قراءات تربوية عميقة وطُبقت ${meta.appliedPatches || 0} تحسينات حقلية، مع بقاء ${a.improvementPlan?.length || 0} تدخلات و${a.monitoringPlan?.length || 0} مراحل متابعة فقط.${qualityText}${isolatedCount ? ` عُزل ${isolatedCount} محور متعثر إلى مهام أصغر بدل تكرار الطلب نفسه.` : ""}</span>`;
+      notice.innerHTML = `<strong>اكتمل التحسين الذكي${state.performance.cacheHit ? " من الذاكرة المؤقتة" : ""}</strong><span>أضيفت ${meta.appliedDeepAnalyses || 0} قراءات تربوية عميقة وطُبقت ${meta.appliedPatches || 0} تحسينات مركزة، دون تغيير الحسابات أو عدد التدخلات والمتابعة.</span>`;
     } else if (state.aiError) {
-      notice.classList.remove("hidden", "warning"); notice.classList.add("error");
-      notice.innerHTML = `<strong>اكتمل المحرك المتخصص المحلي</strong><span>تعذر تحسين Gemini: ${escapeHtml(state.aiError)}. لم تُفقد النتائج أو أدوات الجودة.</span><button id="retryAiOnlyBtn" class="secondary compact" type="button">إعادة تحسين Gemini فقط</button>`;
-    } else { notice.classList.add("hidden"); notice.classList.remove("error", "warning"); }
+      notice.classList.remove("hidden", "error"); notice.classList.add("warning");
+      notice.innerHTML = `<strong>التقرير مكتمل دون انتظار</strong><span>${escapeHtml(state.aiError)} التحليل المحلي والرسوم وأدوات الجودة جاهزة بالكامل.</span><button id="retryAiOnlyBtn" class="secondary compact" type="button">محاولة تحسين ذكي</button>`;
+    } else {
+      notice.classList.add("hidden");
+      notice.classList.remove("error", "warning");
+    }
     bindRetryAiButton();
     renderPerformanceSummary();
 
@@ -1548,7 +1479,7 @@
   function exportAnalysis() {
     const payload = {
       app: "تقارير",
-      version: "0.9.5",
+      version: "0.9.6",
       generatedAt: new Date().toISOString(),
       source: state.sourceName,
       sourceMeta: state.sourceMeta,
@@ -1561,7 +1492,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v0.9.5.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v0.9.6.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }

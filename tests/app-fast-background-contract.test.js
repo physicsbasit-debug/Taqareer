@@ -1,0 +1,11 @@
+const fs=require('fs');const path=require('path');const assert=require('assert');
+const app=fs.readFileSync(path.join(__dirname,'..','assets','app.js'),'utf8');
+const client=fs.readFileSync(path.join(__dirname,'..','assets','ai-client.js'),'utf8');
+assert.ok(app.includes('single-fast-ai-enhancement-v1'));
+assert.ok(app.includes('void enrichAnalysisWithAi'));
+assert.ok(app.includes('التقرير المحلي جاهز الآن'));
+assert.ok(!app.includes('qualityMicrotasks: outcome.qualityMicrotasks'));
+assert.ok(!app.includes('isolationPolicy: { concurrency: 3'));
+assert.ok(client.includes('enhanceFastDetailed'));
+assert.ok(client.includes('timeoutMs: 16000'));
+console.log('PASS app exposes local report immediately and runs one bounded AI enhancement in background');

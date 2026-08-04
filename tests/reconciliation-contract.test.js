@@ -15,7 +15,7 @@ const local=sandbox.window.TaqareerDeepAnalytics.analyze({
   scoreColumn:'درجة عنصر المادة',maxScore:40,thresholdPct:75
 });
 const api=sandbox.window.TaqareerReconciliation;
-assert.strictEqual(api.VERSION,'0.9.4');
+assert.strictEqual(api.VERSION,'0.9.6');
 assert.strictEqual(api.CONTRACT_VERSION,'3.0.0');
 const contract=api.buildContract(local);
 assert.strictEqual(contract.mode,'deep-analysis-delta');
@@ -75,7 +75,7 @@ assert.ok(reconciled._reconciliation.rejectedEnhancements>=4);
 assert.strictEqual(reconciled._reconciliation.addedFindings,0);
 const context={analysis:reconciled,type:{name:'درجات مكوّن تقويمي'},sourceName:'aaaa.xlsx · Sheet1',sourceMeta:{reportTitle:'كشف مراجعة إدخال الدرجات لمادة دراسية ( الأحياء ) - الصف التاسع'},quality:{completeness:100},recognitionStatus:'معتمد'};
 const html=sandbox.window.TaqareerReports.buildReportHtml(context,{autoPrint:false});
-assert.ok(html.includes('تقارير v0.9.4'));
+assert.ok(html.includes('تقارير v0.9.6'));
 assert.strictEqual((html.match(/class="plan-card"/g)||[]).length,4);
 assert.strictEqual((html.match(/class="timeline"/g)||[]).length,1);
 assert.ok(html.includes('تفسيرات بديلة محتملة'));

@@ -1,20 +1,30 @@
-# إعداد Gemini وSupabase لتقارير v0.9.5
+# إعداد Gemini وSupabase لتقارير v0.9.6
 
-1. افتح Supabase ثم `Edge Functions`.
-2. افتح الوظيفة `analyze-educational-form`.
-3. استبدل الكود كاملًا بمحتوى `SUPABASE_FUNCTION_GEMINI_V0_10_0.txt`.
-4. اضغط `Deploy function`.
-5. لا حاجة إلى SQL أو أسرار جديدة.
-
-الأسرار المستخدمة كما هي:
+## الأسرار المطلوبة
 
 - `GEMINI_API_KEY`
-- `GEMINI_MODEL`
+- `GEMINI_MODEL` للقراءة البصرية، والافتراضي `gemini-2.5-flash`
 - `TAQAREER_ACCESS_CODE`
 - `TAQAREER_ALLOWED_ORIGINS`
 
-الإصدار الجديد يعيد تفاصيل فشل المهمة مثل `taskId` و`scope` و`failureType` ومحاولات Gemini، ولا يعرض المفتاح أو رمز الوصول أو البيانات الخام.
+اختياري:
 
-## الإصدار الحالي
+- `GEMINI_FAST_MODEL`، والافتراضي تلقائيًا `gemini-2.5-flash-lite`
+- `GEMINI_CLASSIFIER_MODEL`، والافتراضي `gemini-2.5-flash-lite`
 
-بعد رفع GitHub، استبدل كود الوظيفة بملف `SUPABASE_FUNCTION_GEMINI_V0_10_0.txt`. لا يلزم SQL أو أسرار جديدة.
+## الوظيفة
+
+انشر الملف `SUPABASE_FUNCTION_GEMINI_V0_11_0.txt` داخل وظيفة:
+
+```text
+analyze-educational-form
+```
+
+العمليات التشغيلية الوحيدة:
+
+- `ping`
+- `classify`
+- `vision_extract`
+- `enhance_fast`
+
+لا توجد عمليات تقسيم أو مهام جودة أو حلقات إعادة في واجهة v0.9.6.
