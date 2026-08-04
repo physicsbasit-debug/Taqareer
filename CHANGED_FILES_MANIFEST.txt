@@ -1,39 +1,49 @@
-Phase 1-C3 v0.9.3 - Automatic Segment Recovery Manager
+Phase 1-C3 Fix 3 v0.9.4 - Segment Failure Isolation
 
-ارفع الملفات التالية فوق جذر المستودع الحالي:
-
-APPLY_INSTRUCTIONS.txt
-CHANGED_FILES_MANIFEST.txt
-README.md
-SUPABASE_FUNCTION_GEMINI_V0_8_1.txt
+تشغيل الواجهة:
+assets/deep-analysis-orchestrator.js
+assets/ai-client.js
+assets/app.js
+assets/deep-analysis.js
+assets/analysis-reconciliation.js
+assets/performance-pipeline.js
+assets/report-system.js
 index.html
 manifest.json
 
-assets/ai-client.js
-assets/analysis-reconciliation.js
-assets/app.js
-assets/deep-analysis-orchestrator.js
-assets/deep-analysis.js
-assets/performance-pipeline.js
-assets/report-system.js
-
-supabase/functions/analyze-educational-form/README.md
+Supabase:
 supabase/functions/analyze-educational-form/index.ts
+supabase/functions/analyze-educational-form/README.md
+SUPABASE_FUNCTION_GEMINI_V0_9_0.txt
 
-docs/AI_CONTRACT.md
-docs/AI_SETUP.md
-docs/AUTOMATIC_SEGMENT_RECOVERY.md
-docs/RELEASE_NOTES.md
-docs/SEGMENTED_DEEP_ANALYSIS_PIPELINE.md
-docs/TEST_REPORT.md
-
+اختبارات:
+tests/segmented-orchestrator.test.js
 tests/automatic-segment-recovery.test.js
-tests/browser-automatic-recovery.manual.py
-tests/browser-segmented-pipeline.manual.py
+tests/segment-failure-isolation.test.js
+tests/edge-task-scope-isolation.test.js
+tests/browser-segment-failure-isolation.manual.py
+tests/edge-enrichment-contract.test.js
 tests/edge-retry-metadata.test.js
+tests/edge-segmented-enrichment.test.js
+tests/edge-semantic-retry.test.js
+tests/fast-payload-contract.test.js
 tests/performance-pipeline.test.js
 tests/reconciliation-contract.test.js
 tests/report-generation.test.js
-tests/segmented-orchestrator.test.js
 
-لا تحتوي حزمة changed-files-only على .github أو .nojekyll أو GITHUB_WORKFLOW_VISIBLE.
+توثيق وتعليمات:
+docs/SEGMENT_FAILURE_ISOLATION.md
+docs/SEGMENTED_DEEP_ANALYSIS_PIPELINE.md
+docs/AUTOMATIC_SEGMENT_RECOVERY.md
+docs/AI_CONTRACT.md
+docs/ANALYTICAL_RECONCILIATION_ARCHITECTURE.md
+docs/RELEASE_NOTES.md
+docs/AI_SETUP.md
+docs/TEST_REPORT.md
+README.md
+APPLY_INSTRUCTIONS.txt
+CHANGED_FILES_MANIFEST.txt
+
+ملف توافق آمن عند الرفع فوق v0.9.3:
+SUPABASE_FUNCTION_GEMINI_V0_8_1.txt
+(يحتوي الكود الجديد نفسه لمنع بقاء نسخة Edge القديمة داخل المستودع؛ الملف المعتمد للنسخ هو V0_9_0.)

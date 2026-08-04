@@ -1,8 +1,8 @@
 {
   "app": "تقارير",
-  "version": "0.9.3",
-  "phase": "Phase 1-C3 - Automatic Segment Recovery Manager",
-  "releaseName": "Automatic Segment Recovery with Progressive Backoff and Retry Classification",
+  "version": "0.9.4",
+  "phase": "Phase 1-C3 Fix 3 - Segment Failure Isolation",
+  "releaseName": "Adaptive Segment Failure Isolation with Task-Level Diagnostics",
   "buildType": "static-github-pages-plus-supabase-edge-function",
   "supportedInputs": {
     "table": [
@@ -52,8 +52,8 @@
       "adaptive-new-form-contract"
     ],
     "canonicalContract": "deterministic-analysis-is-authoritative",
-    "aiContribution": "four-segment-deep-analysis-enrichment-with-target-id-deltas",
-    "reconciliation": "incremental-field-level-merge-with-count-locks-partial-success-targeted-retry-and-automatic-recovery",
+    "aiContribution": "four parent analysis axes executed as isolated tasks; governance is pre-split and content failures decompose by target batches",
+    "reconciliation": "incremental field-level merge with parent-count locks, task-level partial success and failed-task-only retry",
     "routingRule": "form-type-routes-to-its-own-analysis-family-without-forcing-a-unified-procedure"
   },
   "features": [
@@ -84,20 +84,22 @@
     "personal-field-masking-before-ai",
     "local-analysis-fallback",
     "four-part-segmented-deep-analysis",
-    "parallel-independent-gemini-segments",
     "incremental-reconciliation-as-segments-arrive",
     "partial-success-without-result-loss",
     "retry-failed-segments-only",
     "per-segment-cache-and-timing",
-    "per-segment-max-token-compact-retry",
-    "automatic-failed-segment-recovery",
-    "progressive-retry-backoff-with-jitter",
     "retry-after-support",
     "retryable-error-classification",
     "non-retryable-configuration-guard",
-    "automatic-recovery-progress-ui",
-    "manual-retry-only-after-recovery-exhaustion",
-    "structured-edge-error-metadata"
+    "structured-edge-error-metadata",
+    "governance-pre-split-quality-and-monitoring",
+    "adaptive-content-failure-decomposition",
+    "no-identical-content-retry-loop",
+    "task-level-cache-and-timing",
+    "task-level-failure-reason-and-attempt-diagnostics",
+    "bounded-transient-retry-only",
+    "failed-task-only-manual-retry",
+    "max-concurrency-three"
   ],
   "runtime": {
     "frontend": "GitHub Pages static site",
@@ -110,12 +112,13 @@
     "classificationThinkingBudget": 0,
     "reconciliationContractVersion": "3.0.0",
     "segmentedOperations": [
-      "diagnostic",
-      "findings",
-      "interventions",
-      "governance"
+      "diagnostic.full",
+      "findings.full",
+      "interventions.full",
+      "governance.quality",
+      "governance.monitoring"
     ],
-    "segmentProtocolVersion": "4.0.0",
+    "segmentProtocolVersion": "4.1.0",
     "segmentThinkingBudgets": {
       "diagnostic": 384,
       "findings": 320,
@@ -124,16 +127,14 @@
     },
     "legacyEnrichmentOperation": "enrich",
     "legacyEnrichmentThinkingBudget": 768,
-    "edgeFunctionVersion": "0.8.1",
+    "edgeFunctionVersion": "0.9.0",
     "automaticRecovery": {
-      "maxRetriesAfterInitialRequest": 2,
-      "delaysMs": [
-        900,
-        2400
-      ],
-      "jitterMs": 250,
-      "preserveSuccessfulSegments": true,
-      "retryFailedSegmentsOnly": true
+      "mode": "adaptive-isolation-not-identical-retry",
+      "maxConcurrentTasks": 3,
+      "transientRetriesPerTask": 1,
+      "contentFailureHandling": "decompose full task by target batches; governance already isolated",
+      "preserveSuccessfulTasks": true,
+      "retryFailedTasksOnly": true
     }
   },
   "security": {
@@ -153,10 +154,10 @@
     "invalidTargetHandling": "unknown target IDs are rejected before reconciliation",
     "reportOutput": "one reconciled analysis, six print-safe pages for the score fixture",
     "masteryFixture": "268 valid, 48 mastered, 220 not mastered, 17.91044776119403% raw spread, 17.9% display",
-    "segmentedPipeline": "four independent AI segments; successful parts reconcile immediately; only failed parts retry",
-    "partialFailure": "local results and successful AI segments remain available when one segment fails",
-    "automaticRecovery": "transient segment fails twice and succeeds on the third client request without a user click",
-    "nonRetryableFailure": "401/configuration failure is not retried automatically"
+    "segmentedPipeline": "four parent axes represented by five initial isolated tasks; governance quality and monitoring never share one response",
+    "partialFailure": "successful tasks remain reconciled; UI names the failed task and reason",
+    "automaticRecovery": "content failures are decomposed instead of repeated; only transient failures receive one bounded retry",
+    "nonRetryableFailure": "401/configuration failure is not retried; isolated content failure is surfaced after its server compact attempt"
   },
   "performance": {
     "knownScoreContextRows": 16,
@@ -165,11 +166,11 @@
     "narrativeContextLines": 260,
     "cacheEntries": 8,
     "cacheTtlDays": 7,
-    "resultsPresentation": "deterministic results first, four Gemini segments in parallel, incremental reconciliation",
-    "expectedBenefit": "bounded JSON per segment, no monolithic MAX_TOKENS failure, no duplicated report sections",
-    "cacheGranularity": "one cache entry per analysis segment",
-    "retryGranularity": "failed segment only; two automatic recovery rounds before manual retry appears",
-    "recoveryBackoff": "progressive delay with jitter and Retry-After support"
+    "resultsPresentation": "deterministic results first, isolated Gemini tasks with max concurrency three, incremental reconciliation",
+    "expectedBenefit": "no 73-second identical retry loop; smaller governance payloads and exact failed-task diagnosis",
+    "cacheGranularity": "one cache entry per isolated task",
+    "retryGranularity": "failed task only; content failures decompose, transient failures retry once",
+    "recoveryBackoff": "one bounded transient retry with Retry-After support; no repeated identical content payloads"
   },
   "backwardCompatibility": {
     "legacyAnalyzeOperation": "retained for older clients",

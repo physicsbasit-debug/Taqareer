@@ -1,4 +1,4 @@
-"""Chromium acceptance for v0.9.3 automatic segment recovery.
+"""Chromium acceptance for v0.9.4 automatic segment recovery.
 A transient segment fails twice, is retried automatically, and succeeds without a user click.
 """
 import asyncio
@@ -13,7 +13,7 @@ HTML = re.sub(r'<script[^>]*src="[^"]+"[^>]*></script>', '', HTML)
 
 
 def result(segment):
-    value = {"contractVersion":"4.0.0","segment":segment,"deepAnalysisUnits":[],"patches":[],"additionalCautions":[],"missingDataRequests":[],"validation":{}}
+    value = {"contractVersion":"4.1.0","segment":segment,"deepAnalysisUnits":[],"patches":[],"additionalCautions":[],"missingDataRequests":[],"validation":{}}
     if segment == "diagnostic":
         value["deepAnalysisUnits"] = [{"targetId":"diagnostic.measurement_quality","analysis":"تحليل عميق","evidenceRefs":["metric:n"],"confidence":"مرتفعة","implications":[],"alternativeExplanations":[],"limitations":[],"dataRequests":[]}]
     return value

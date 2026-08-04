@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "0.9.3";
+  const VERSION = "0.9.4";
 
   function escapeHtml(value) {
     return String(value ?? "").replace(/[&<>'"]/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" }[char]));

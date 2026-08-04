@@ -1,4 +1,4 @@
-"""Chromium acceptance for v0.9.3 segmented deep-analysis pipeline.
+"""Chromium acceptance for v0.9.4 segmented deep-analysis pipeline.
 Verifies immediate local results, partial success, retry of the failed segment only,
 and final reconciliation without duplicate interventions or monitoring cycles.
 No network is required.
@@ -15,7 +15,7 @@ HTML = re.sub(r'<script[^>]*src="[^"]+"[^>]*></script>', '', HTML)
 
 SEGMENT_RESULTS = {
     "diagnostic": {
-        "contractVersion": "4.0.0",
+        "contractVersion": "4.1.0",
         "segment": "diagnostic",
         "deepAnalysisUnits": [{
             "targetId": "diagnostic.measurement_quality",
@@ -31,7 +31,7 @@ SEGMENT_RESULTS = {
         "validation": {"acceptedDeepAnalysisUnits": 1, "acceptedPatches": 0}
     },
     "findings": {
-        "contractVersion": "4.0.0", "segment": "findings", "deepAnalysisUnits": [],
+        "contractVersion": "4.1.0", "segment": "findings", "deepAnalysisUnits": [],
         "patches": [{
             "targetType": "finding", "targetId": "finding.mastery_spread",
             "field": "educationalImpact",
@@ -42,7 +42,7 @@ SEGMENT_RESULTS = {
         "validation": {"acceptedDeepAnalysisUnits": 0, "acceptedPatches": 1}
     },
     "interventions": {
-        "contractVersion": "4.0.0", "segment": "interventions", "deepAnalysisUnits": [],
+        "contractVersion": "4.1.0", "segment": "interventions", "deepAnalysisUnits": [],
         "patches": [{
             "targetType": "intervention", "targetId": "intervention.deep_gap",
             "field": "implementationSteps", "text": "",
@@ -53,7 +53,7 @@ SEGMENT_RESULTS = {
         "validation": {"acceptedDeepAnalysisUnits": 0, "acceptedPatches": 1}
     },
     "governance": {
-        "contractVersion": "4.0.0", "segment": "governance", "deepAnalysisUnits": [],
+        "contractVersion": "4.1.0", "segment": "governance", "deepAnalysisUnits": [],
         "patches": [{
             "targetType": "monitoring", "targetId": "monitoring.short_followup",
             "field": "measure",

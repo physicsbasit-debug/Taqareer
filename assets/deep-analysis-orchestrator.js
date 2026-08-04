@@ -1,9 +1,9 @@
 (() => {
   "use strict";
 
-  const VERSION = "0.9.3";
-  const PROTOCOL_VERSION = "4.0.0";
-  const RECOVERY_VERSION = "1.0.0";
+  const VERSION = "0.9.4";
+  const PROTOCOL_VERSION = "4.1.0";
+  const ISOLATION_VERSION = "1.0.0";
   const SEGMENTS = Object.freeze(["diagnostic", "findings", "interventions", "governance"]);
   const LABELS = Object.freeze({
     diagnostic: "القراءة التشخيصية",
@@ -11,10 +11,17 @@
     interventions: "التدخلات التنفيذية",
     governance: "الجودة والمتابعة",
   });
-  const DEFAULT_RECOVERY_POLICY = Object.freeze({
-    enabled: true,
-    maxAutomaticRetries: 2,
-    delaysMs: Object.freeze([900, 2400]),
+  const TASK_LABELS = Object.freeze({
+    "diagnostic.full": "القراءة التشخيصية",
+    "findings.full": "الاستنتاجات التربوية",
+    "interventions.full": "التدخلات التنفيذية",
+    "governance.quality": "أدوات الجودة",
+    "governance.monitoring": "المتابعة والحوكمة",
+  });
+  const DEFAULT_POLICY = Object.freeze({
+    concurrency: 3,
+    transientRetries: 1,
+    transientDelayMs: 1200,
     jitterMs: 250,
   });
 
@@ -55,6 +62,21 @@
     };
   }
 
+  function mergeDeltas(values) {
+    const merged = emptyDelta();
+    for (const value of values || []) {
+      if (!value) continue;
+      const normalized = normalizeSegmentResult(value.segment || "", value.result || value);
+      merged.deepAnalysisUnits.push(...normalized.deepAnalysisUnits);
+      merged.patches.push(...normalized.patches);
+      merged.additionalCautions.push(...normalized.additionalCautions);
+      merged.missingDataRequests.push(...normalized.missingDataRequests);
+    }
+    merged.additionalCautions = uniqueStrings(merged.additionalCautions).slice(0, 12);
+    merged.missingDataRequests = uniqueStrings(merged.missingDataRequests).slice(0, 16);
+    return merged;
+  }
+
   function mergeSegmentResults(results, statuses = {}) {
     const merged = emptyDelta();
     for (const segment of SEGMENTS) {
@@ -71,7 +93,7 @@
         status: statuses?.[segment]?.status || "success",
         cacheHit: Boolean(statuses?.[segment]?.cacheHit),
         attempts: Number(statuses?.[segment]?.attempts || 1),
-        automaticRetries: Number(statuses?.[segment]?.automaticRetries || 0),
+        isolated: Boolean(statuses?.[segment]?.isolated),
         acceptedDeepAnalysisUnits: Number(normalized.validation?.acceptedDeepAnalysisUnits || normalized.deepAnalysisUnits.length || 0),
         acceptedPatches: Number(normalized.validation?.acceptedPatches || normalized.patches.length || 0),
       });
@@ -81,144 +103,230 @@
     return merged;
   }
 
-  function trimContract(contract, segment) {
+  function targetArray(contract, key) {
+    const patchTargets = contract?.patchTargets && typeof contract.patchTargets === "object" ? contract.patchTargets : {};
+    return Array.isArray(patchTargets[key]) ? patchTargets[key] : [];
+  }
+
+  function batch(items, size) {
+    const result = [];
+    for (let index = 0; index < items.length; index += size) result.push(items.slice(index, index + size));
+    return result;
+  }
+
+  function taskDefinition(id, segment, scope = "full", options = {}) {
+    return {
+      id,
+      segment,
+      scope,
+      label: options.label || TASK_LABELS[id] || LABELS[segment] || id,
+      targetIds: Array.isArray(options.targetIds) ? options.targetIds : null,
+      splitDepth: Number(options.splitDepth || 0),
+      parentTaskId: options.parentTaskId || "",
+      recoveryMode: options.recoveryMode || "normal",
+    };
+  }
+
+  function initialTasks(segments = SEGMENTS) {
+    const tasks = [];
+    for (const segment of segments) {
+      if (segment === "governance") {
+        tasks.push(taskDefinition("governance.quality", "governance", "quality", { label: "أدوات الجودة" }));
+        tasks.push(taskDefinition("governance.monitoring", "governance", "monitoring", { label: "المتابعة والحوكمة" }));
+      } else {
+        tasks.push(taskDefinition(`${segment}.full`, segment));
+      }
+    }
+    return tasks;
+  }
+
+  function selectedTargets(contract, task) {
+    if (task.segment === "diagnostic") return Array.isArray(contract?.deepAnalysisTargets) ? contract.deepAnalysisTargets : [];
+    if (task.segment === "findings") return targetArray(contract, "findings");
+    if (task.segment === "interventions") return targetArray(contract, "interventions");
+    if (task.scope === "quality") return targetArray(contract, "qualityTools");
+    if (task.scope === "monitoring") return targetArray(contract, "monitoring");
+    return [...targetArray(contract, "qualityTools"), ...targetArray(contract, "monitoring")];
+  }
+
+  function filterTargets(items, targetIds) {
+    if (!Array.isArray(targetIds) || !targetIds.length) return items;
+    const allowed = new Set(targetIds.map(String));
+    return items.filter(item => allowed.has(String(item?.id || "")));
+  }
+
+  function trimContract(contract, task) {
     const source = clone(contract || {});
-    const patchTargets = source.patchTargets && typeof source.patchTargets === "object" ? source.patchTargets : {};
     const rules = source.rules && typeof source.rules === "object" ? source.rules : {};
+    const selected = filterTargets(selectedTargets(source, task), task.targetIds);
+    const maxPatches = Math.max(2, Math.min(12, selected.length * 2 + 2));
     return {
       version: source.version || "3.0.0",
-      mode: "segmented-deep-analysis",
+      mode: "isolated-segment-analysis",
       family: source.family || "adaptive",
+      task: { id: task.id, segment: task.segment, scope: task.scope, splitDepth: task.splitDepth },
       rules: {
         ...rules,
-        maxDeepAnalysisUnits: segment === "diagnostic" ? Number(rules.maxDeepAnalysisUnits || 6) : 0,
-        maxPatches: segment === "diagnostic" ? 0
-          : segment === "findings" ? Math.min(14, Number(rules.maxPatches || 30))
-          : segment === "interventions" ? Math.min(18, Number(rules.maxPatches || 30))
-          : Math.min(18, Number(rules.maxPatches || 30)),
+        maxDeepAnalysisUnits: task.segment === "diagnostic" ? Math.max(1, selected.length) : 0,
+        maxPatches: task.segment === "diagnostic" ? 0 : maxPatches,
       },
-      executive: segment === "findings" ? source.executive : null,
-      profile: segment === "findings" ? source.profile : null,
-      deepAnalysisTargets: segment === "diagnostic" ? (source.deepAnalysisTargets || []) : [],
+      executive: task.segment === "findings" ? source.executive : null,
+      profile: task.segment === "findings" ? source.profile : null,
+      deepAnalysisTargets: task.segment === "diagnostic" ? selected : [],
       patchTargets: {
-        findings: segment === "findings" ? (patchTargets.findings || []) : [],
-        qualityTools: segment === "governance" ? (patchTargets.qualityTools || []) : [],
-        interventions: segment === "interventions" ? (patchTargets.interventions || []) : [],
-        monitoring: segment === "governance" ? (patchTargets.monitoring || []) : [],
+        findings: task.segment === "findings" ? selected : [],
+        qualityTools: task.scope === "quality" ? selected : [],
+        interventions: task.segment === "interventions" ? selected : [],
+        monitoring: task.scope === "monitoring" ? selected : [],
       },
     };
   }
 
-  function compactFindingContext(contract) {
-    return (contract?.patchTargets?.findings || []).map(item => ({
-      id: item.id,
-      title: item.title,
-      statement: item.statement,
-      evidenceRefs: item.evidenceRefs || [],
-      confidence: item.confidence,
-      severity: item.severity,
-    }));
+  function evidenceRefsFromTargets(items) {
+    return uniqueStrings((items || []).flatMap(item => item?.evidenceRefs || []));
   }
 
-  function compactDiagnosticContext(contract) {
-    return (contract?.deepAnalysisTargets || []).map(item => ({
-      id: item.id,
-      title: item.title,
-      currentAnalysis: item.currentAnalysis,
-      evidenceRefs: item.evidenceRefs || [],
-      confidence: item.confidence,
-    }));
+  function compactDeterministic(deterministic, task) {
+    const source = deterministic && typeof deterministic === "object" ? deterministic : {};
+    const base = {
+      kind: source.kind,
+      executiveTitle: source.executiveTitle,
+      executiveSummary: source.executiveSummary,
+      analysisProfile: source.analysisProfile,
+      metrics: Array.isArray(source.metrics) ? source.metrics.slice(0, 30) : [],
+      evidenceCatalog: Array.isArray(source.evidenceCatalog) ? source.evidenceCatalog.slice(0, 100) : [],
+    };
+    if (task.segment === "diagnostic") {
+      base.charts = Array.isArray(source.charts) ? source.charts.slice(0, 8) : [];
+      base.diagnosticSections = Array.isArray(source.diagnosticSections) ? source.diagnosticSections.slice(0, 8) : [];
+    } else if (task.segment === "findings") {
+      base.findings = Array.isArray(source.findings) ? source.findings.slice(0, 10) : [];
+      base.charts = Array.isArray(source.charts) ? source.charts.slice(0, 5) : [];
+    } else if (task.segment === "interventions") {
+      base.findings = Array.isArray(source.findings) ? source.findings.slice(0, 8) : [];
+      base.improvementPlan = Array.isArray(source.improvementPlan) ? source.improvementPlan.slice(0, 8) : [];
+    } else if (task.scope === "quality") {
+      base.qualityTools = Array.isArray(source.qualityTools) ? source.qualityTools.slice(0, 10) : [];
+      base.charts = Array.isArray(source.charts) ? source.charts.slice(0, 5) : [];
+    } else if (task.scope === "monitoring") {
+      base.improvementPlan = Array.isArray(source.improvementPlan) ? source.improvementPlan.slice(0, 8) : [];
+      base.monitoringPlan = Array.isArray(source.monitoringPlan) ? source.monitoringPlan.slice(0, 8) : [];
+      base.cautions = Array.isArray(source.cautions) ? source.cautions.slice(0, 8) : [];
+      base.dataRequests = Array.isArray(source.dataRequests) ? source.dataRequests.slice(0, 8) : [];
+    }
+    return base;
   }
 
-  function buildSegmentPayload(basePayload, segment) {
-    if (!SEGMENTS.includes(segment)) throw new Error(`جزء التحليل غير معروف: ${segment}`);
+  function compactData(data, task) {
+    const source = data && typeof data === "object" ? data : {};
+    if (task.segment === "diagnostic") {
+      if (Array.isArray(source.lines)) return { ...source, lines: source.lines.slice(0, task.splitDepth ? 90 : 180) };
+      return { ...source, sampleRows: Array.isArray(source.sampleRows) ? source.sampleRows.slice(0, task.splitDepth ? 6 : 12) : [] };
+    }
+    if (task.segment === "findings") {
+      if (Array.isArray(source.lines)) return { ...source, lines: source.lines.slice(0, 90) };
+      return { ...source, sampleRows: Array.isArray(source.sampleRows) ? source.sampleRows.slice(0, 6) : [] };
+    }
+    return {
+      mode: "derived-evidence-only",
+      rowCount: source.rowCount || 0,
+      originalLineCount: source.originalLineCount || 0,
+      note: "يعتمد هذا الجزء على المؤشرات والأدلة والعقد المحلي فقط.",
+    };
+  }
+
+  function buildTaskPayload(basePayload, task) {
     const base = clone(basePayload || {});
     const fullContract = base.reconciliationContract || {};
-    const data = base.data && typeof base.data === "object" ? base.data : {};
-    const deterministic = base.deterministicAnalysis && typeof base.deterministicAnalysis === "object"
-      ? base.deterministicAnalysis
-      : {};
-
-    const payload = {
+    const trimmedContract = trimContract(fullContract, task);
+    const targets = selectedTargets(trimmedContract, task);
+    const targetRefs = evidenceRefsFromTargets(targets);
+    const allRefs = uniqueStrings(base.availableEvidenceRefs || []);
+    const relevantRefs = targetRefs.length ? uniqueStrings([...targetRefs, ...allRefs.filter(ref => String(ref).startsWith("metric:"))]) : allRefs;
+    return {
       locale: base.locale || "ar-OM",
       appVersion: VERSION,
       protocolVersion: PROTOCOL_VERSION,
-      recoveryVersion: RECOVERY_VERSION,
-      segment,
-      segmentLabel: LABELS[segment],
+      isolationVersion: ISOLATION_VERSION,
+      segment: task.segment,
+      segmentLabel: LABELS[task.segment],
+      taskId: task.id,
+      taskLabel: task.label,
+      scope: task.scope,
+      recoveryMode: task.recoveryMode,
+      splitDepth: task.splitDepth,
       pipeline: {
-        mode: "segmented-deep-analysis-v4",
-        purpose: segment,
-        instruction: "حلل الجزء المحدد فقط، وأعد تحسينات مرتبطة بالعقد المحلي دون إنشاء عناصر موازية أو تغيير الحسابات.",
+        mode: "segment-failure-isolation-v1",
+        purpose: task.scope,
+        instruction: "حلل المهمة المحددة فقط، ولا تعيد عناصر أو حقولًا خارج العقد المرسل.",
       },
       source: base.source,
       recognizedType: base.recognizedType,
       quality: base.quality,
       privacy: base.privacy,
-      deterministicAnalysis: deterministic,
-      reconciliationContract: trimContract(fullContract, segment),
-      availableEvidenceRefs: base.availableEvidenceRefs || [],
+      deterministicAnalysis: compactDeterministic(base.deterministicAnalysis, task),
+      reconciliationContract: trimmedContract,
+      availableEvidenceRefs: relevantRefs.slice(0, 120),
       evidenceReferenceGuide: base.evidenceReferenceGuide || {},
-      contextSnapshot: {
-        diagnosticTargets: compactDiagnosticContext(fullContract),
-        findings: compactFindingContext(fullContract),
-      },
+      data: compactData(base.data, task),
     };
-
-    if (segment === "diagnostic") {
-      payload.data = data;
-    } else if (segment === "findings") {
-      payload.data = Array.isArray(data.lines)
-        ? { ...data, lines: data.lines.slice(0, 120) }
-        : { ...data, sampleRows: Array.isArray(data.sampleRows) ? data.sampleRows.slice(0, 8) : [] };
-    } else {
-      payload.data = {
-        mode: "derived-evidence-only",
-        rowCount: data.rowCount || 0,
-        originalLineCount: data.originalLineCount || 0,
-        note: "يعتمد هذا الجزء على المؤشرات والأدلة والعقد المحلي، ولا يحتاج البيانات الخام الكاملة.",
-      };
-    }
-
-    return payload;
   }
 
-  function normalizeRecoveryPolicy(value = {}) {
-    const delays = Array.isArray(value.delaysMs) && value.delaysMs.length
-      ? value.delaysMs.map(item => Math.max(0, Number(item) || 0))
-      : [...DEFAULT_RECOVERY_POLICY.delaysMs];
+  function splitTask(task, basePayload) {
+    if (task.splitDepth >= 1 || task.scope !== "full") return [];
+    const contract = basePayload?.reconciliationContract || {};
+    const targets = selectedTargets(contract, task);
+    const size = task.segment === "diagnostic" ? 2 : task.segment === "findings" ? 3 : task.segment === "interventions" ? 2 : 0;
+    if (!size || targets.length <= size) return [];
+    return batch(targets, size).map((items, index, groups) => taskDefinition(
+      `${task.segment}.batch${index + 1}`,
+      task.segment,
+      `batch-${index + 1}`,
+      {
+        label: `${LABELS[task.segment]} (${index + 1}/${groups.length})`,
+        targetIds: items.map(item => String(item?.id || "")).filter(Boolean),
+        splitDepth: 1,
+        parentTaskId: task.id,
+        recoveryMode: "isolated",
+      },
+    ));
+  }
+
+  function normalizePolicy(value = {}) {
     return {
-      enabled: value.enabled !== undefined ? Boolean(value.enabled) : DEFAULT_RECOVERY_POLICY.enabled,
-      maxAutomaticRetries: Math.max(0, Math.min(4, Number(value.maxAutomaticRetries ?? DEFAULT_RECOVERY_POLICY.maxAutomaticRetries) || 0)),
-      delaysMs: delays,
-      jitterMs: Math.max(0, Math.min(1000, Number(value.jitterMs ?? DEFAULT_RECOVERY_POLICY.jitterMs) || 0)),
+      concurrency: Math.max(1, Math.min(3, Number(value.concurrency ?? DEFAULT_POLICY.concurrency) || DEFAULT_POLICY.concurrency)),
+      transientRetries: Math.max(0, Math.min(1, Number(value.transientRetries ?? DEFAULT_POLICY.transientRetries) || 0)),
+      transientDelayMs: Math.max(0, Number(value.transientDelayMs ?? DEFAULT_POLICY.transientDelayMs) || 0),
+      jitterMs: Math.max(0, Math.min(1000, Number(value.jitterMs ?? DEFAULT_POLICY.jitterMs) || 0)),
     };
   }
 
   function classifyFailure(error) {
     const status = Number(error?.status || 0);
     const code = String(error?.code || error?.errorCode || "").trim();
-    const message = String(error?.message || error || "تعذر إكمال الجزء.").trim();
+    const message = String(error?.message || error || "تعذر إكمال المهمة.").trim();
+    const details = error?.details && typeof error.details === "object" ? clone(error.details) : {};
+    const failureType = String(details?.failureType || error?.failureType || "").trim();
     const lowered = message.toLowerCase();
-    const nonRetryableStatus = [400, 401, 403, 404, 405, 413].includes(status);
-    const nonRetryableMessage = /(رمز الوصول غير صحيح|النطاق غير مسموح|أكبر من الحد المسموح|العملية المطلوبة غير مدعومة|لم يُضبط رابط|مفتاح supabase|جزء التحليل المطلوب غير مدعوم|جزء التحليل غير صالح)/i.test(message);
-    const retryableStatus = status === 0 || status === 408 || status === 409 || status === 425 || status === 429 || status >= 500;
-    const retryableMessage = /(timeout|timed out|network|failed to fetch|انتهت مهلة|تعذر الاتصال|مؤقت|حد الإخراج|max_tokens|json غير صالح|المحاولة المختصرة|gemini|rate limit|quota|overload|unavailable|internal)/i.test(lowered);
-    const explicitRetryable = typeof error?.retryable === "boolean" ? error.retryable : null;
-    const retryable = explicitRetryable === null
-      ? (!nonRetryableStatus && !nonRetryableMessage && (retryableStatus || retryableMessage))
-      : (!nonRetryableStatus && !nonRetryableMessage && explicitRetryable);
-    const retryAfterMs = Math.max(0, Number(error?.retryAfterMs || 0) || 0);
-    return { retryable, status, code, message, retryAfterMs };
-  }
-
-  function recoveryDelayMs(round, policy) {
-    const index = Math.max(0, round - 1);
-    const configured = policy.delaysMs[index];
-    const fallbackBase = policy.delaysMs.at(-1) ?? 900;
-    const base = configured !== undefined ? configured : fallbackBase * Math.max(1, 2 ** (index - policy.delaysMs.length + 1));
-    const jitter = policy.jitterMs ? Math.floor(Math.random() * (policy.jitterMs + 1)) : 0;
-    return Math.max(0, Math.round(base + jitter));
+    const nonRetryable = [400, 401, 403, 404, 405, 413].includes(status)
+      || /(رمز الوصول غير صحيح|النطاق غير مسموح|أكبر من الحد المسموح|العملية المطلوبة غير مدعومة|مفتاح supabase|جزء التحليل غير صالح)/i.test(message);
+    const contentFailure = ["output_exhausted", "json_invalid", "validation_empty"].includes(failureType)
+      || /(حد الإخراج|max_tokens|json غير صالح|json المتوقع|المحاولة المختصرة)/i.test(lowered);
+    const transient = !nonRetryable && !contentFailure && (
+      status === 0 || status === 408 || status === 425 || status === 429 || status >= 500
+      || /(timeout|network|failed to fetch|تعذر الاتصال|مؤقت|rate limit|quota|overload|unavailable|internal)/i.test(lowered)
+    );
+    return {
+      retryable: !nonRetryable && (contentFailure || transient),
+      transient,
+      contentFailure,
+      status,
+      code,
+      message,
+      details,
+      failureType: failureType || (contentFailure ? "content_failure" : transient ? "transient" : "non_retryable"),
+      retryAfterMs: Math.max(0, Number(error?.retryAfterMs || details?.retryAfterMs || 0) || 0),
+    };
   }
 
   async function wait(ms) {
@@ -226,106 +334,174 @@
     await new Promise(resolve => setTimeout(resolve, ms));
   }
 
-  function failureMessage(failures) {
-    return Object.entries(failures || {})
-      .map(([segment, error]) => `${LABELS[segment] || segment}: ${error?.message || error}`)
-      .join(" | ");
+  async function runPool(items, concurrency, worker) {
+    const queue = [...items];
+    const workers = Array.from({ length: Math.min(concurrency, Math.max(1, queue.length)) }, async () => {
+      while (queue.length) {
+        const item = queue.shift();
+        if (item) await worker(item);
+      }
+    });
+    await Promise.all(workers);
+  }
+
+  function aggregateUsage(taskItems) {
+    const output = {};
+    for (const item of taskItems) {
+      const usage = item?.usage;
+      if (!usage || typeof usage !== "object") continue;
+      for (const [key, value] of Object.entries(usage)) {
+        if (typeof value === "number") output[key] = Number(output[key] || 0) + value;
+      }
+    }
+    return Object.keys(output).length ? output : null;
+  }
+
+  function parentTaskIds(taskPlan, segment) {
+    return taskPlan.filter(task => task.segment === segment).map(task => task.id);
+  }
+
+  function buildParentArtifacts(taskPlan, taskResults, taskStatuses, taskFailures) {
+    const results = {};
+    const statuses = {};
+    const failures = {};
+    for (const segment of SEGMENTS) {
+      const ids = parentTaskIds(taskPlan, segment);
+      if (!ids.length) continue;
+      const successful = ids.filter(id => taskResults[id]);
+      const failed = ids.filter(id => taskFailures[id]);
+      const pending = ids.filter(id => !taskResults[id] && !taskFailures[id]);
+      const values = successful.map(id => taskResults[id]);
+      if (values.length) {
+        const delta = mergeDeltas(values);
+        const timings = values.map(value => value?.serverTiming).filter(Boolean);
+        results[segment] = {
+          result: { ...delta, segment, validation: {
+            acceptedDeepAnalysisUnits: delta.deepAnalysisUnits.length,
+            acceptedPatches: delta.patches.length,
+          } },
+          model: values.find(value => value?.model)?.model || "Gemini",
+          usage: aggregateUsage(values),
+          cacheHit: values.every(value => value?.cacheHit),
+          serverTiming: { segment, tasks: timings },
+        };
+      }
+      const taskStates = ids.map(id => taskStatuses[id]).filter(Boolean);
+      const attempts = taskStates.reduce((sum, item) => sum + Number(item?.attempts || 0), 0);
+      const durationMs = taskStates.reduce((sum, item) => sum + Number(item?.durationMs || 0), 0);
+      const payloadChars = taskStates.reduce((sum, item) => sum + Number(item?.payloadChars || 0), 0);
+      const status = failed.length
+        ? (successful.length ? "partial" : "failed")
+        : pending.length ? (taskStates.some(item => item?.status === "isolating") ? "isolating" : "pending")
+        : "success";
+      statuses[segment] = {
+        status,
+        completedTasks: successful.length,
+        totalTasks: ids.length,
+        failedTasks: failed.length,
+        attempts,
+        durationMs,
+        payloadChars,
+        cacheHit: successful.length > 0 && successful.length === ids.length && values.every(value => value?.cacheHit),
+        isolated: ids.some(id => id.includes(".batch")) || segment === "governance",
+        taskIds: ids,
+        error: failed.map(id => taskFailures[id]?.message || String(taskFailures[id])).join(" | "),
+      };
+      if (failed.length) failures[segment] = taskFailures[failed[0]];
+    }
+    return { results, statuses, failures };
   }
 
   async function run(options = {}) {
     const basePayload = options.basePayload || {};
     const ai = options.ai || globalThis.TaqareerAI;
     const performanceApi = options.performanceApi || globalThis.TaqareerPerformance;
-    const previousResults = { ...(options.previousResults || {}) };
+    const force = Boolean(options.force);
+    const onProgress = typeof options.onProgress === "function" ? options.onProgress : () => {};
+    const policy = normalizePolicy(options.isolationPolicy || options.recoveryPolicy || {});
+    if (!ai?.enrichSegmentDetailed) throw new Error("عميل التحليل المقسّم غير محمل.");
+
     const retrySegments = Array.isArray(options.retrySegments) && options.retrySegments.length
       ? options.retrySegments.filter(segment => SEGMENTS.includes(segment))
       : SEGMENTS;
-    const force = Boolean(options.force);
-    const onProgress = typeof options.onProgress === "function" ? options.onProgress : () => {};
-    const recoveryPolicy = normalizeRecoveryPolicy(options.recoveryPolicy || {});
-    if (!ai?.enrichSegmentDetailed) throw new Error("عميل التحليل المقسّم غير محمل.");
+    const previousTaskResults = { ...(options.previousTaskResults || {}) };
+    const previousResults = { ...(options.previousResults || {}) };
+    const taskResults = { ...previousTaskResults };
+    const taskStatuses = {};
+    const taskFailures = {};
+    const isolationHistory = [];
+    const requestedTaskIds = Array.isArray(options.retryTaskIds) && options.retryTaskIds.length
+      ? new Set(options.retryTaskIds.map(String))
+      : null;
+    let taskPlan = requestedTaskIds && Array.isArray(options.previousTaskPlan) && options.previousTaskPlan.length
+      ? clone(options.previousTaskPlan)
+      : initialTasks(retrySegments);
+    taskPlan = taskPlan.filter(task => retrySegments.includes(task.segment));
 
-    const results = { ...previousResults };
-    const statuses = {};
-    const failures = {};
-    const firstFailedSegments = new Set();
-    const recoveredSegments = new Set();
-    const recoveryHistory = [];
-    let totalPayloadChars = 0;
-    let automaticRetriesUsed = 0;
-    const startedAt = globalThis.performance?.now?.() ?? Date.now();
-
-    for (const segment of SEGMENTS) {
-      if (!results[segment]) continue;
-      statuses[segment] = {
-        status: "success",
-        cacheHit: Boolean(results[segment]?.cacheHit),
-        payloadChars: 0,
-        durationMs: 0,
-        attempts: 1,
-        automaticRetries: 0,
-        preserved: true,
-      };
+    for (const [segment, result] of Object.entries(previousResults)) {
+      if (!retrySegments.includes(segment)) continue;
+      if (segment === "governance") continue;
+      const id = `${segment}.full`;
+      if (!taskResults[id] && result) taskResults[id] = result;
     }
 
-    const publish = (segment = "") => {
+    const startedAt = globalThis.performance?.now?.() ?? Date.now();
+    let totalPayloadChars = 0;
+    let transientRetriesUsed = 0;
+
+    const publish = (activeTaskId = "") => {
+      const parent = buildParentArtifacts(taskPlan, taskResults, taskStatuses, taskFailures);
       onProgress({
-        segment,
-        statuses: clone(statuses),
-        results: clone(results),
-        delta: mergeSegmentResults(results, statuses),
-        failures: clone(failures),
-        recovery: {
-          version: RECOVERY_VERSION,
-          automaticRetriesUsed,
-          maxAutomaticRetries: recoveryPolicy.maxAutomaticRetries,
-          recoveredSegments: [...recoveredSegments],
-          history: clone(recoveryHistory),
+        activeTaskId,
+        taskPlan: clone(taskPlan),
+        taskResults: clone(taskResults),
+        taskStatuses: clone(taskStatuses),
+        taskFailures: clone(taskFailures),
+        results: clone(parent.results),
+        statuses: clone(parent.statuses),
+        failures: clone(parent.failures),
+        delta: mergeSegmentResults(parent.results, parent.statuses),
+        isolation: {
+          version: ISOLATION_VERSION,
+          history: clone(isolationHistory),
+          transientRetriesUsed,
         },
       });
     };
 
-    const invokeOne = async (segment, context = {}) => {
-      const automaticRetryRound = Number(context.automaticRetryRound || 0);
-      const payload = buildSegmentPayload(basePayload, segment);
+    const invokeTask = async (task, context = {}) => {
+      const payload = buildTaskPayload(basePayload, task);
       const payloadChars = JSON.stringify(payload).length;
       totalPayloadChars += payloadChars;
-      const cacheKey = performanceApi?.makeKey
-        ? await performanceApi.makeKey(`deep-segment-v4:${segment}`, payload)
-        : "";
-      const cached = !force && automaticRetryRound === 0 && cacheKey && performanceApi?.cacheGet
-        ? performanceApi.cacheGet(cacheKey)
-        : null;
-      const attempts = Number(statuses[segment]?.attempts || 0) + 1;
-      statuses[segment] = {
-        ...statuses[segment],
-        status: automaticRetryRound > 0 ? "recovering" : "pending",
-        cacheHit: false,
+      const cacheKey = performanceApi?.makeKey ? await performanceApi.makeKey(`deep-task-v4.1:${task.id}`, payload) : "";
+      const cached = !force && !context.forceNetwork && cacheKey && performanceApi?.cacheGet ? performanceApi.cacheGet(cacheKey) : null;
+      const attempts = Number(taskStatuses[task.id]?.attempts || 0) + 1;
+      taskStatuses[task.id] = {
+        ...taskStatuses[task.id],
+        taskId: task.id,
+        segment: task.segment,
+        scope: task.scope,
+        label: task.label,
+        status: context.retry ? "recovering" : "pending",
         payloadChars,
         attempts,
-        automaticRetries: automaticRetryRound,
-        retryable: undefined,
         error: "",
+        errorCode: "",
+        failureType: "",
       };
-      publish(segment);
-
+      publish(task.id);
       if (cached?.result) {
-        results[segment] = { ...cached, cacheHit: true };
-        delete failures[segment];
-        statuses[segment] = {
-          ...statuses[segment],
-          status: "success",
-          cacheHit: true,
-          durationMs: 0,
-        };
-        publish(segment);
+        taskResults[task.id] = { ...cached, cacheHit: true };
+        delete taskFailures[task.id];
+        taskStatuses[task.id] = { ...taskStatuses[task.id], status: "success", cacheHit: true, durationMs: 0 };
+        publish(task.id);
         return true;
       }
-
-      const segmentStarted = globalThis.performance?.now?.() ?? Date.now();
+      const taskStarted = globalThis.performance?.now?.() ?? Date.now();
       try {
         const response = await ai.enrichSegmentDetailed(payload);
-        results[segment] = {
+        const durationMs = Number(response.clientTiming?.durationMs) || Math.max(0, (globalThis.performance?.now?.() ?? Date.now()) - taskStarted);
+        taskResults[task.id] = {
           result: response.result,
           usage: response.usage || null,
           model: response.model || "Gemini",
@@ -333,106 +509,108 @@
           clientTiming: response.clientTiming || null,
           cacheHit: false,
         };
-        const durationMs = Number(response.clientTiming?.durationMs)
-          || Math.max(0, (globalThis.performance?.now?.() ?? Date.now()) - segmentStarted);
-        if (firstFailedSegments.has(segment)) recoveredSegments.add(segment);
-        delete failures[segment];
-        statuses[segment] = {
-          ...statuses[segment],
+        delete taskFailures[task.id];
+        taskStatuses[task.id] = {
+          ...taskStatuses[task.id],
           status: "success",
-          cacheHit: false,
           durationMs,
-          retryable: undefined,
-          error: "",
+          cacheHit: false,
+          finishReason: response.serverTiming?.finishReason || "STOP",
         };
-        if (cacheKey && performanceApi?.cacheSet) performanceApi.cacheSet(cacheKey, results[segment]);
-        publish(segment);
+        if (cacheKey && performanceApi?.cacheSet) performanceApi.cacheSet(cacheKey, taskResults[task.id]);
+        publish(task.id);
         return true;
       } catch (error) {
-        const classification = classifyFailure(error);
-        firstFailedSegments.add(segment);
-        failures[segment] = error;
-        statuses[segment] = {
-          ...statuses[segment],
+        const failure = classifyFailure(error);
+        taskFailures[task.id] = error;
+        taskStatuses[task.id] = {
+          ...taskStatuses[task.id],
           status: "failed",
-          cacheHit: false,
-          durationMs: Math.max(0, (globalThis.performance?.now?.() ?? Date.now()) - segmentStarted),
-          retryable: classification.retryable,
-          error: classification.message,
-          errorStatus: classification.status,
-          errorCode: classification.code,
-          retryAfterMs: classification.retryAfterMs,
+          durationMs: Math.max(0, (globalThis.performance?.now?.() ?? Date.now()) - taskStarted),
+          retryable: failure.retryable,
+          transient: failure.transient,
+          contentFailure: failure.contentFailure,
+          error: failure.message,
+          errorStatus: failure.status,
+          errorCode: failure.code,
+          failureType: failure.failureType,
+          details: failure.details,
+          retryAfterMs: failure.retryAfterMs,
         };
-        publish(segment);
+        publish(task.id);
         return false;
       }
     };
 
-    await Promise.all(retrySegments.map(segment => invokeOne(segment)));
+    const initialQueue = taskPlan.filter(task => !taskResults[task.id] && (!requestedTaskIds || requestedTaskIds.has(task.id)));
+    await runPool(initialQueue, policy.concurrency, task => invokeTask(task));
 
-    if (recoveryPolicy.enabled && recoveryPolicy.maxAutomaticRetries > 0) {
-      for (let round = 1; round <= recoveryPolicy.maxAutomaticRetries; round++) {
-        const candidates = retrySegments.filter(segment => failures[segment] && statuses[segment]?.retryable !== false);
-        if (!candidates.length) break;
-        automaticRetriesUsed = round;
-        const requestedRetryAfterMs = Math.max(0, ...candidates.map(segment => Number(statuses[segment]?.retryAfterMs || 0)));
-        const delayMs = Math.max(recoveryDelayMs(round, recoveryPolicy), requestedRetryAfterMs);
-        for (const segment of candidates) {
-          statuses[segment] = {
-            ...statuses[segment],
-            status: "recovery_wait",
-            automaticRetries: round,
-            nextRetryMs: delayMs,
-            maxAutomaticRetries: recoveryPolicy.maxAutomaticRetries,
-          };
-        }
-        recoveryHistory.push({
-          round,
-          segments: [...candidates],
-          delayMs,
-          startedAt: Date.now(),
-        });
-        publish(candidates[0] || "");
-        await wait(delayMs);
-        await Promise.all(candidates.map(segment => invokeOne(segment, { automaticRetryRound: round })));
-        const historyItem = recoveryHistory.at(-1);
-        if (historyItem) {
-          historyItem.completedAt = Date.now();
-          historyItem.succeeded = candidates.filter(segment => !failures[segment]);
-          historyItem.failed = candidates.filter(segment => failures[segment]);
-        }
-      }
+    const failedFullTasks = taskPlan.filter(task => taskFailures[task.id] && task.scope === "full" && taskStatuses[task.id]?.contentFailure);
+    for (const task of failedFullTasks) {
+      const replacements = splitTask(task, basePayload);
+      if (!replacements.length) continue;
+      isolationHistory.push({
+        segment: task.segment,
+        failedTaskId: task.id,
+        reason: taskStatuses[task.id]?.failureType || "content_failure",
+        replacementTaskIds: replacements.map(item => item.id),
+        at: Date.now(),
+      });
+      taskPlan = taskPlan.filter(item => item.id !== task.id).concat(replacements);
+      delete taskFailures[task.id];
+      delete taskStatuses[task.id];
+      publish(replacements[0]?.id || "");
+      await runPool(replacements, Math.min(policy.concurrency, 2), replacement => invokeTask(replacement));
     }
 
-    const succeededSegments = SEGMENTS.filter(segment => results[segment]);
-    const failedSegments = retrySegments.filter(segment => failures[segment]);
-    if (!succeededSegments.length) {
-      throw new Error(failureMessage(failures) || "تعذرت أجزاء التحليل الذكي كلها.");
+    const transientCandidates = taskPlan.filter(task => taskFailures[task.id] && taskStatuses[task.id]?.transient && Number(taskStatuses[task.id]?.attempts || 0) <= policy.transientRetries);
+    if (transientCandidates.length && policy.transientRetries > 0) {
+      transientRetriesUsed = transientCandidates.length;
+      const requested = Math.max(0, ...transientCandidates.map(task => Number(taskStatuses[task.id]?.retryAfterMs || 0)));
+      const jitter = policy.jitterMs ? Math.floor(Math.random() * (policy.jitterMs + 1)) : 0;
+      await wait(Math.max(requested, policy.transientDelayMs + jitter));
+      await runPool(transientCandidates, Math.min(policy.concurrency, 2), task => invokeTask({ ...task, recoveryMode: "transient-retry" }, { retry: true, forceNetwork: true }));
+    }
+
+    const parent = buildParentArtifacts(taskPlan, taskResults, taskStatuses, taskFailures);
+    const succeededSegments = SEGMENTS.filter(segment => parent.statuses[segment]?.status === "success");
+    const failedSegments = SEGMENTS.filter(segment => ["failed", "partial"].includes(parent.statuses[segment]?.status));
+    const succeededTasks = taskPlan.filter(task => taskResults[task.id]).map(task => task.id);
+    const failedTaskIds = taskPlan.filter(task => taskFailures[task.id]).map(task => task.id);
+    if (!succeededTasks.length) {
+      const message = failedTaskIds.map(id => `${taskStatuses[id]?.label || id}: ${taskStatuses[id]?.error || "تعذر التحليل"}`).join(" | ");
+      throw new Error(message || "تعذرت مهام التحليل الذكي كلها.");
     }
 
     return {
       protocolVersion: PROTOCOL_VERSION,
-      recoveryVersion: RECOVERY_VERSION,
-      delta: mergeSegmentResults(results, statuses),
-      results,
-      statuses,
-      failures,
+      isolationVersion: ISOLATION_VERSION,
+      delta: mergeSegmentResults(parent.results, parent.statuses),
+      results: parent.results,
+      statuses: parent.statuses,
+      failures: parent.failures,
+      taskPlan,
+      taskResults,
+      taskStatuses,
+      taskFailures,
       succeededSegments,
       failedSegments,
-      allSucceeded: failedSegments.length === 0,
-      partialSuccess: failedSegments.length > 0,
+      succeededTasks,
+      failedTaskIds,
+      allSucceeded: failedTaskIds.length === 0,
+      partialSuccess: failedTaskIds.length > 0,
       payloadChars: totalPayloadChars,
       durationMs: Math.max(0, (globalThis.performance?.now?.() ?? Date.now()) - startedAt),
-      cacheHits: SEGMENTS.filter(segment => statuses[segment]?.cacheHit).length,
+      cacheHits: succeededTasks.filter(id => taskResults[id]?.cacheHit).length,
       automaticRecovery: {
-        enabled: recoveryPolicy.enabled,
-        maxAutomaticRetries: recoveryPolicy.maxAutomaticRetries,
-        automaticRetriesUsed,
-        initiallyFailedSegments: [...firstFailedSegments],
-        recoveredSegments: [...recoveredSegments],
-        exhaustedSegments: failedSegments.filter(segment => statuses[segment]?.retryable !== false),
-        nonRetryableSegments: failedSegments.filter(segment => statuses[segment]?.retryable === false),
-        history: recoveryHistory,
+        enabled: true,
+        mode: "adaptive-isolation-not-identical-retry",
+        isolatedSegments: uniqueStrings(isolationHistory.map(item => item.segment)),
+        isolationHistory,
+        transientRetriesUsed,
+        recoveredSegments: uniqueStrings(isolationHistory.map(item => item.segment).filter(segment => parent.statuses[segment]?.status === "success")),
+        exhaustedSegments: failedSegments,
+        failedTaskIds,
       },
     };
   }
@@ -440,15 +618,16 @@
   globalThis.TaqareerDeepOrchestrator = {
     VERSION,
     PROTOCOL_VERSION,
-    RECOVERY_VERSION,
+    ISOLATION_VERSION,
     SEGMENTS,
     LABELS,
-    DEFAULT_RECOVERY_POLICY,
-    buildSegmentPayload,
-    mergeSegmentResults,
+    TASK_LABELS,
+    DEFAULT_POLICY,
+    initialTasks,
+    buildTaskPayload,
+    splitTask,
     classifyFailure,
-    normalizeRecoveryPolicy,
-    recoveryDelayMs,
+    mergeSegmentResults,
     run,
   };
 })();

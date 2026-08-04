@@ -142,14 +142,32 @@ const DEEP_ANALYSIS_OUTPUT_KEYS = [
   "missingDataRequests",
 ] as const;
 
-const SEGMENT_PROTOCOL_VERSION = "4.0.0";
+const SEGMENT_PROTOCOL_VERSION = "4.1.0";
 const SEGMENT_NAMES = new Set(["diagnostic", "findings", "interventions", "governance"]);
-const SEGMENT_CONFIG: Record<string, { thinkingBudget: number; compactThinkingBudget: number; maxOutputTokens: number; compactMaxOutputTokens: number }> = {
-  diagnostic: { thinkingBudget: 384, compactThinkingBudget: 192, maxOutputTokens: 2800, compactMaxOutputTokens: 1900 },
-  findings: { thinkingBudget: 320, compactThinkingBudget: 160, maxOutputTokens: 2300, compactMaxOutputTokens: 1600 },
-  interventions: { thinkingBudget: 384, compactThinkingBudget: 192, maxOutputTokens: 2500, compactMaxOutputTokens: 1800 },
-  governance: { thinkingBudget: 256, compactThinkingBudget: 128, maxOutputTokens: 2100, compactMaxOutputTokens: 1500 },
+type SegmentConfig = { thinkingBudget: number; compactThinkingBudget: number; maxOutputTokens: number; compactMaxOutputTokens: number };
+const SEGMENT_CONFIG: Record<string, SegmentConfig> = {
+  diagnostic: { thinkingBudget: 320, compactThinkingBudget: 160, maxOutputTokens: 2300, compactMaxOutputTokens: 1500 },
+  findings: { thinkingBudget: 256, compactThinkingBudget: 128, maxOutputTokens: 1900, compactMaxOutputTokens: 1250 },
+  interventions: { thinkingBudget: 320, compactThinkingBudget: 160, maxOutputTokens: 2100, compactMaxOutputTokens: 1400 },
+  governance: { thinkingBudget: 192, compactThinkingBudget: 96, maxOutputTokens: 1350, compactMaxOutputTokens: 900 },
 };
+
+class SegmentGenerationError extends Error {
+  details: Record<string, unknown>;
+  constructor(message: string, details: Record<string, unknown>) {
+    super(message);
+    this.name = "SegmentGenerationError";
+    this.details = details;
+  }
+}
+
+function segmentConfig(segment: string, scope: string): SegmentConfig {
+  if (segment !== "governance") return SEGMENT_CONFIG[segment];
+  if (scope === "quality" || scope === "monitoring") {
+    return { thinkingBudget: 176, compactThinkingBudget: 80, maxOutputTokens: 1150, compactMaxOutputTokens: 760 };
+  }
+  return SEGMENT_CONFIG.governance;
+}
 
 
 const CLASSIFICATION_SCHEMA = {
@@ -746,18 +764,23 @@ async function callDeepEnrichment(payload: Record<string, unknown>, model: strin
 }
 
 
-function segmentedInstructions(segment: string, compactMode = false): string {
+function segmentedInstructions(segment: string, compactMode = false, scope = "full"): string {
   const compact = compactMode
-    ? "هذه محاولة مختصرة بعد انقطاع سابق. استخدم أقصر صياغة مهنية مفيدة، ولا تتجاوز تحسينًا أو تحسينين لكل هدف."
-    : "قدّم عمقًا تربويًا حقيقيًا داخل الجزء المحدد فقط، دون تكرار الحسابات أو إعادة بناء التقرير.";
+    ? "هذه محاولة مركزة بعد انقطاع سابق. استخدم جملة أو جملتين مفيدتين لكل هدف، ولا تعيد أي سياق موجود في العقد."
+    : "قدّم عمقًا تربويًا داخل المهمة المحددة فقط، دون إعادة بناء التقرير أو تكرار الحسابات.";
   const duties: Record<string, string> = {
-    diagnostic: "أعد deepAnalysisUnits لمحاور deepAnalysisTargets فقط: تفسير النمط، الآثار، تفسير بديل، حدود الاستدلال، والبيانات المطلوبة للتحقق. لا ترجع patches.",
-    findings: "أعد patches للأهداف executive وprofile وfinding فقط. عمّق المعنى والأثر والإجراء المرتبط، ولا تنشئ استنتاجات جديدة.",
-    interventions: "أعد patches لأهداف intervention فقط. حسّن خطوات التنفيذ والمسؤول والزمن ومؤشر النجاح والمتابعة والخطة البديلة والموارد دون إنشاء تدخل جديد.",
-    governance: "أعد patches لأهداف qualityTool وmonitoring فقط، وأضف cautions أو missingDataRequests الضرورية للقرار. لا تنشئ أدوات أو مراحل جديدة.",
+    diagnostic: "أعد deepAnalysisUnits لمحاور deepAnalysisTargets المرسلة فقط: تفسير النمط، الآثار، تفسير بديل، حدود الاستدلال، والبيانات المطلوبة للتحقق. لا ترجع patches.",
+    findings: "أعد patches للأهداف executive وprofile وfinding المرسلة فقط. عمّق المعنى والأثر والإجراء المرتبط، ولا تنشئ استنتاجات جديدة.",
+    interventions: "أعد patches لأهداف intervention المرسلة فقط. حسّن التنفيذ والمسؤول والزمن ومؤشر النجاح والمتابعة والخطة البديلة دون إنشاء تدخل جديد.",
+    governance: scope === "quality"
+      ? "أعد patches لأهداف qualityTool المرسلة فقط. حسّن سبب اختيار الأداة وتفسير ناتجها والبيانات الإضافية المطلوبة. لا ترجع monitoring."
+      : scope === "monitoring"
+        ? "أعد patches لأهداف monitoring المرسلة فقط، وأضف cautions أو missingDataRequests الضرورية للقرار. لا ترجع qualityTool."
+        : "أعد patches لأهداف qualityTool وmonitoring المرسلة فقط، دون إنشاء أدوات أو مراحل جديدة.",
   };
-  return `أنت محلل تربوي داخل خط تحليل مقسّم إلى أجزاء مستقلة، ولست مولد تقرير موازٍ.
-الجزء الحالي: ${segment}.
+  return `أنت محلل تربوي داخل خط تحليل يعزل المهام المتعثرة، ولست مولد تقرير موازٍ.
+المحور الحالي: ${segment}.
+المهمة الدقيقة: ${scope}.
 ${duties[segment] || "التزم بالعقد المرسل."}
 ${compact}
 القواعد الملزمة:
@@ -769,7 +792,7 @@ ${compact}
 6) لا تعرض أسماء أشخاص أو بيانات محجوبة.
 7) أعد JSON خامًا فقط بالمفاتيح التالية حرفيًا:
 {
-  "contractVersion":"4.0.0",
+  "contractVersion":"4.1.0",
   "segment":"${segment}",
   "deepAnalysisUnits":[],
   "patches":[],
@@ -787,22 +810,22 @@ function prepareSegmentPayload(payload: Record<string, unknown>, compactMode: bo
   if (!SEGMENT_NAMES.has(segment)) throw new Error("جزء التحليل المطلوب غير مدعوم.");
   prepared.compactMode = compactMode;
   const data = prepared.data && typeof prepared.data === "object" ? prepared.data as Record<string, unknown> : {};
-  if (Array.isArray(data.sampleRows)) data.sampleRows = data.sampleRows.slice(0, compactMode ? 3 : (segment === "diagnostic" ? 10 : 6));
-  if (Array.isArray(data.lines)) data.lines = data.lines.slice(0, compactMode ? 60 : (segment === "diagnostic" ? 180 : 100));
+  if (Array.isArray(data.sampleRows)) data.sampleRows = data.sampleRows.slice(0, compactMode ? 3 : (segment === "diagnostic" ? 8 : 5));
+  if (Array.isArray(data.lines)) data.lines = data.lines.slice(0, compactMode ? 50 : (segment === "diagnostic" ? 120 : 75));
   prepared.data = data;
   const deterministic = prepared.deterministicAnalysis && typeof prepared.deterministicAnalysis === "object"
     ? prepared.deterministicAnalysis as Record<string, unknown>
     : {};
-  if (Array.isArray(deterministic.metrics)) deterministic.metrics = deterministic.metrics.slice(0, compactMode ? 18 : 26);
-  if (Array.isArray(deterministic.charts)) deterministic.charts = deterministic.charts.slice(0, compactMode ? 4 : 7);
-  if (Array.isArray(deterministic.evidenceCatalog)) deterministic.evidenceCatalog = deterministic.evidenceCatalog.slice(0, compactMode ? 45 : 90);
+  if (Array.isArray(deterministic.metrics)) deterministic.metrics = deterministic.metrics.slice(0, compactMode ? 16 : 24);
+  if (Array.isArray(deterministic.charts)) deterministic.charts = deterministic.charts.slice(0, compactMode ? 3 : 6);
+  if (Array.isArray(deterministic.evidenceCatalog)) deterministic.evidenceCatalog = deterministic.evidenceCatalog.slice(0, compactMode ? 35 : 70);
   prepared.deterministicAnalysis = deterministic;
   if (compactMode) {
     const contract = contractObject(prepared);
     const targets = Array.isArray(contract.deepAnalysisTargets) ? contract.deepAnalysisTargets as Array<Record<string, unknown>> : [];
     contract.deepAnalysisTargets = targets.map(item => ({
       ...item,
-      currentAnalysis: String(item.currentAnalysis || "").slice(0, 450),
+      currentAnalysis: String(item.currentAnalysis || "").slice(0, 320),
       currentImplications: Array.isArray(item.currentImplications) ? item.currentImplications.slice(0, 2) : [],
       currentLimitations: Array.isArray(item.currentLimitations) ? item.currentLimitations.slice(0, 2) : [],
     }));
@@ -813,6 +836,7 @@ function prepareSegmentPayload(payload: Record<string, unknown>, compactMode: bo
 
 function validateSegmentDelta(result: unknown, payload: Record<string, unknown>): Record<string, unknown> {
   const segment = String(payload.segment || "");
+  const scope = String(payload.scope || "full");
   if (!SEGMENT_NAMES.has(segment)) throw new Error("جزء التحليل غير صالح.");
   const normalized = result && typeof result === "object" ? structuredClone(result) as Record<string, unknown> : {};
   normalized.deepAnalysisUnits = Array.isArray(normalized.deepAnalysisUnits) ? normalized.deepAnalysisUnits : [];
@@ -826,13 +850,16 @@ function validateSegmentDelta(result: unknown, payload: Record<string, unknown>)
     diagnostic: new Set(),
     findings: new Set(["executive", "profile", "finding"]),
     interventions: new Set(["intervention"]),
-    governance: new Set(["qualityTool", "monitoring"]),
+    governance: scope === "quality" ? new Set(["qualityTool"])
+      : scope === "monitoring" ? new Set(["monitoring"])
+      : new Set(["qualityTool", "monitoring"]),
   };
   if (segment !== "diagnostic") validated.deepAnalysisUnits = [];
   const patches = Array.isArray(validated.patches) ? validated.patches as Array<Record<string, unknown>> : [];
   validated.patches = patches.filter(item => allowedPatchTypes[segment].has(String(item.targetType || "")));
   const validation = validated.validation && typeof validated.validation === "object" ? validated.validation as Record<string, unknown> : {};
   validation.segment = segment;
+  validation.scope = scope;
   validation.acceptedDeepAnalysisUnits = Array.isArray(validated.deepAnalysisUnits) ? validated.deepAnalysisUnits.length : 0;
   validation.acceptedPatches = Array.isArray(validated.patches) ? validated.patches.length : 0;
   validated.validation = validation;
@@ -843,44 +870,82 @@ function validateSegmentDelta(result: unknown, payload: Record<string, unknown>)
 
 async function callSegmentEnrichment(payload: Record<string, unknown>, model: string, startedAt: number) {
   const segment = String(payload.segment || "");
+  const scope = String(payload.scope || "full");
+  const taskId = String(payload.taskId || `${segment}.${scope}`);
   if (!SEGMENT_NAMES.has(segment)) throw new Error("جزء التحليل المطلوب غير مدعوم.");
-  const config = SEGMENT_CONFIG[segment];
+  const config = segmentConfig(segment, scope);
   const attempts = [
     { compactMode: false, thinkingBudget: config.thinkingBudget, maxOutputTokens: config.maxOutputTokens },
     { compactMode: true, thinkingBudget: config.compactThinkingBudget, maxOutputTokens: config.compactMaxOutputTokens },
   ];
+  const attemptDiagnostics: Array<Record<string, unknown>> = [];
   let firstFailure = "";
+  let failureType = "unknown";
   for (let index = 0; index < attempts.length; index++) {
     const attempt = attempts[index];
     const prepared = prepareSegmentPayload(payload, attempt.compactMode);
+    const payloadChars = JSON.stringify(prepared).length;
     const { raw, requestId } = await geminiRequest(model, {
-      systemInstruction: { parts: [{ text: segmentedInstructions(segment, attempt.compactMode) }] },
+      systemInstruction: { parts: [{ text: segmentedInstructions(segment, attempt.compactMode, scope) }] },
       contents: [{ role: "user", parts: [{ text: JSON.stringify(prepared) }] }],
       generationConfig: {
         responseMimeType: "application/json",
         maxOutputTokens: attempt.maxOutputTokens,
         candidateCount: 1,
-        temperature: 0.12,
+        temperature: 0.1,
         thinkingConfig: { thinkingBudget: attempt.thinkingBudget, includeThoughts: false },
       },
     });
     const candidate = geminiCandidateResult(raw);
+    const usage = raw.usageMetadata && typeof raw.usageMetadata === "object" ? raw.usageMetadata as Record<string, unknown> : null;
+    const diagnostic: Record<string, unknown> = {
+      attemptNumber: index + 1,
+      compactMode: attempt.compactMode,
+      finishReason: candidate.finishReason,
+      payloadChars,
+      outputCharacters: candidate.text.length,
+      thinkingBudget: attempt.thinkingBudget,
+      maxOutputTokens: attempt.maxOutputTokens,
+      promptTokenCount: usage?.promptTokenCount || null,
+      thoughtsTokenCount: usage?.thoughtsTokenCount || null,
+      candidatesTokenCount: usage?.candidatesTokenCount || null,
+      requestId,
+    };
+    attemptDiagnostics.push(diagnostic);
     if (candidate.finishReason === "MAX_TOKENS") {
-      firstFailure = `توقف جزء ${segment} عند حد الإخراج.`;
+      firstFailure = `توقفت مهمة ${taskId} عند حد الإخراج.`;
+      failureType = "output_exhausted";
+      diagnostic.failureType = failureType;
       if (index === 0) continue;
-      throw new Error(`${firstFailure} فشلت المحاولة المختصرة لهذا الجزء أيضًا.`);
+      throw new SegmentGenerationError(`${firstFailure} فشلت المحاولة المركزة أيضًا.`, {
+        failureType, segment, scope, taskId, attempts: attemptDiagnostics,
+      });
     }
     let parsed: Record<string, unknown>;
     try {
       parsed = parseJsonObject(candidate.text);
     } catch (error) {
-      firstFailure = error instanceof Error ? error.message : `رجع جزء ${segment} JSON غير صالح.`;
+      firstFailure = error instanceof Error ? error.message : `رجعت مهمة ${taskId} JSON غير صالحة.`;
+      failureType = "json_invalid";
+      diagnostic.failureType = failureType;
+      diagnostic.parseError = firstFailure;
       if (index === 0) continue;
-      throw new Error(`${firstFailure} فشلت المحاولة المختصرة لهذا الجزء أيضًا.`);
+      throw new SegmentGenerationError(`${firstFailure} فشلت المحاولة المركزة أيضًا.`, {
+        failureType, segment, scope, taskId, attempts: attemptDiagnostics,
+      });
     }
     const result = validateSegmentDelta(parsed, prepared);
     const validation = result.validation && typeof result.validation === "object" ? result.validation as Record<string, unknown> : {};
-    const usage = raw.usageMetadata && typeof raw.usageMetadata === "object" ? raw.usageMetadata as Record<string, unknown> : null;
+    if ((Number(validation.acceptedDeepAnalysisUnits || 0) + Number(validation.acceptedPatches || 0)) === 0
+        && (Number(validation.returnedDeepAnalysisUnits || 0) + Number(validation.returnedPatches || 0)) > 0) {
+      firstFailure = `لم تجتز مخرجات مهمة ${taskId} التحقق الخادمي.`;
+      failureType = "validation_empty";
+      diagnostic.failureType = failureType;
+      if (index === 0) continue;
+      throw new SegmentGenerationError(firstFailure, {
+        failureType, segment, scope, taskId, attempts: attemptDiagnostics, validation,
+      });
+    }
     return {
       result,
       model: String(raw.modelVersion || model),
@@ -889,12 +954,14 @@ async function callSegmentEnrichment(payload: Record<string, unknown>, model: st
       provider: "gemini",
       serverTiming: {
         segment,
+        scope,
+        taskId,
         geminiMs: Math.round(performance.now() - startedAt),
-        payloadChars: JSON.stringify(prepared).length,
+        payloadChars,
         attemptNumber: index + 1,
         compactRetryUsed: index > 0,
         finishReason: candidate.finishReason,
-        outputMode: "segmented-json-mode-server-validated",
+        outputMode: "isolated-json-mode-server-validated",
         responseSchemaSent: false,
         thinkingBudget: attempt.thinkingBudget,
         maxOutputTokens: attempt.maxOutputTokens,
@@ -904,10 +971,13 @@ async function callSegmentEnrichment(payload: Record<string, unknown>, model: st
         promptTokenCount: usage?.promptTokenCount || null,
         thoughtsTokenCount: usage?.thoughtsTokenCount || null,
         candidatesTokenCount: usage?.candidatesTokenCount || null,
+        attempts: attemptDiagnostics,
       },
     };
   }
-  throw new Error(firstFailure || `تعذر إكمال جزء ${segment}.`);
+  throw new SegmentGenerationError(firstFailure || `تعذر إكمال مهمة ${taskId}.`, {
+    failureType, segment, scope, taskId, attempts: attemptDiagnostics,
+  });
 }
 
 function classificationInstructions(): string {
@@ -1050,6 +1120,9 @@ function edgeErrorDetails(message: string, operation: string): { status: number;
   if (/JSON غير صالح|JSON المتوقع|غير مطابق لعقد JSON/i.test(text)) {
     return { status: 503, errorCode: "SEGMENT_JSON_INVALID", retryable: operation === "enrich_segment" };
   }
+  if (/لم تجتز مخرجات مهمة|التحقق الخادمي/i.test(text)) {
+    return { status: 503, errorCode: "SEGMENT_VALIDATION_EMPTY", retryable: operation === "enrich_segment" };
+  }
   if (/429|rate limit|quota|RESOURCE_EXHAUSTED/i.test(text)) {
     return { status: 429, errorCode: "GEMINI_RATE_LIMIT", retryable: true };
   }
@@ -1137,14 +1210,19 @@ Deno.serve(async (req: Request) => {
   } catch (error) {
     console.error("taqareer-ai-error", error);
     const message = error instanceof Error ? error.message : "حدث خطأ غير متوقع في وظيفة التحليل.";
-    const details = edgeErrorDetails(message, operation);
+    const mapped = edgeErrorDetails(message, operation);
+    const failureDetails = error instanceof SegmentGenerationError ? error.details : {};
     return jsonResponse({
       ok: false,
       error: message,
-      errorCode: details.errorCode,
-      retryable: details.retryable,
+      errorCode: mapped.errorCode,
+      retryable: mapped.retryable,
       operation,
       segment: String(payload.segment || ""),
-    }, details.status, origin);
+      scope: String(payload.scope || ""),
+      taskId: String(payload.taskId || ""),
+      failureType: String(failureDetails.failureType || ""),
+      details: failureDetails,
+    }, mapped.status, origin);
   }
 });

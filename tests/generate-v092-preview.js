@@ -15,7 +15,7 @@ const local=sandbox.window.TaqareerDeepAnalytics.analyze({
 });
 const refs=Object.keys(local.evidenceMap||{});
 const delta={
- contractVersion:'4.0.0',
+ contractVersion:'4.1.0',
  deepAnalysisUnits:[
   {targetId:'diagnostic.measurement_quality',analysis:'تسمح البيانات بتقدير حجم فجوة الإتقان وتوزيعها بدرجة ثقة مرتفعة، لكنها لا تكشف المهارات أو المفاهيم المسببة للتعثر. تربويًا، يصلح هذا المستوى من البيانات لتحديد جرعة التدخل والفئات المستهدفة، بينما يتطلب تشخيص المحتوى تحليل مفردات الاختبار وعينات من أعمال الطلبة.',evidenceRefs:['metric:n','metric:masteryPct'],confidence:'مرتفعة',implications:['اعتماد التجزئة العلاجية الحالية بوصفها قرار فرز أولي.','جمع أدلة أداء نوعية قبل تحديد المحتوى العلاجي.'],alternativeExplanations:['قد تعكس النتيجة صعوبة أداة القياس أو عدم اتساقها مع فرص التعلم، وليس ضعف الفهم وحده.'],limitations:['الدرجات الإجمالية لا تحدد موضع الخطأ المعرفي.'],dataRequests:['تحليل مفردات الاختبار وربطها بالمهارات.']},
   {targetId:'diagnostic.distribution_center',analysis:'تقارب المتوسط والوسيط يشير إلى مركز أداء واضح، لكن التشتت الواسع يعني أن المتوسط لا يمثل احتياجات جميع الطلبة. وجود كتلة كبيرة في الفجوة العميقة مع مجموعة متقنة يفرض تدخلًا متمايزًا لا برنامجًا موحدًا.',evidenceRefs:['metric:mean','metric:median','metric:sd'],confidence:'مرتفعة',implications:['استخدام الربيعات وفئات الإتقان لتوزيع الطلبة إلى مسارات تدخل مختلفة.'],alternativeExplanations:['قد يرتبط التشتت بتفاوت الخبرة السابقة أو الحضور أو فرص الممارسة.'],limitations:['لا تتوافر متغيرات تفسيرية لاختبار أسباب التفاوت.'],dataRequests:['بيانات الحضور والنتائج السابقة وعينات الأعمال.']},

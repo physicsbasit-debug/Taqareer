@@ -19,7 +19,7 @@ const sandbox={
     if(segment==='findings' && attempts[segment]===1){
       return new Response(JSON.stringify({candidates:[{finishReason:'MAX_TOKENS',content:{parts:[{text:'{"segment":"findings"'}]}}],usageMetadata:{}}),{status:200,headers:{'Content-Type':'application/json'}});
     }
-    const result={contractVersion:'4.0.0',segment,deepAnalysisUnits:[],patches:[],additionalCautions:[],missingDataRequests:[]};
+    const result={contractVersion:'4.1.0',segment,deepAnalysisUnits:[],patches:[],additionalCautions:[],missingDataRequests:[]};
     if(segment==='diagnostic') result.deepAnalysisUnits=[{targetId:'diagnostic.a',analysis:'تحليل تربوي عميق',evidenceRefs:['metric:n'],confidence:'مرتفعة',implications:['أثر'],alternativeExplanations:['بديل'],limitations:['حد'],dataRequests:['طلب']}];
     if(segment==='findings') result.patches=[{targetType:'finding',targetId:'finding.a',field:'educationalImpact',text:'أثر تربوي',items:[],evidenceRefs:['metric:n']}];
     if(segment==='interventions') result.patches=[{targetType:'intervention',targetId:'intervention.a',field:'action',text:'إجراء تنفيذي',items:[],evidenceRefs:['metric:n']}];

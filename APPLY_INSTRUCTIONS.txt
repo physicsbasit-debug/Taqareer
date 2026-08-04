@@ -1,24 +1,18 @@
-تقارير v0.9.3 - Phase 1-C3: Automatic Segment Recovery Manager
+تقارير v0.9.4 - Phase 1-C3 Fix 3: Segment Failure Isolation
 
-أولًا: GitHub
-1) فك ضغط حزمة changed-files-only.
+GitHub:
+1) فك حزمة changed_files_only.
 2) ارفع جميع محتوياتها إلى جذر مستودع Taqareer.
-3) وافق على استبدال الملفات.
+3) وافق على الاستبدال.
 4) انتظر نجاح GitHub Actions.
-5) افتح التطبيق بتحديث قوي Ctrl + Shift + R.
+5) افتح التطبيق مع Ctrl + Shift + R.
 
-ثانيًا: Supabase
-1) افتح Edge Functions.
-2) افتح analyze-educational-form ثم Code ثم Edit function.
-3) احذف الكود القديم.
-4) الصق محتوى SUPABASE_FUNCTION_GEMINI_V0_8_1.txt كاملًا.
-5) اضغط Deploy function.
+Supabase:
+1) افتح Edge Functions > analyze-educational-form > Code.
+2) احذف الكود القديم.
+3) الصق SUPABASE_FUNCTION_GEMINI_V0_9_0.txt كاملًا.
+4) اضغط Deploy function.
 
-ثالثًا: اختبار القبول
-1) نفذ تحليلًا جديدًا.
-2) إذا تعثر جزء مؤقتًا، يجب أن تظهر عبارة الاستعادة التلقائية دون الضغط على زر.
-3) يجب أن يستمر العداد من 3/4 ولا يرجع إلى 0/4.
-4) عند نجاح الاستعادة تظهر عبارة: استُعيد جزء متعثر تلقائيًا دون تدخل منك.
-5) لا يظهر زر إعادة الأجزاء المتعثرة إلا بعد استنفاد جولتي الاستعادة الآلية.
+لا تغيّر الأسرار ولا SQL ولا GitHub Pages.
 
-لا SQL ولا أسرار جديدة ولا تعديل لملف .github.
+ملاحظة: قد يبقى في المستودع اسم V0_8_1 من المرحلة السابقة. حزمة التحديث تستبدل محتواه بالكود الجديد نفسه احتياطيًا؛ استخدم للنسخ إلى Supabase ملف V0_9_0 فقط.
