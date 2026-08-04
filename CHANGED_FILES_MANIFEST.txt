@@ -1,49 +1,34 @@
-Phase 1-C3 Fix 3 v0.9.4 - Segment Failure Isolation
+Phase 1-C3 Fix 4 v0.9.5 - Quality Microtask Engine
 
-تشغيل الواجهة:
 assets/deep-analysis-orchestrator.js
-assets/ai-client.js
 assets/app.js
 assets/deep-analysis.js
 assets/analysis-reconciliation.js
+assets/ai-client.js
 assets/performance-pipeline.js
 assets/report-system.js
 index.html
 manifest.json
-
-Supabase:
+README.md
 supabase/functions/analyze-educational-form/index.ts
 supabase/functions/analyze-educational-form/README.md
-SUPABASE_FUNCTION_GEMINI_V0_9_0.txt
-
-اختبارات:
-tests/segmented-orchestrator.test.js
-tests/automatic-segment-recovery.test.js
-tests/segment-failure-isolation.test.js
-tests/edge-task-scope-isolation.test.js
-tests/browser-segment-failure-isolation.manual.py
-tests/edge-enrichment-contract.test.js
-tests/edge-retry-metadata.test.js
-tests/edge-segmented-enrichment.test.js
-tests/edge-semantic-retry.test.js
-tests/fast-payload-contract.test.js
-tests/performance-pipeline.test.js
-tests/reconciliation-contract.test.js
-tests/report-generation.test.js
-
-توثيق وتعليمات:
-docs/SEGMENT_FAILURE_ISOLATION.md
-docs/SEGMENTED_DEEP_ANALYSIS_PIPELINE.md
-docs/AUTOMATIC_SEGMENT_RECOVERY.md
+SUPABASE_FUNCTION_GEMINI_V0_10_0.txt
 docs/AI_CONTRACT.md
-docs/ANALYTICAL_RECONCILIATION_ARCHITECTURE.md
-docs/RELEASE_NOTES.md
 docs/AI_SETUP.md
+docs/SEGMENTED_DEEP_ANALYSIS_PIPELINE.md
+docs/SEGMENT_FAILURE_ISOLATION.md
+docs/QUALITY_MICROTASK_ENGINE.md
+docs/RELEASE_NOTES.md
 docs/TEST_REPORT.md
-README.md
+tests/quality-microtask-engine.test.js
+tests/quality-payload-regression.test.js
+tests/edge-quality-microtask.test.js
+tests/automatic-segment-recovery.test.js
+tests/segmented-orchestrator.test.js
+tests/segment-failure-isolation.test.js
+tests/edge-enrichment-contract.test.js
+tests/edge-task-scope-isolation.test.js
+tests/browser-quality-microtask.manual.py
+tests/browser-segment-failure-isolation.manual.py
 APPLY_INSTRUCTIONS.txt
 CHANGED_FILES_MANIFEST.txt
-
-ملف توافق آمن عند الرفع فوق v0.9.3:
-SUPABASE_FUNCTION_GEMINI_V0_8_1.txt
-(يحتوي الكود الجديد نفسه لمنع بقاء نسخة Edge القديمة داخل المستودع؛ الملف المعتمد للنسخ هو V0_9_0.)

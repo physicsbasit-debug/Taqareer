@@ -1,8 +1,8 @@
 {
   "app": "تقارير",
-  "version": "0.9.4",
-  "phase": "Phase 1-C3 Fix 3 - Segment Failure Isolation",
-  "releaseName": "Adaptive Segment Failure Isolation with Task-Level Diagnostics",
+  "version": "0.9.5",
+  "phase": "Phase 1-C3 Fix 4 - Quality Microtask Engine",
+  "releaseName": "Quality Microtask Engine with Local-Safe Completion",
   "buildType": "static-github-pages-plus-supabase-edge-function",
   "supportedInputs": {
     "table": [
@@ -52,8 +52,8 @@
       "adaptive-new-form-contract"
     ],
     "canonicalContract": "deterministic-analysis-is-authoritative",
-    "aiContribution": "four parent analysis axes executed as isolated tasks; governance is pre-split and content failures decompose by target batches",
-    "reconciliation": "incremental field-level merge with parent-count locks, task-level partial success and failed-task-only retry",
+    "aiContribution": "three core deep-analysis tasks, one monitoring task, and one independent microtask per deterministic quality tool",
+    "reconciliation": "incremental field-level merge; a failed optional quality microtask falls back to the deterministic local interpretation without blocking report completion",
     "routingRule": "form-type-routes-to-its-own-analysis-family-without-forcing-a-unified-procedure"
   },
   "features": [
@@ -99,7 +99,12 @@
     "task-level-failure-reason-and-attempt-diagnostics",
     "bounded-transient-retry-only",
     "failed-task-only-manual-retry",
-    "max-concurrency-three"
+    "max-concurrency-three",
+    "quality-microtask-engine",
+    "two-quality-tasks-max-concurrency",
+    "per-tool-quality-payload",
+    "local-safe-quality-fallback",
+    "quality-enhancement-completeness-reporting"
   ],
   "runtime": {
     "frontend": "GitHub Pages static site",
@@ -115,27 +120,32 @@
       "diagnostic.full",
       "findings.full",
       "interventions.full",
-      "governance.quality",
+      "quality.<tool-id>",
       "governance.monitoring"
     ],
-    "segmentProtocolVersion": "4.1.0",
+    "segmentProtocolVersion": "4.2.0",
     "segmentThinkingBudgets": {
-      "diagnostic": 384,
-      "findings": 320,
-      "interventions": 384,
-      "governance": 256
+      "diagnostic": 320,
+      "findings": 256,
+      "interventions": 320,
+      "monitoring": 176,
+      "qualityTool": 72
     },
     "legacyEnrichmentOperation": "enrich",
     "legacyEnrichmentThinkingBudget": 768,
-    "edgeFunctionVersion": "0.9.0",
+    "edgeFunctionVersion": "0.10.0",
     "automaticRecovery": {
-      "mode": "adaptive-isolation-not-identical-retry",
-      "maxConcurrentTasks": 3,
+      "mode": "adaptive-isolation-with-quality-local-fallback",
+      "maxConcurrentCoreTasks": 3,
+      "maxConcurrentQualityTasks": 2,
       "transientRetriesPerTask": 1,
-      "contentFailureHandling": "decompose full task by target batches; governance already isolated",
+      "contentFailureHandling": "core full tasks split by target batches; quality content failure completes with deterministic local interpretation",
       "preserveSuccessfulTasks": true,
       "retryFailedTasksOnly": true
-    }
+    },
+    "qualityMicrotaskVersion": "1.0.0",
+    "qualityTaskPolicy": "one task per quality tool, maximum two in parallel, content failure uses local deterministic interpretation",
+    "segmentedPipeline": "four parent axes; quality is represented by one independent microtask per deterministic quality tool"
   },
   "security": {
     "geminiKeyInBrowser": false,
@@ -154,10 +164,10 @@
     "invalidTargetHandling": "unknown target IDs are rejected before reconciliation",
     "reportOutput": "one reconciled analysis, six print-safe pages for the score fixture",
     "masteryFixture": "268 valid, 48 mastered, 220 not mastered, 17.91044776119403% raw spread, 17.9% display",
-    "segmentedPipeline": "four parent axes represented by five initial isolated tasks; governance quality and monitoring never share one response",
-    "partialFailure": "successful tasks remain reconciled; UI names the failed task and reason",
-    "automaticRecovery": "content failures are decomposed instead of repeated; only transient failures receive one bounded retry",
-    "nonRetryableFailure": "401/configuration failure is not retried; isolated content failure is surfaced after its server compact attempt"
+    "segmentedPipeline": "four parent axes; score fixture creates 10 tasks: 3 core, 6 per-tool quality microtasks, and 1 monitoring task",
+    "partialFailure": "quality content failure uses local deterministic interpretation and does not block completion; core task failures remain isolated and named",
+    "automaticRecovery": "core content failures decompose by targets; transient failures receive one bounded retry; quality content failure never loops",
+    "nonRetryableFailure": "401/configuration failure is not retried or hidden by local fallback"
   },
   "performance": {
     "knownScoreContextRows": 16,
@@ -170,7 +180,10 @@
     "expectedBenefit": "no 73-second identical retry loop; smaller governance payloads and exact failed-task diagnosis",
     "cacheGranularity": "one cache entry per isolated task",
     "retryGranularity": "failed task only; content failures decompose, transient failures retry once",
-    "recoveryBackoff": "one bounded transient retry with Retry-After support; no repeated identical content payloads"
+    "recoveryBackoff": "one bounded transient retry with Retry-After support; no repeated identical content payloads",
+    "scoreFixtureAggregateTaskPayloadChars": 57779,
+    "scoreFixturePayloadAcceptanceLimitChars": 60000,
+    "maxQualityMicrotaskPayloadChars": 5000
   },
   "backwardCompatibility": {
     "legacyAnalyzeOperation": "retained for older clients",

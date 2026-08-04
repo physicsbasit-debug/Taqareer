@@ -1,18 +1,9 @@
-تقارير v0.9.4 - Phase 1-C3 Fix 3: Segment Failure Isolation
+تقارير v0.9.5 - Phase 1-C3 Fix 4: Quality Microtask Engine
 
-GitHub:
 1) فك حزمة changed_files_only.
-2) ارفع جميع محتوياتها إلى جذر مستودع Taqareer.
-3) وافق على الاستبدال.
-4) انتظر نجاح GitHub Actions.
-5) افتح التطبيق مع Ctrl + Shift + R.
-
-Supabase:
-1) افتح Edge Functions > analyze-educational-form > Code.
-2) احذف الكود القديم.
-3) الصق SUPABASE_FUNCTION_GEMINI_V0_9_0.txt كاملًا.
-4) اضغط Deploy function.
-
-لا تغيّر الأسرار ولا SQL ولا GitHub Pages.
-
-ملاحظة: قد يبقى في المستودع اسم V0_8_1 من المرحلة السابقة. حزمة التحديث تستبدل محتواه بالكود الجديد نفسه احتياطيًا؛ استخدم للنسخ إلى Supabase ملف V0_9_0 فقط.
+2) ارفع كل محتوياتها إلى جذر مستودع Taqareer مع الاستبدال.
+3) لا تعدل .github/workflows/deploy.yml.
+4) انتظر نجاح GitHub Actions ثم نفذ Ctrl+Shift+R.
+5) في Supabase استبدل كود analyze-educational-form بملف SUPABASE_FUNCTION_GEMINI_V0_10_0.txt ثم Deploy function.
+6) لا يلزم SQL أو سر جديد.
+7) نفذ تحليلًا جديدًا وراقب بطاقة أدوات الجودة؛ يجب ألا يظهر زر إعادة إذا فشل تحسين أداة جودة واحدة بسبب قطع المحتوى.
