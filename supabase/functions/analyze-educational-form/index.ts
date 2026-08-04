@@ -142,7 +142,8 @@ const DEEP_ANALYSIS_OUTPUT_KEYS = [
   "missingDataRequests",
 ] as const;
 
-const SEGMENT_PROTOCOL_VERSION = "4.1.0";
+const SEGMENT_PROTOCOL_VERSION = "4.2.0";
+const QUALITY_MICROTASK_VERSION = "1.0.0";
 const SEGMENT_NAMES = new Set(["diagnostic", "findings", "interventions", "governance"]);
 type SegmentConfig = { thinkingBudget: number; compactThinkingBudget: number; maxOutputTokens: number; compactMaxOutputTokens: number };
 const SEGMENT_CONFIG: Record<string, SegmentConfig> = {
@@ -163,6 +164,9 @@ class SegmentGenerationError extends Error {
 
 function segmentConfig(segment: string, scope: string): SegmentConfig {
   if (segment !== "governance") return SEGMENT_CONFIG[segment];
+  if (scope === "quality-tool") {
+    return { thinkingBudget: 72, compactThinkingBudget: 32, maxOutputTokens: 520, compactMaxOutputTokens: 320 };
+  }
   if (scope === "quality" || scope === "monitoring") {
     return { thinkingBudget: 176, compactThinkingBudget: 80, maxOutputTokens: 1150, compactMaxOutputTokens: 760 };
   }
@@ -772,9 +776,11 @@ function segmentedInstructions(segment: string, compactMode = false, scope = "fu
     diagnostic: "أعد deepAnalysisUnits لمحاور deepAnalysisTargets المرسلة فقط: تفسير النمط، الآثار، تفسير بديل، حدود الاستدلال، والبيانات المطلوبة للتحقق. لا ترجع patches.",
     findings: "أعد patches للأهداف executive وprofile وfinding المرسلة فقط. عمّق المعنى والأثر والإجراء المرتبط، ولا تنشئ استنتاجات جديدة.",
     interventions: "أعد patches لأهداف intervention المرسلة فقط. حسّن التنفيذ والمسؤول والزمن ومؤشر النجاح والمتابعة والخطة البديلة دون إنشاء تدخل جديد.",
-    governance: scope === "quality"
-      ? "أعد patches لأهداف qualityTool المرسلة فقط. حسّن سبب اختيار الأداة وتفسير ناتجها والبيانات الإضافية المطلوبة. لا ترجع monitoring."
-      : scope === "monitoring"
+    governance: scope === "quality-tool"
+      ? "هذه مهمة دقيقة لأداة جودة واحدة فقط. أعد من 1 إلى 3 patches للهدف qualityTool الوحيد: تفسير تربوي سياقي موجز، محذور استخدام ضروري، أو بيانات إضافية محددة. لا تكرر القيم ولا ترجع monitoring أو cautions عامة."
+      : scope === "quality"
+        ? "أعد patches لأهداف qualityTool المرسلة فقط. حسّن سبب اختيار الأداة وتفسير ناتجها والبيانات الإضافية المطلوبة. لا ترجع monitoring."
+        : scope === "monitoring"
         ? "أعد patches لأهداف monitoring المرسلة فقط، وأضف cautions أو missingDataRequests الضرورية للقرار. لا ترجع qualityTool."
         : "أعد patches لأهداف qualityTool وmonitoring المرسلة فقط، دون إنشاء أدوات أو مراحل جديدة.",
   };
@@ -792,7 +798,7 @@ ${compact}
 6) لا تعرض أسماء أشخاص أو بيانات محجوبة.
 7) أعد JSON خامًا فقط بالمفاتيح التالية حرفيًا:
 {
-  "contractVersion":"4.1.0",
+  "contractVersion":"4.2.0",
   "segment":"${segment}",
   "deepAnalysisUnits":[],
   "patches":[],
@@ -801,7 +807,8 @@ ${compact}
 }
 8) عنصر deepAnalysisUnits: targetId, analysis, evidenceRefs, confidence, implications, alternativeExplanations, limitations, dataRequests.
 9) عنصر patches: targetType, targetId, field, text, items, evidenceRefs. استخدم text أو items فقط واترك الآخر فارغًا.
-10) لا تملأ حقلًا بكلام عام. إذا لم توجد إضافة ذات قيمة فاترك القائمة فارغة.`;
+10) لا تملأ حقلًا بكلام عام. إذا لم توجد إضافة ذات قيمة فاترك القائمة فارغة.
+11) في quality-tool: لا يتجاوز text نحو 420 حرفًا، ولا تتجاوز requiredData عنصرين، ولا ترجع أكثر من 3 patches.`;
 }
 
 function prepareSegmentPayload(payload: Record<string, unknown>, compactMode: boolean): Record<string, unknown> {
@@ -816,9 +823,10 @@ function prepareSegmentPayload(payload: Record<string, unknown>, compactMode: bo
   const deterministic = prepared.deterministicAnalysis && typeof prepared.deterministicAnalysis === "object"
     ? prepared.deterministicAnalysis as Record<string, unknown>
     : {};
-  if (Array.isArray(deterministic.metrics)) deterministic.metrics = deterministic.metrics.slice(0, compactMode ? 16 : 24);
-  if (Array.isArray(deterministic.charts)) deterministic.charts = deterministic.charts.slice(0, compactMode ? 3 : 6);
-  if (Array.isArray(deterministic.evidenceCatalog)) deterministic.evidenceCatalog = deterministic.evidenceCatalog.slice(0, compactMode ? 35 : 70);
+  const qualityMicrotask = segment === "governance" && String(prepared.scope || "") === "quality-tool";
+  if (Array.isArray(deterministic.metrics)) deterministic.metrics = deterministic.metrics.slice(0, qualityMicrotask ? 12 : (compactMode ? 16 : 24));
+  if (Array.isArray(deterministic.charts)) deterministic.charts = deterministic.charts.slice(0, qualityMicrotask ? 1 : (compactMode ? 3 : 6));
+  if (Array.isArray(deterministic.evidenceCatalog)) deterministic.evidenceCatalog = deterministic.evidenceCatalog.slice(0, qualityMicrotask ? 18 : (compactMode ? 35 : 70));
   prepared.deterministicAnalysis = deterministic;
   if (compactMode) {
     const contract = contractObject(prepared);
@@ -850,7 +858,7 @@ function validateSegmentDelta(result: unknown, payload: Record<string, unknown>)
     diagnostic: new Set(),
     findings: new Set(["executive", "profile", "finding"]),
     interventions: new Set(["intervention"]),
-    governance: scope === "quality" ? new Set(["qualityTool"])
+    governance: (scope === "quality" || scope === "quality-tool") ? new Set(["qualityTool"])
       : scope === "monitoring" ? new Set(["monitoring"])
       : new Set(["qualityTool", "monitoring"]),
   };
@@ -956,6 +964,7 @@ async function callSegmentEnrichment(payload: Record<string, unknown>, model: st
         segment,
         scope,
         taskId,
+        qualityMicrotaskVersion: scope === "quality-tool" ? QUALITY_MICROTASK_VERSION : null,
         geminiMs: Math.round(performance.now() - startedAt),
         payloadChars,
         attemptNumber: index + 1,
