@@ -1,22 +1,25 @@
-Phase 1-C3 Reset v0.9.6 — Single Fast AI Enhancement
+Phase 1-C3 v0.9.7 — Automatic Silent AI Enhancement
 
 assets/app.js
 assets/ai-client.js
 assets/deep-analysis-orchestrator.js
+assets/runtime-config.js
 assets/deep-analysis.js
 assets/analysis-reconciliation.js
-assets/report-system.js
 assets/performance-pipeline.js
+assets/report-system.js
 index.html
 manifest.json
-README.md
-APPLY_INSTRUCTIONS.txt
-SUPABASE_FUNCTION_GEMINI_V0_11_0.txt
 supabase/functions/analyze-educational-form/index.ts
-docs/SINGLE_FAST_AI_ENHANCEMENT.md
-docs/TEST_REPORT.md
+supabase/functions/analyze-educational-form/README.md
+SUPABASE_FUNCTION_GEMINI_V0_12_0.txt
 tests/app-fast-background-contract.test.js
 tests/edge-fast-enhancement.test.js
-tests/fast-payload-contract.test.js
-tests/single-fast-enhancer.test.js
-tests/browser-fast-pipeline.manual.py
+tests/automatic-silent-ai.test.js
+docs/AUTOMATIC_SILENT_AI.md
+docs/RELEASE_NOTES.md
+docs/AI_SETUP.md
+docs/TEST_REPORT.md
+README.md
+APPLY_INSTRUCTIONS.txt
+CHANGED_FILES_MANIFEST.txt

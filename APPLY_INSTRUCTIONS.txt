@@ -1,8 +1,8 @@
-تقارير v0.9.6 — Single Fast AI Enhancement
+تقارير v0.9.7 — Automatic Silent AI Enhancement
 
-1) ارفع محتويات حزمة changed_files_only فوق جذر مستودع Taqareer.
-2) لا تعدّل .github/workflows/deploy.yml.
-3) في Supabase استبدل كود وظيفة analyze-educational-form بملف SUPABASE_FUNCTION_GEMINI_V0_11_0.txt كاملًا ثم Deploy function.
-4) لا SQL ولا أسرار جديدة مطلوبة.
+1) فك حزمة changed_files_only.
+2) ارفع جميع محتوياتها إلى جذر مستودع Taqareer ووافق على الاستبدال.
+3) لا تعدّل .github أو .nojekyll.
+4) افتح Supabase وانشر محتوى SUPABASE_FUNCTION_GEMINI_V0_12_0.txt داخل الوظيفة الحالية analyze-educational-form.
 5) نفّذ Ctrl + Shift + R.
-6) حلل الملف: يجب أن يظهر التقرير المحلي فورًا، ثم يصل تحسين Gemini اختياريًا في الخلفية.
+6) شغّل تحليلًا جديدًا. التحسين الخارجي يبدأ تلقائيًا ولا يظهر كخطوة مستقلة.

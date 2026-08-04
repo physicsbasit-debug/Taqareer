@@ -381,7 +381,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "0.9.6",
+      appVersion: "0.9.7",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -928,7 +928,7 @@
     if (!reconciliationContract) throw new Error("محرك المصالحة التحليلية غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "0.9.6",
+      appVersion: "0.9.7",
       pipeline: {
         mode: "single-fast-ai-enhancement-v1",
         instruction: "المحرك الحتمي ينتج التحليل الكامل فورًا. ينفذ Gemini طلبًا واحدًا اختياريًا ومركزًا لتحسين التفسير والتدخلات دون تغيير الحسابات أو إنشاء عناصر جديدة."
@@ -1120,27 +1120,6 @@
     return state.reconciledAnalysis;
   }
 
-  async function retryAiOnly() {
-    if (!state.analysis || !aiReady()) return;
-    state.aiPending = true;
-    state.aiError = "";
-    state.aiWarning = "";
-    renderResults();
-    try {
-      await enrichAnalysisWithAi({ force: true, requestId: state.analysisRequestId });
-    } catch (error) {
-      state.aiError = error.message || "تعذر التفسير الذكي الحي.";
-      if (!state.aiUsed) {
-        state.aiResult = null;
-        state.reconciledAnalysis = window.TaqareerReconciliation?.canonicalize?.(state.analysis) || state.analysis;
-      }
-    } finally {
-      state.aiPending = false;
-      renderResults();
-      updateAiStatusUi();
-    }
-  }
-
   async function runAnalysis() {
     clearMessage("setupMessage");
     state.aiResult = null;
@@ -1205,7 +1184,11 @@
       if (aiReady()) {
         void enrichAnalysisWithAi({ requestId: analysisRequestId }).catch(error => {
           if (analysisRequestId !== state.analysisRequestId) return;
-          state.aiError = error.message || "تعذر التحسين الذكي الاختياري.";
+          // التحسين الخارجي يعمل تلقائيًا وبصمت. أي تعثر لا يقطع تجربة المستخدم
+          // ولا يضيف زر إعادة أو رسالة تقنية إلى صفحة النتائج.
+          console.warn("taqareer-background-enhancement", error);
+          state.aiError = "";
+          state.aiWarning = "";
           if (!state.aiUsed) {
             state.aiResult = null;
             state.reconciledAnalysis = window.TaqareerReconciliation?.canonicalize?.(state.analysis) || state.analysis;
@@ -1315,6 +1298,11 @@
   function renderPerformanceSummary() {
     const panel = $("analysisTimingPanel");
     if (!panel) return;
+    if (window.TAQAREER_CONFIG?.showPerformanceDiagnostics !== true) {
+      panel.innerHTML = "";
+      panel.classList.add("hidden");
+      return;
+    }
     const spans = state.performance.spans || [];
     const local = spans.find(item => item.name === "التحليل المحلي والرسوم");
     const gemini = [...spans].reverse().find(item => String(item.name || "").startsWith("Gemini"));
@@ -1332,11 +1320,6 @@
     if (state.performance.payloadChars) items.push(`<span><strong>حمولة الذكاء</strong>${Math.max(1, Math.round(state.performance.payloadChars / 1024))} كيلوبايت</span>`);
     panel.innerHTML = items.join("");
     panel.classList.toggle("hidden", !items.length);
-  }
-
-  function bindRetryAiButton() {
-    const button = $("retryAiOnlyBtn");
-    if (button) button.onclick = retryAiOnly;
   }
 
   function renderResults() {
@@ -1379,27 +1362,14 @@
       return `<article class="diagnostic-section-card"><div class="diagnostic-section-meta"><span>${source}</span><span>ثقة ${escapeHtml(section.confidence || "متوسطة")}</span></div><h5>${escapeHtml(section.title || "قراءة تفسيرية")}</h5><p>${escapeHtml(section.analysis || "")}</p>${evidence && evidence !== "لم يحدد مرجع دليل واضح." ? `<div class="soft-note">الدليل: ${escapeHtml(evidence)}</div>` : ""}${implications.length ? `<h6>الآثار العملية</h6><ul>${implications.map(item=>`<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}${alternatives.length ? `<h6>تفسيرات بديلة محتملة</h6><ul>${alternatives.map(item=>`<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}${requests.length ? `<h6>بيانات مطلوبة للتحقق</h6><ul>${requests.map(item=>`<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}</article>`;
     }).join("");
 
-    const enhancementStatus = state.aiSegments?.status || "";
-    $("analysisModeChip").textContent = state.aiPending
-      ? "التقرير جاهز · تحسين Gemini اختياري جارٍ"
-      : (aiApplied ? "تحليل متخصص مصالَح مع Gemini" : "تحليل متخصص حتمي عميق");
-    $("analysisModeChip").className = aiApplied ? "success-chip ai-result-chip" : "success-chip";
+    // التحسين الخارجي جزء تلقائي من مسار التحليل ولا يظهر للمستخدم كمرحلة مستقلة.
+    // تبقى واجهة النتائج هادئة: لا رسائل انتظار، لا أسماء مزودين، ولا أزرار إعادة.
+    $("analysisModeChip").textContent = "تحليل تربوي عميق";
+    $("analysisModeChip").className = "success-chip";
     const notice = $("aiResultNotice");
-    if (state.aiPending) {
-      notice.classList.remove("hidden", "error", "warning");
-      notice.innerHTML = `<strong>التقرير المحلي جاهز الآن</strong><span>يجري تحسين تربوي اختياري في طلب واحد بالخلفية. يمكنك مراجعة النتائج وفتح التقرير دون انتظار.</span>`;
-    } else if (aiApplied) {
-      const meta = a._reconciliation || {};
-      notice.classList.remove("hidden", "error", "warning");
-      notice.innerHTML = `<strong>اكتمل التحسين الذكي${state.performance.cacheHit ? " من الذاكرة المؤقتة" : ""}</strong><span>أضيفت ${meta.appliedDeepAnalyses || 0} قراءات تربوية عميقة وطُبقت ${meta.appliedPatches || 0} تحسينات مركزة، دون تغيير الحسابات أو عدد التدخلات والمتابعة.</span>`;
-    } else if (state.aiError) {
-      notice.classList.remove("hidden", "error"); notice.classList.add("warning");
-      notice.innerHTML = `<strong>التقرير مكتمل دون انتظار</strong><span>${escapeHtml(state.aiError)} التحليل المحلي والرسوم وأدوات الجودة جاهزة بالكامل.</span><button id="retryAiOnlyBtn" class="secondary compact" type="button">محاولة تحسين ذكي</button>`;
-    } else {
-      notice.classList.add("hidden");
-      notice.classList.remove("error", "warning");
-    }
-    bindRetryAiButton();
+    notice.innerHTML = "";
+    notice.classList.add("hidden");
+    notice.classList.remove("error", "warning");
     renderPerformanceSummary();
 
     $("executiveTitle").textContent = a.executiveTitle;
@@ -1479,7 +1449,7 @@
   function exportAnalysis() {
     const payload = {
       app: "تقارير",
-      version: "0.9.6",
+      version: "0.9.7",
       generatedAt: new Date().toISOString(),
       source: state.sourceName,
       sourceMeta: state.sourceMeta,
@@ -1492,7 +1462,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v0.9.6.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v0.9.7.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }

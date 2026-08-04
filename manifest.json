@@ -1,6 +1,6 @@
 {
   "app": "تقارير",
-  "version": "0.9.6",
+  "version": "0.9.7",
   "phase": "Phase 1-C3 Reset - Single Fast AI Enhancement",
   "releaseName": "Single Fast AI Enhancement",
   "buildType": "static-github-pages-plus-supabase-edge-function",

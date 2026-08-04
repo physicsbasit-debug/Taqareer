@@ -3,8 +3,8 @@
 
   // اسم الملف محفوظ للتوافق مع ترتيب التحميل القديم، لكن التنفيذ جديد بالكامل:
   // طلب Gemini واحد، غير حاجب للواجهة، مع ذاكرة مؤقتة وفشل آمن.
-  const VERSION = "0.9.6";
-  const PROTOCOL_VERSION = "5.0.0";
+  const VERSION = "0.9.7";
+  const PROTOCOL_VERSION = "5.1.0";
   const LABELS = Object.freeze({ enhancement: "التحسين التربوي الذكي" });
   const TASK_LABELS = Object.freeze({ "enhancement.single": "التحسين التربوي الذكي" });
 
@@ -138,10 +138,10 @@
 
     return {
       locale: source.locale || "ar-OM",
-      appVersion: "0.9.6",
+      appVersion: "0.9.7",
       pipeline: {
         mode: "single-fast-ai-enhancement-v1",
-        goal: "تحسين تربوي عميق ومركز في طلب واحد دون إعادة الحسابات أو إنشاء عناصر جديدة.",
+        goal: "تحسين تربوي عميق تلقائي وصامت في طلب واحد دون تعطيل النتائج أو إنشاء عناصر جديدة.",
       },
       source: source.source || {},
       recognizedType: source.recognizedType || {},
@@ -177,7 +177,7 @@
     const payload = compactPayload(basePayload);
     const payloadChars = JSON.stringify(payload).length;
     const cacheKey = performanceApi?.makeKey
-      ? await performanceApi.makeKey("single-fast-enhancement-v1", payload)
+      ? await performanceApi.makeKey("automatic-silent-enhancement-v2", payload)
       : "";
     const cached = !force && cacheKey && performanceApi?.cacheGet ? performanceApi.cacheGet(cacheKey) : null;
     onProgress({ status: "pending", payloadChars, cacheHit: false });

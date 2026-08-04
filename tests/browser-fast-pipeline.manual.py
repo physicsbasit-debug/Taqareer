@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 HTML = re.sub(r'<link rel="stylesheet"[^>]+>', '', (ROOT / 'index.html').read_text())
 HTML = re.sub(r'<script[^>]*src="[^"]+"[^>]*></script>', '', HTML)
 DELTA = {
-  'contractVersion':'5.0.0',
+  'contractVersion':'5.1.0',
   'deepAnalysisUnits':[{
     'targetId':'diagnostic.measurement_quality',
     'analysis':'قراءة تربوية عميقة تختبر معنى الفجوة وحدود الاستدلال دون إعادة الحسابات.',
@@ -59,19 +59,20 @@ async def main():
     await run_sample()
     await page.wait_for_selector('#panel-4.active-panel',timeout=900)
     pending=await page.locator('#aiResultNotice').inner_text()
-    assert 'التقرير المحلي جاهز الآن' in pending,pending
+    assert pending.strip()=='' and await page.locator('#aiResultNotice').evaluate('(el)=>el.classList.contains(\"hidden\")')
     assert await page.locator('#metrics .metric').count()>0
-    await page.wait_for_function("document.querySelector('#aiResultNotice')?.textContent.includes('اكتمل التحسين الذكي')",timeout=5000)
+    assert await page.locator('#analysisModeChip').inner_text()=='تحليل تربوي عميق'
+    assert await page.locator('#analysisTimingPanel').evaluate('(el)=>el.classList.contains(\"hidden\")')
+    await page.wait_for_function("document.querySelectorAll('.source-pill.ai').length > 0 || document.querySelectorAll('.diagnostic-section-meta span').length > 0",timeout=5000)
     assert await page.evaluate('window.__aiCalls()')==1
-    timing=await page.locator('#analysisTimingPanel').inner_text()
-    assert 'جاهزية التقرير' in timing and 'تحسين Gemini' in timing,timing
+    timing='hidden'
 
     await page.click('#restartBtn'); await page.wait_for_selector('#panel-1.active-panel')
     await run_sample(); await page.wait_for_selector('#panel-4.active-panel',timeout=900)
     await page.wait_for_timeout(300)
     second_notice=await page.locator('#aiResultNotice').inner_text()
     second_calls=await page.evaluate('window.__aiCalls()')
-    assert 'الذاكرة المؤقتة' in second_notice,(second_notice,second_calls)
+    assert second_notice.strip()==''
     assert second_calls==1,second_calls
     assert not errors,errors
     print(json.dumps({'pending':pending,'timing':timing,'aiCalls':1,'cacheReuse':True},ensure_ascii=False,indent=2))
