@@ -1,6 +1,10 @@
-# تعليمات رفع تقارير v1.1.2
+# تعليمات رفع تقارير v1.1.3
 
-- ارفع حزمة `taqareer_phase_2_c_fix2_transient_fallback_v1_1_2_changed_files_only.zip` فوق النسخة الحالية مع الاستبدال.
-- تحقق من نجاح GitHub Pages وظهور v1.1.2.
-- انشر `SUPABASE_FUNCTION_GEMINI_V0_14_1.txt` داخل وظيفة `analyze-educational-form`.
-- لا SQL ولا أسرار جديدة.
+1. ارفع محتويات `taqareer_phase_2_c_fix3_deadline_coordination_v1_1_3_changed_files_only.zip` فوق المستودع الحالي `v1.1.2` مع الاستبدال.
+2. انتظر نجاح GitHub Pages وتحقق من ظهور `نسخة تشغيلية v1.1.3`.
+3. افتح Supabase Edge Function باسم `analyze-educational-form`.
+4. استبدل الكود كاملًا بمحتوى `SUPABASE_FUNCTION_GEMINI_V0_14_2.txt` ثم اضغط Deploy.
+5. لا يوجد SQL ولا سر جديد.
+6. أعد تحليل ملف الزيارات نفسه.
+
+معيار القبول: لا يقطع المتصفح الطلب عند 45 ثانية. إما ينجح نموذج أساسي/بديل، أو يعيد Edge رسالة عربية قابلة لإعادة المحاولة قبل انتهاء نافذة العميل.

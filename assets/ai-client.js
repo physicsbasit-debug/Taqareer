@@ -3,7 +3,7 @@
 
   const STORAGE_KEY = "taqareer.ai.config.v1";
   const ACCESS_KEY = "taqareer.ai.access-code.v1";
-  const CLIENT_VERSION = "1.1.2";
+  const CLIENT_VERSION = "1.1.3";
   const defaults = window.TAQAREER_CONFIG || {};
 
   function safeJsonParse(value, fallback = {}) {
@@ -99,7 +99,7 @@
       if (error?.name === "AbortError") {
         const timeoutError = new Error("انتهت مهلة التحليل الذكي الأساسي قبل اكتمال النتيجة. لم يعتمد التطبيق تحليلًا ناقصًا.");
         timeoutError.code = "AI_PRIMARY_TIMEOUT";
-        timeoutError.retryable = false;
+        timeoutError.retryable = true;
         throw timeoutError;
       }
       throw error;
@@ -109,7 +109,7 @@
   }
 
   async function analyzePrimaryDetailed(payload) {
-    return invoke("analyze_primary", payload, { timeoutMs: 45000 });
+    return invoke("analyze_primary", payload, { timeoutMs: 85000 });
   }
 
   // يبقى للتوافق مع نتائج v0.9.7 القديمة، لكنه ليس جزءًا من المسار الحالي.

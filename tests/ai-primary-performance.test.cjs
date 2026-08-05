@@ -15,7 +15,13 @@ test('primary AI request has a bounded latency budget and compact output', () =>
   assert.match(edge, /thinkingConfig: \{ thinkingLevel \}/);
   assert.match(edge, /primaryRequestBody\(payload, primaryRescueInstructions\(\), "minimal", 6144\)/);
   assert.match(edge, /rescueUsed = true/);
-  assert.match(client, /analyze_primary", payload, \{ timeoutMs: 45000 \}/);
+  assert.match(client, /analyze_primary", payload, \{ timeoutMs: 85000 \}/);
+  assert.match(edge, /PRIMARY_ANALYSIS_DEADLINE_MS = 72_000/);
+  assert.match(edge, /PRIMARY_MODEL_ATTEMPT_TIMEOUT_MS = 30_000/);
+  assert.match(edge, /PRIMARY_RESCUE_ATTEMPT_TIMEOUT_MS = 24_000/);
+  assert.match(edge, /primaryAnalysisInstructions\(\), "low", 8192\),[\s\S]*?1,[\s\S]*?attemptTimeoutMs: PRIMARY_MODEL_ATTEMPT_TIMEOUT_MS/);
+  assert.match(edge, /primaryRescueInstructions\(\), "minimal", 6144\),[\s\S]*?1,[\s\S]*?attemptTimeoutMs: PRIMARY_RESCUE_ATTEMPT_TIMEOUT_MS/);
+  assert.match(client, /timeoutError\.retryable = true/);
 });
 
 test('frontend sends compact evidence for scores and shows elapsed progress', () => {

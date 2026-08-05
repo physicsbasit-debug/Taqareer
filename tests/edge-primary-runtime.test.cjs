@@ -156,18 +156,24 @@ async function createRuntime(responses) {
     Request,
     Response,
     Headers,
+    AbortController,
     TextEncoder,
     TextDecoder,
     URL,
     performance,
     crypto: globalThis.crypto,
     structuredClone,
-    setTimeout: fn => { fn(); return 0; },
+    setTimeout: (fn, ms) => { if (Number(ms) < 5_000) fn(); return 0; },
     clearTimeout,
-    fetch: async url => {
+    fetch: async (url, options = {}) => {
       urls.push(String(url));
       const item = responses[Math.min(calls, responses.length - 1)];
       calls += 1;
+      if (item && typeof item === 'object' && item.__abort) {
+        const error = new Error('Aborted');
+        error.name = 'AbortError';
+        throw error;
+      }
       const status = item && typeof item === 'object' && Number.isInteger(item.__status) ? item.__status : 200;
       const raw = item && typeof item === 'object' && Object.prototype.hasOwnProperty.call(item, '__body') ? item.__body : item;
       return new Response(JSON.stringify(raw), { status, headers: { 'content-type': 'application/json', 'x-request-id': `req-${calls}` } });
@@ -210,6 +216,9 @@ test('edge primary runtime accepts balanced non-duplicative result in one reques
   assert.equal(body.result.qualityTools.length, 1);
   assert.notEqual(body.result.diagnosticSections[0].analysis, body.result.findings[0].statement);
   assert.equal(body.serverTiming.rescueUsed, false);
+  assert.equal(body.serverTiming.serverDeadlineMs, 72000);
+  assert.equal(body.serverTiming.primaryAttemptTimeoutMs, 30000);
+  assert.equal(body.serverTiming.attemptedModels, 1);
   assert.equal(body.serverTiming.distinctTargetGroups, 2);
   assert.equal(body.result.interventions[1].numericGuard.applied, true);
   assert.equal(body.result.interventions[1].numericGuard.mode, 'mastery_gain');
@@ -279,24 +288,39 @@ test('edge runtime rescues an incomplete first response without returning to loc
 });
 
 
-test('edge retries a busy model then switches automatically to a fallback model', async () => {
+test('edge switches immediately to a fallback model after one busy response', async () => {
   const busy = httpError(503, 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.');
-  const runtime = await createRuntime([busy, busy, geminiRaw(primaryResult())]);
+  const runtime = await createRuntime([busy, geminiRaw(primaryResult())]);
   const { status, body } = await invoke(runtime);
   assert.equal(status, 200);
   assert.equal(body.ok, true);
-  assert.equal(runtime.getCalls(), 3);
+  assert.equal(runtime.getCalls(), 2);
   const urls = runtime.getUrls();
   assert.match(urls[0], /gemini-3\.5-flash:generateContent/);
-  assert.match(urls[1], /gemini-3\.5-flash:generateContent/);
-  assert.match(urls[2], /gemini-3\.6-flash:generateContent/);
+  assert.match(urls[1], /gemini-3\.6-flash:generateContent/);
   assert.equal(body.serverTiming.fallbackUsed, true);
   assert.equal(body.serverTiming.fallbackReason, 'transient_capacity');
 });
 
+
+
+test('edge treats a per-model timeout as transient and moves to the next model', async () => {
+  const runtime = await createRuntime([{ __abort: true }, geminiRaw(primaryResult())]);
+  const { status, body } = await invoke(runtime);
+  assert.equal(status, 200);
+  assert.equal(body.ok, true);
+  assert.equal(runtime.getCalls(), 2);
+  const urls = runtime.getUrls();
+  assert.match(urls[0], /gemini-3\.5-flash:generateContent/);
+  assert.match(urls[1], /gemini-3\.6-flash:generateContent/);
+  assert.equal(body.serverTiming.fallbackUsed, true);
+  assert.equal(body.serverTiming.fallbackReason, 'transient_capacity');
+  assert.equal(body.serverTiming.attemptedModels, 2);
+});
+
 test('edge returns an Arabic retryable message when all Gemini models are temporarily busy', async () => {
   const busy = httpError(503, 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.');
-  const runtime = await createRuntime([busy, busy, busy, busy, busy, busy]);
+  const runtime = await createRuntime([busy, busy, busy]);
   const { status, body } = await invoke(runtime);
   assert.equal(status, 503);
   assert.equal(body.ok, false);
@@ -304,5 +328,5 @@ test('edge returns an Arabic retryable message when all Gemini models are tempor
   assert.equal(body.retryable, true);
   assert.match(body.error, /مزدحمة مؤقتًا/);
   assert.doesNotMatch(body.error, /high demand|Spikes in demand|try again later/i);
-  assert.equal(runtime.getCalls(), 6);
+  assert.equal(runtime.getCalls(), 3);
 });

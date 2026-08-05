@@ -1,8 +1,8 @@
 {
   "app": "تقارير",
-  "version": "1.1.2",
-  "phase": "Phase 2-C Fix 2 - Transient Gemini Fallback & Arabic Errors",
-  "releaseName": "Transient Gemini Capacity Fallback & Arabic Error Shield",
+  "version": "1.1.3",
+  "phase": "Phase 2-C Fix 3 - Coordinated AI Deadline & Fast Failover",
+  "releaseName": "Coordinated AI Deadline & Fast Model Failover",
   "buildType": "static-github-pages-plus-supabase-edge-function",
   "supportedInputs": {
     "table": [
@@ -118,7 +118,11 @@
     "transient-gemini-capacity-fallback",
     "exponential-backoff-with-jitter",
     "arabic-ai-error-sanitization",
-    "retryable-transient-error-contract"
+    "retryable-transient-error-contract",
+    "coordinated-client-server-ai-deadline",
+    "per-model-attempt-timeout",
+    "single-attempt-fast-model-failover",
+    "server-deadline-before-client-abort"
   ],
   "runtime": {
     "frontend": "GitHub Pages static site",
@@ -130,25 +134,28 @@
     "legacyAnalyzeThinkingBudget": 1024,
     "classificationThinkingBudget": 0,
     "reconciliationContractVersion": "6.6.0",
-    "edgeFunctionVersion": "0.14.1",
+    "edgeFunctionVersion": "0.14.2",
     "fastEnhancementModel": "gemini-3.5-flash-lite",
     "fastEnhancementThinkingBudget": 192,
     "fastEnhancementMaxOutputTokens": 2600,
     "fastEnhancementClientTimeoutMs": 16000,
     "primaryAnalysisMaxOutputTokens": 8192,
-    "primaryAnalysisClientTimeoutMs": 45000,
+    "primaryAnalysisClientTimeoutMs": 85000,
     "primaryAnalysisThinkingLevel": "low",
     "primaryRescueModel": "gemini-3.5-flash-lite",
     "primaryRescueThinkingLevel": "minimal",
     "primaryRescueMaxOutputTokens": 6144,
-    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.1.2",
+    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.1.3",
     "primaryModelFallbackOrder": [
       "gemini-3.5-flash",
       "gemini-3.6-flash",
       "gemini-3.5-flash-lite"
     ],
-    "transientRetryAttemptsPerModel": 2,
-    "transientRetryBackoff": "exponential-with-jitter"
+    "transientRetryAttemptsPerModel": 1,
+    "transientRetryBackoff": "exponential-with-jitter",
+    "primaryServerDeadlineMs": 72000,
+    "primaryModelAttemptTimeoutMs": 30000,
+    "primaryRescueAttemptTimeoutMs": 24000
   },
   "security": {
     "geminiKeyInBrowser": false,
@@ -177,7 +184,7 @@
     "docxMetadata": "school, subject, grade, academic year, report date, region and school code are extracted from Word headers/footers when present",
     "aggregateNarrativeContext": "opposing statements in aggregated reports are treated as contextual variation unless the same teacher, visit and time are evidenced",
     "multiVisitSupervisionPdf": "extract visits, 13 reversed-scale indicators, narratives and metadata; compare only within explicit visit context",
-    "transientGeminiFallback": "503/429/408/5xx retry with backoff, then automatic model switch; raw provider errors are not shown to users"
+    "transientGeminiFallback": "503/429/408/5xx switch models after one bounded attempt; the server returns an Arabic retryable error before the browser aborts; raw provider errors are not shown"
   },
   "performance": {
     "scoreContextRows": 24,
@@ -185,16 +192,16 @@
     "newTypeContextRows": 60,
     "narrativeContextLines": 120,
     "resultsPresentation": "results appear only after the primary AI analysis passes evidence validation",
-    "networkRequestsPerAnalysis": "1 normally; automatic retries/model fallback on transient capacity errors; one rescue request only for invalid/incomplete output",
-    "clientTimeoutMs": 45000,
+    "networkRequestsPerAnalysis": "1 normally; one attempt per model with deadline-aware automatic fallback; one rescue path only for invalid/incomplete output",
+    "clientTimeoutMs": 85000,
     "payloadAcceptanceLimitChars": 90000,
-    "latencyStrategy": "Gemini 3.5 Flash with low thinking; transient errors retry with exponential backoff and switch to Gemini 3.6 Flash then 3.5 Flash-Lite; invalid output uses one minimal-thinking rescue"
+    "latencyStrategy": "Gemini 3.5 Flash with low thinking; one bounded attempt per model, automatic fallback within a 72-second server deadline, and an 85-second client envelope; invalid output uses one minimal-thinking rescue within the same deadline"
   },
   "backwardCompatibility": {
     "databaseChanges": false,
     "newSecretsRequired": false,
     "currentFrontendOperation": "analyze_primary",
-    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.1.2",
+    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.1.3",
     "classificationAndVision": "retained"
   },
   "notYetEnabled": [
