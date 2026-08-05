@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.0.0";
+  const VERSION = "1.1.0";
 
   function masteryEngine() {
     const engine = window.TaqareerMasteryMetrics;
@@ -1424,12 +1424,139 @@
     ];
   }
 
+
+
+  const MULTI_VISIT_TOPIC_RULES = {
+    "student-achievement": /تحصيل|اعمال صفيه|اعمال غير صفيه|اتقان|مفاهيم|معارف/,
+    "student-progress": /تقدم دراسي|ذوي الاعاقه|احتياجات تعليميه|دعم اضافي/,
+    "learning-skills": /تعلم ذاتي|تعلم تعاوني|رقمي|تفكير عليا|عمل جماعي|مجموعات/,
+    "values-identity": /هويه عمانيه|قيم انسانيه|مواطنه|احترام|انضباط/,
+    "safety-cleanliness": /امن|سلامه|نظافه|مختبر|ادوات المختبر/,
+    "curriculum-planning": /تخطيط|نواتج التعلم|اهداف|خطة فصليه|تحضير/,
+    "classroom-management": /اداره الصف|اداره زمن|زمن التعلم|دافعيه|غلق ختامي/,
+    "teaching-strategies": /استراتيجيات تدريس|استقصاء|تعلم نشط|فكر زاوج شارك|poe/,
+    "resources": /مصادر|موارد|تقنيات|محاكاه|سبوره|منصه|ذكاء اصطناعي/,
+    "assessment": /تقويم|تقييم|تغذيه راجعه|rubric|اختبار/,
+    "professional-growth": /تقويم ذاتي|تطوير مهني|تامل ذاتي|نقل اثر|ورش/,
+    "policies": /سياسات|انظمه|لوائح|التزام|سجل التقويم/,
+    "initiatives": /مبادرات|انشطه تربويه|بحث علمي|ابتكار|مسابقات/,
+  };
+
+  function multiVisitNarrativeMismatch(row, indicator, level) {
+    const strengths = normalize(row["جوانب الإجادة"] || "");
+    const development = normalize(row["جوانب التطوير"] || "");
+    const topic = MULTI_VISIT_TOPIC_RULES[indicator.id];
+    if (!topic) return null;
+    const positive = strengths;
+    const gaps = development;
+    const positiveSignal = topic.test(positive) && /متميز|فعال|فاعله|جميع|دقيق|مبدع|بارع|نجاح|اتقان/.test(positive);
+    const gapSignal = topic.test(gaps) && /لم |لا |ضعف|حاجه|يحتاج|بحاجه|عدد قليل|محدود|غير متقن|تنويع|تعزيز|رفع مستوى/.test(gaps);
+    if (level <= 1 && gapSignal) return "تقدير متميز مع دليل تطويري أو قيد واضح داخل الزيارة";
+    if (level >= 3 && positiveSignal && !gapSignal) return "تقدير يحتاج دعمًا مع دليل إيجابي قوي داخل الزيارة";
+    return null;
+  }
+
+  function analyzeMultiVisitSupervision(context) {
+    const result = createBase(context, "supervision_multi_visit", "تحليل زيارات إشرافية متعددة وربط المقياس المعكوس بالأدلة السردية داخل كل زيارة");
+    const catalog = Array.isArray(context.sourceMeta?.indicatorCatalog) ? context.sourceMeta.indicatorCatalog : [];
+    const rows = context.rows || [];
+    const ratings = [];
+    const byIndicator = new Map(catalog.map(item => [item.id, { ...item, values: [] }]));
+    const visitSummaries = [];
+    const mismatches = [];
+
+    rows.forEach((row, rowIndex) => {
+      const visitValues = [];
+      catalog.forEach(indicator => {
+        const level = parseNumber(row[indicator.label]);
+        if (!Number.isInteger(level) || level < 1 || level > 5) return;
+        ratings.push(level);
+        visitValues.push(level);
+        byIndicator.get(indicator.id)?.values.push(level);
+        const mismatch = multiVisitNarrativeMismatch(row, indicator, level);
+        if (mismatch) mismatches.push({
+          ref: `row:${rowIndex + 1}`,
+          visit: row["معرف الزيارة"] || `زيارة ${rowIndex + 1}`,
+          subject: row["المادة"] || "",
+          indicatorId: indicator.id,
+          indicator: indicator.label,
+          level,
+          detail: mismatch,
+        });
+      });
+      visitSummaries.push({
+        ref: `row:${rowIndex + 1}`,
+        visit: row["معرف الزيارة"] || `زيارة ${rowIndex + 1}`,
+        subject: row["المادة"] || "غير محددة",
+        grade: row["الصف"] || "",
+        date: row["تاريخ الزيارة"] || "",
+        ratingCount: visitValues.length,
+        meanLevel: round(mean(visitValues), 2),
+        performanceScore: round(mean(visitValues.map(value => (6 - value) / 5 * 100))),
+      });
+    });
+
+    const levelDistribution = [1, 2, 3, 4, 5].map(level => {
+      const count = ratings.filter(value => value === level).length;
+      return { level, label: ({1:"متميز",2:"جيد",3:"ملائم",4:"غير ملائم",5:"يحتاج إلى تدخل"})[level], count, percentage: round(pct(count, ratings.length)) };
+    });
+    const indicatorStats = [...byIndicator.values()].map(item => ({
+      id: item.id,
+      label: item.label,
+      count: item.values.length,
+      meanLevel: round(mean(item.values), 2),
+      performanceScore: round(mean(item.values.map(value => (6 - value) / 5 * 100))),
+      excellentGoodPct: round(pct(item.values.filter(value => value <= 2).length, item.values.length)),
+      supportPct: round(pct(item.values.filter(value => value >= 3).length, item.values.length)),
+    })).filter(item => item.count).sort((a, b) => a.performanceScore - b.performanceScore);
+
+    const excellentCount = ratings.filter(value => value === 1).length;
+    const goodCount = ratings.filter(value => value === 2).length;
+    const supportCount = ratings.filter(value => value >= 3).length;
+    const completeVisits = visitSummaries.filter(item => item.ratingCount === catalog.length).length;
+    result.visitSummaries = visitSummaries;
+    result.indicatorStats = indicatorStats;
+    result.numericNarrativeMismatches = mismatches;
+    result.levelDistribution = levelDistribution;
+    result.metrics = [
+      metric("visitCount", "عدد الزيارات", rows.length, "زيارة مستقلة"),
+      metric("ratingCount", "عدد التقديرات الرقمية", ratings.length, `من ${rows.length * Math.max(1, catalog.length)} متوقع`),
+      metric("completeVisitCount", "الزيارات مكتملة البنود", completeVisits, `من ${rows.length}`),
+      metric("meanSupervisionLevel", "متوسط مستوى التقدير", round(mean(ratings), 2), "المقياس معكوس: 1 أفضل و5 أضعف", "number"),
+      metric("excellentPct", "نسبة مستوى متميز", round(pct(excellentCount, ratings.length)), `${excellentCount} تقديرًا`, "percentage"),
+      metric("excellentGoodPct", "نسبة متميز أو جيد", round(pct(excellentCount + goodCount, ratings.length)), `${excellentCount + goodCount} تقديرًا`, "percentage"),
+      metric("supportRatingPct", "نسبة ملائم أو أقل", round(pct(supportCount, ratings.length)), `${supportCount} تقديرًا`, "percentage"),
+      metric("numericNarrativeMismatchCount", "حالات عدم الاتساق الرقمي السردي", mismatches.length, "داخل الزيارة نفسها"),
+    ];
+    result.charts = [
+      chart("supervision-level-distribution", "bar", "توزيع مستويات الزيارات", "المقياس معكوس من 1 متميز إلى 5 يحتاج إلى تدخل.", levelDistribution, { xKey: "label", yKey: "count" }),
+      chart("supervision-indicator-performance", "bar", "أداء بنود التقويم عبر الزيارات", "درجة أداء مطبعة؛ الأعلى أفضل مع بقاء المستوى الأصلي محفوظًا.", indicatorStats, { xKey: "label", yKey: "performanceScore", valueSuffix: "%" }),
+      chart("supervision-visit-performance", "bar", "مقارنة الزيارات", "مقارنة وصفية لا تستخدم لإصدار حكم فردي دون مراجعة الأدلة.", visitSummaries, { xKey: "visit", yKey: "performanceScore", valueSuffix: "%" }),
+      chart("supervision-numeric-narrative-alignment", "bar", "الاتساق بين التقدير والدليل السردي", "عدد الحالات التي تحتاج مراجعة داخل كل زيارة.", visitSummaries.map(item => ({ visit: item.visit, count: mismatches.filter(m => m.ref === item.ref).length })), { xKey: "visit", yKey: "count" }),
+    ];
+    result.limitations = [
+      "المقياس معكوس؛ المستوى 1 هو الأفضل والمستوى 5 يحتاج إلى تدخل.",
+      "المقارنة بين الزيارات وصفية ولا تعوض مراجعة اختلاف المعلمين والمواد والصفوف والسياقات.",
+      "كشف عدم الاتساق الرقمي السردي إشارة للمراجعة وليس حكمًا آليًا على جودة الزيارة.",
+      "تُحجب أسماء المعلمين وأرقام الملفات قبل إرسال الحزمة إلى الذكاء الاصطناعي عند تفعيل الخصوصية الافتراضية.",
+    ];
+    result.analysisProfile.dimensions = ["توزيع المستويات", "الفروق بين البنود", "الفروق بين الزيارات", "الاتساق الرقمي السردي"];
+    result.analysisProfile.decisionUse = ["تحديد بنود الدعم المشتركة", "تخصيص المتابعة حسب الزيارة", "مراجعة الحالات غير المتسقة قبل الاعتماد"];
+    result.analysisProfile.dataSufficiency = ratings.length >= rows.length * 10 ? "جيدة للتحليل الوصفي متعدد الزيارات" : "متوسطة بسبب نقص بعض التقديرات";
+    result.evidenceMap = evidenceMapFromMetrics(result.metrics);
+    visitSummaries.forEach((item, index) => {
+      result.evidenceMap[`row:${index + 1}`] = `${item.visit}: ${item.subject}${item.grade ? ` - الصف ${item.grade}` : ""} - ${item.ratingCount} تقديرًا`;
+    });
+    return result;
+  }
+
   const analyzers = {
     single_subject: analyzeScores,
     assessment_component: analyzeScores,
     level_distribution: analyzeLevelDistribution,
     cross_subject: analyzeCrossSubject,
     supervision_indicator: context => analyzeIndicatorSet(context, "supervision_indicator"),
+    supervision_multi_visit: analyzeMultiVisitSupervision,
     student_work: context => analyzeIndicatorSet(context, "student_work"),
     supervision_narrative: analyzeNarrative,
     survey: analyzeSurvey,

@@ -51,6 +51,59 @@
       "reportTemplate": "supervision_indicator_report.v1"
     },
     {
+      "id": "supervision.multi_visit_pdf.v1",
+      "nameAr": "زيارات إشرافية متعددة من PDF",
+      "unitOfAnalysis": "visit",
+      "modality": "mixed_repeated_form_pdf",
+      "sourceExamples": [
+        "استمارات زيارة إشرافية متكررة داخل ملف PDF واحد"
+      ],
+      "recognition": {
+        "titleSignals": [
+          "استمارة الزيارة الإشرافية لمعلم مجال/مادة"
+        ],
+        "requiredFields": [
+          "visit_date",
+          "teacher_or_visit_alias",
+          "subject",
+          "13_indicator_levels"
+        ],
+        "sectionSignals": [
+          "بنود التقويم",
+          "جوانب الإجادة",
+          "الجوانب التي تحتاج إلى تطوير",
+          "الدعم المقدم",
+          "التوصيات"
+        ],
+        "scale": {
+          "1": "متميز",
+          "2": "جيد",
+          "3": "ملائم",
+          "4": "غير ملائم",
+          "5": "يحتاج إلى تدخل"
+        },
+        "scaleDirection": "lower_is_better"
+      },
+      "analysisFamilies": [
+        "visit_separation",
+        "reverse_scale_distribution",
+        "indicator_comparison",
+        "within_visit_numeric_narrative_alignment"
+      ],
+      "qualityTools": [
+        "completeness_guard",
+        "reverse_scale_guard",
+        "within_visit_alignment_review",
+        "privacy_masking"
+      ],
+      "forbiddenInferences": [
+        "ranking_teachers_without_context",
+        "cross_visit_contradiction_without_same_visit_evidence",
+        "treating_5_as_best_level"
+      ],
+      "reportTemplate": "supervision_multi_visit_report.v1"
+    },
+    {
       "id": "supervision.narrative_evidence.v1",
       "nameAr": "التقرير السردي للزيارة الإشرافية",
       "unitOfAnalysis": "teacher",

@@ -12,7 +12,8 @@ export type AnalysisUnit =
   | "subject"
   | "school"
   | "program"
-  | "form_response";
+  | "form_response"
+  | "visit";
 
 export type ConfidenceLevel = "high" | "medium" | "low";
 export type ReviewStatus = "pending" | "approved" | "edited" | "rejected";
@@ -31,13 +32,19 @@ export interface DocumentSourceMetadata {
   ministry?: string;
   printedBy?: string;
   aggregatedReport?: boolean;
+  multiVisitReport?: boolean;
+  visitCount?: number;
 }
 
 export interface NarrativeDocumentContext {
   aggregatedReport: boolean;
-  entityScope: "aggregated-multiple-visits-or-teachers" | "single-or-unspecified";
+  entityScope:
+    | "aggregated-multiple-visits-or-teachers"
+    | "explicit-multiple-visits-and-teachers"
+    | "single-or-unspecified";
   contradictionPolicy:
     | "treat-opposing-statements-as-contextual-variation-unless-same-entity-and-visit"
+    | "compare-numeric-and-narrative-evidence-within-each-visit-only"
     | "standard";
 }
 

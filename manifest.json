@@ -1,8 +1,8 @@
 {
   "app": "تقارير",
-  "version": "1.0.6",
-  "phase": "Phase 2-B Fix 2 - DOCX Metadata & Narrative Context",
-  "releaseName": "DOCX Header Metadata & Aggregate Narrative Context Guard",
+  "version": "1.1.0",
+  "phase": "Phase 2-C - Multi-Visit Supervisory PDF Engine",
+  "releaseName": "Structured Multi-Visit Supervisory PDF Parsing & Mixed Evidence Analysis",
   "buildType": "static-github-pages-plus-supabase-edge-function",
   "supportedInputs": {
     "table": [
@@ -43,6 +43,7 @@
       "level-distribution",
       "cross-subject-profile",
       "supervision-indicators",
+      "supervision-multi-visit-pdf",
       "student-work-indicators",
       "supervision-narrative",
       "survey-and-attitudes",
@@ -105,7 +106,13 @@
     "docx-header-footer-metadata-extraction",
     "structured-report-metadata-precedence",
     "aggregate-narrative-context-guard",
-    "contextual-variation-not-confirmed-contradiction"
+    "contextual-variation-not-confirmed-contradiction",
+    "multi-visit-supervisory-pdf-parser",
+    "visit-level-record-separation",
+    "reverse-supervision-scale-guard",
+    "numeric-narrative-within-visit-alignment",
+    "multi-visit-personal-data-masking",
+    "structured-pdf-metadata-extraction"
   ],
   "runtime": {
     "frontend": "GitHub Pages static site",
@@ -116,8 +123,8 @@
     "enrichmentOperation": "analyze_primary",
     "legacyAnalyzeThinkingBudget": 1024,
     "classificationThinkingBudget": 0,
-    "reconciliationContractVersion": "6.5.0",
-    "edgeFunctionVersion": "0.13.6",
+    "reconciliationContractVersion": "6.6.0",
+    "edgeFunctionVersion": "0.14.0",
     "fastEnhancementModel": "gemini-3.5-flash-lite",
     "fastEnhancementThinkingBudget": 192,
     "fastEnhancementMaxOutputTokens": 2600,
@@ -128,7 +135,7 @@
     "primaryRescueModel": "gemini-3.5-flash-lite",
     "primaryRescueThinkingLevel": "minimal",
     "primaryRescueMaxOutputTokens": 6144,
-    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.0.6"
+    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.1.0"
   },
   "security": {
     "geminiKeyInBrowser": false,
@@ -155,7 +162,8 @@
     "scopeGuard": "aggregate score data cannot name a specific skill or concept without item-level evidence",
     "numericInterventionGuard": "score interventions use structured group IDs and server-owned arithmetic; impossible targets are reduced to feasible limits and revalidated in the browser",
     "docxMetadata": "school, subject, grade, academic year, report date, region and school code are extracted from Word headers/footers when present",
-    "aggregateNarrativeContext": "opposing statements in aggregated reports are treated as contextual variation unless the same teacher, visit and time are evidenced"
+    "aggregateNarrativeContext": "opposing statements in aggregated reports are treated as contextual variation unless the same teacher, visit and time are evidenced",
+    "multiVisitSupervisionPdf": "extract visits, 13 reversed-scale indicators, narratives and metadata; compare only within explicit visit context"
   },
   "performance": {
     "scoreContextRows": 24,
@@ -172,7 +180,7 @@
     "databaseChanges": false,
     "newSecretsRequired": false,
     "currentFrontendOperation": "analyze_primary",
-    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.0.6",
+    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.1.0",
     "classificationAndVision": "retained"
   },
   "notYetEnabled": [
@@ -184,5 +192,6 @@
     "saved-dynamic-form-registry",
     "direct-rpt-reading",
     "legacy-doc-and-xls-reading"
-  ]
+  ],
+  "description": null
 }

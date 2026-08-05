@@ -63,7 +63,7 @@ const scoreRefs = ['metric:mean', 'metric:masteryPct', 'metric:masteryCount', 'm
 function primaryFixture() {
   const refs = ['metric:mean', 'metric:masteryPct', 'metric:sd'];
   return {
-    contractVersion: '6.5.0',
+    contractVersion: '6.6.0',
     analysisProfile: {
       method: 'تحليل علاقات الأداء والأولوية من الأدلة الرقمية',
       dataAdequacy: 'كافية للقراءة الوصفية، وغير كافية لإثبات السبب',
@@ -253,7 +253,7 @@ test('edge function exposes the analyze_primary operation and evidence-first con
   assert.match(source, /operation === "analyze_primary"/);
   assert.match(source, /primaryAnalysisInstructions/);
   assert.match(source, /كل وحدة وتدخل وفحص ومرحلة متابعة تستخدم evidenceRefs/);
-  assert.match(source, /contractVersion: "6\.5\.0"/);
+  assert.match(source, /contractVersion: "6\.6\.0"/);
   assert.match(source, /analysisUnits/);
   assert.match(source, /nonDuplicativeDecisionContract: true/);
   assert.match(source, /thinkingConfig: \{ thinkingLevel \}/);

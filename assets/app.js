@@ -7,6 +7,7 @@
     { id: "level_distribution", name: "توزيع مستويات الأداء", purpose: "تحليل أعداد ونسب الطلبة حسب مستويات الأداء ومقارنة المجموعات.", keywords: ["أ", "ب", "ج", "د", "هـ", "المجموع", "النسبة"], min: 4 },
     { id: "cross_subject", name: "الأداء عبر المواد", purpose: "بناء صورة شاملة لأداء الطالب أو الصف في عدة مواد.", keywords: ["اللغة العربية", "اللغة الإنجليزية", "الرياضيات", "العلوم", "الدراسات الاجتماعية"], min: 3 },
     { id: "supervision_indicator", name: "ملخص مؤشرات زيارة إشرافية", purpose: "تحليل مؤشرات الأداء الإشرافي ومواطن القوة وأولويات التطوير.", keywords: ["بنود التقويم", "المتوسط", "التخطيط", "إدارة الصف", "استراتيجيات التدريس"], min: 2 },
+    { id: "supervision_multi_visit", name: "زيارات إشرافية متعددة", purpose: "تحليل عدة زيارات إشرافية مع فصل المعلمين والزيارات وربط التقدير الرقمي بالدليل السردي.", keywords: ["معرف الزيارة", "رقم الزيارة", "تاريخ الزيارة", "المادة", "جوانب الإجادة", "التوصيات"], min: 4 },
     { id: "student_work", name: "ملخص فحص أعمال الطلبة", purpose: "تحليل جودة أعمال الطلبة والتغذية الراجعة والتمايز والتقدم.", keywords: ["أعمال الطلبة", "الأكثر تكرارا", "التغذية الراجعة", "التمايز", "الأنشطة"], min: 2 },
     { id: "supervision_narrative", name: "تقرير إشرافي سردي", purpose: "تحليل الأدلة السردية وربط جوانب الإجادة والتطوير بالدعم والتوصيات.", keywords: ["جوانب الإجادة", "أدلتها", "الدعم المقدم", "التوصيات", "الجوانب التي تحتاج"], min: 2 },
     { id: "survey", name: "استبانة اتجاهات أو رضا", purpose: "تحليل توزيع الاستجابات والاتجاه العام والبنود ذات الأولوية وجودة المقياس عند تحقق شروطها.", keywords: ["أوافق بشدة", "محايد", "الرضا", "الاستبانة", "المتوسط"], min: 2 },
@@ -214,6 +215,7 @@
     level_distribution: [["الصف", "البيان"], ["المجموع"]],
     cross_subject: [["اسم الطالب", "الطالب"]],
     supervision_indicator: [["بنود التقويم", "البند"], ["المتوسط"]],
+    supervision_multi_visit: [["معرف الزيارة"], ["تاريخ الزيارة"], ["المادة"], ["جوانب الإجادة"], ["التوصيات"]],
     student_work: [["بنود التقويم", "البند"], ["المتوسط"]],
     supervision_narrative: [["النص"]],
     survey: [["البند", "السؤال", "العبارة", "المجال"]],
@@ -253,6 +255,16 @@
     };
     const has = phrase => allText.includes(normalize(phrase));
     const headerHas = phrase => headerText.includes(normalize(phrase));
+
+    if (sourceMeta?.specializedType === "supervision_multi_visit") {
+      add("supervision_multi_visit", 140, "اكتشاف بنية PDF متعددة الزيارات والجداول");
+    }
+    if (exactHeader(headers, ["معرف الزيارة"]) && exactHeader(headers, ["تاريخ الزيارة"]) && exactHeader(headers, ["المادة"])) {
+      add("supervision_multi_visit", 76, "وجود سجلات زيارات منفصلة ببيانات المعلم والمادة والتاريخ");
+    }
+    if (exactHeader(headers, ["جوانب الإجادة"]) && exactHeader(headers, ["جوانب التطوير"]) && exactHeader(headers, ["التوصيات"])) {
+      add("supervision_multi_visit", 42, "ربط التقديرات الرقمية بأقسام سردية لكل زيارة");
+    }
 
     if (exactHeader(headers, ["عنصر المادة", "عنصر التقويم"])) add("assessment_component", 34, "وجود حقل عنصر المادة");
     if (exactHeader(headers, ["درجة عنصر المادة", "درجة العنصر"])) add("assessment_component", 38, "وجود حقل درجة عنصر المادة");
@@ -381,7 +393,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "1.0.6",
+      appVersion: "1.1.0",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -470,9 +482,17 @@
     }
     if (sourceMeta?.sourceType === "pdf") {
       state.quality.info.unshift({
-        title: sourceMeta.mode === "table" ? "استخراج جدولي من PDF" : "استخراج نصي من PDF",
-        detail: "راجع المعاينة لأن ترتيب النص في بعض ملفات PDF يعتمد على طريقة إنشاء التقرير."
+        title: sourceMeta.specializedType === "supervision_multi_visit"
+          ? "تم فصل الزيارات والجداول داخل PDF"
+          : sourceMeta.mode === "table" ? "استخراج جدولي من PDF" : "استخراج نصي من PDF",
+        detail: sourceMeta.specializedType === "supervision_multi_visit"
+          ? `استُخرجت ${sourceMeta.visitCount || state.rows.length} زيارات و${sourceMeta.ratingCount || 0} تقديرًا مع مقياس 1 متميز إلى 5 يحتاج إلى تدخل.`
+          : "راجع المعاينة لأن ترتيب النص في بعض ملفات PDF يعتمد على طريقة إنشاء التقرير."
       });
+      const metadata = sourceMeta.metadata || {};
+      const extracted = [metadata.school, metadata.grade, metadata.academicYear].filter(Boolean);
+      if (extracted.length) state.quality.info.unshift({ title: "تم استخراج بيانات PDF المنظمة", detail: extracted.join(" · ") });
+      for (const warning of sourceMeta.sourceWarnings || []) state.quality.warnings.unshift({ title: "تنبيه استخراج PDF", detail: String(warning) });
     }
     if (sourceMeta?.sourceType === "docx") {
       state.quality.info.unshift({
@@ -512,6 +532,11 @@
     state.pendingSource = source;
     const datasets = source?.datasets || [];
     if (!datasets.length) throw new Error("لم يُعثر على محتوى واضح قابل للمراجعة.");
+    const preferredIndex = source?.preferredDatasetId ? datasets.findIndex(dataset => dataset.id === source.preferredDatasetId) : -1;
+    if (preferredIndex >= 0) {
+      applyPendingDataset(preferredIndex);
+      return;
+    }
     if (datasets.length === 1) {
       applyPendingDataset(0);
       return;
@@ -792,7 +817,8 @@
 
   function renderSetup() {
     const narrativeMode = isNarrativeMode();
-    $("measurementCard").classList.toggle("hidden", narrativeMode);
+    const multiVisitMode = state.type.id === "supervision_multi_visit";
+    $("measurementCard").classList.toggle("hidden", narrativeMode || multiVisitMode);
     $("narrativeSetupCard").classList.toggle("hidden", !narrativeMode);
     if (narrativeMode) {
       $("narrativeTextReview").value = state.narrativeText || state.rows.map(row => row["النص"] ?? Object.values(row).join(" ")).join("\n");
@@ -816,6 +842,7 @@
       level_distribution: ["تحليل المستويات العليا والدنيا ومركز التوزيع", "مقارنة الصفوف أو الشعب وترتيب الأولوية", "مصفوفة فجوة وانتقال المستويات", "خطة تدخل جماعي وفردي وإثرائي"],
       cross_subject: ["ترتيب المواد ونسب الإتقان والتفاوت", "تمييز التعثر الشامل من التعثر التخصصي", "تحليل العلاقات الوصفية بين المواد", "خريطة تدخل مشتركة ومتابعة متعددة التخصصات"],
       supervision_indicator: ["تجميع المؤشرات في مجالات إشرافية", "رادار الأداء وتحليل الفجوة وباريتو الأولويات", "مصفوفة أولوية الأثر والجهد", "خطة نمو مهني ودورة PDCA وإعادة ملاحظة"],
+      supervision_multi_visit: ["فصل الزيارات والمعلمين والمواد إلى سجلات مستقلة", "تحليل المقياس المعكوس 1 متميز إلى 5 يحتاج إلى تدخل", "ربط التقدير الرقمي بالدليل السردي داخل كل زيارة", "مقارنة المؤشرات والزيارات وبناء تدخلات جماعية وفردية دون خلط السجلات"],
       student_work: ["تحليل جودة الإنجاز والتغذية الراجعة والتمايز", "رادار المجالات وفجوات الأعمال والأنشطة", "باريتو البنود ذات الأثر الأعلى", "خطة تحسين للأعمال ومؤشرات متابعة قبل/بعد"],
       supervision_narrative: ["تحليل أقسام الإجادة والتطوير والدعم والتوصيات", "مصفوفة الحكم والدليل والأثر", "اكتشاف التكرار والتعارض ومشكلات التواريخ", "فحص قابلية التوصيات للقياس وبناء خطة متابعة"],
       survey: ["تحليل ليكرت والاتجاه العام وتوزيع الاستجابات", "ترتيب البنود وفجوات الرضا أو الاتفاق", "فحص الاتساق الداخلي عند تحقق شروطه", "باريتو الأولويات وخطة استجابة وإعادة قياس"],
@@ -840,13 +867,14 @@
 
   function isSensitiveHeader(header) {
     const value = normalize(header);
-    return /اسم.*طالب|اسم.*معلم|الرقم.*مدني|رقم.*طالب|هاتف|بريد|ايميل|عنوان|بطاقه|هوية|هويه|civil|student.?id|teacher.?id|phone|email/.test(value);
+    return /اسم.*طالب|اسم.*معلم|^المعلم$|الرقم.*مدني|رقم.*طالب|رقم.*ملف|هاتف|بريد|ايميل|عنوان|بطاقه|هوية|هويه|civil|student.?id|teacher.?id|phone|email/.test(value);
   }
 
   function tableAiLimit() {
     // ملفات الدرجات تُفهم أساسًا من المؤشرات والرسوم المحسوبة من كامل البيانات؛
     // إرسال عشرات السجلات المتشابهة يبطئ النموذج دون إضافة معنى تحليلي حقيقي.
     if (["single_subject", "assessment_component"].includes(state.type.id)) return 24;
+    if (state.type.id === "supervision_multi_visit") return 120;
     if (state.type.id === "unknown") return 60;
     if (["supervision_indicator", "student_work", "survey", "training_needs", "program_evaluation", "behavior_attendance", "level_distribution", "cross_subject"].includes(state.type.id)) return 60;
     return 40;
@@ -898,6 +926,52 @@
     }));
   }
 
+
+  function buildMultiVisitSupervisionAiData(maskPersonalData = true) {
+    const catalog = Array.isArray(state.sourceMeta?.indicatorCatalog) ? state.sourceMeta.indicatorCatalog : [];
+    const indicatorLabels = catalog.map(item => item.label).filter(Boolean);
+    const visits = state.rows.map((row, index) => {
+      const ratings = catalog.map(item => ({
+        id: item.id,
+        label: item.label,
+        level: Number(row[item.label]) || null,
+      })).filter(item => Number.isInteger(item.level));
+      return {
+        _evidenceRef: `row:${index + 1}`,
+        visitId: row["معرف الزيارة"] || `زيارة ${index + 1}`,
+        visitNumber: row["رقم الزيارة"] || "",
+        visitDate: row["تاريخ الزيارة"] || "",
+        teacher: maskPersonalData ? `المعلم ${index + 1}` : String(row["المعلم"] || ""),
+        fileNumber: maskPersonalData ? "[محجوب]" : String(row["رقم الملف"] || ""),
+        subject: row["المادة"] || "",
+        grade: row["الصف"] || "",
+        classSection: row["الفصل"] || "",
+        period: row["الحصة"] || "",
+        lessonTitle: row["عنوان الدرس"] || "",
+        ratings,
+        narrative: {
+          strengths: String(row["جوانب الإجادة"] || "").slice(0, 1400),
+          development: String(row["جوانب التطوير"] || "").slice(0, 1000),
+          support: String(row["الدعم المقدم"] || "").slice(0, 1000),
+          recommendations: String(row["التوصيات"] || "").slice(0, 1200),
+        },
+      };
+    });
+    return {
+      structure: "multi-visit-supervision",
+      scale: state.sourceMeta?.scale || { 1: "متميز", 2: "جيد", 3: "ملائم", 4: "غير ملائم", 5: "يحتاج إلى تدخل" },
+      scaleDirection: "lower-is-better",
+      indicatorCatalog: catalog,
+      visits,
+      visitCount: visits.length,
+      ratingCount: visits.reduce((sum, visit) => sum + visit.ratings.length, 0),
+      maskedHeaders: maskPersonalData ? ["المعلم", "رقم الملف"] : [],
+      sampling: "جميع الزيارات المنظمة",
+      truncated: false,
+      headers: ["بيانات الزيارة", ...indicatorLabels, "جوانب الإجادة", "جوانب التطوير", "الدعم المقدم", "التوصيات"],
+    };
+  }
+
   function compactDeterministicAnalysis(analysis) {
     if (!analysis) return null;
     const metrics = (analysis.metrics || []).slice(0, 24).map(item => ({
@@ -936,6 +1010,7 @@
   function buildEvidenceCatalog(dataset, narrativeLines, deterministicAnalysis) {
     const refs = [];
     (dataset?.sampleRows || []).forEach(row => { if (row?._evidenceRef) refs.push(row._evidenceRef); });
+    (dataset?.visits || []).forEach(row => { if (row?._evidenceRef) refs.push(row._evidenceRef); });
     (narrativeLines || []).forEach(line => { if (line?.ref) refs.push(line.ref); });
     (deterministicAnalysis?.metrics || []).forEach(item => refs.push(item.evidenceRef || `metric:${item.id}`));
     (deterministicAnalysis?.evidenceCatalog || []).forEach(item => { if (item?.ref) refs.push(item.ref); });
@@ -943,13 +1018,14 @@
   }
 
   function buildAiAnalysisPayload(maskPersonalData = true) {
-    const dataset = sanitizeRowsForAi(maskPersonalData);
+    const multiVisitData = state.type.id === "supervision_multi_visit" ? buildMultiVisitSupervisionAiData(maskPersonalData) : null;
+    const dataset = multiVisitData || sanitizeRowsForAi(maskPersonalData);
     const lines = narrativeLinesForAi(maskPersonalData);
     const deterministicAnalysis = compactDeterministicAnalysis(state.analysis);
     if (!window.TaqareerReconciliation?.composePrimary) throw new Error("محرك التحقق من التحليل الذكي غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "1.0.6",
+      appVersion: "1.1.0",
       pipeline: {
         mode: "ai-primary-analysis-v1",
         instruction: "المحرك المحلي يحسب المؤشرات والرسوم فقط. يبني الذكاء الاصطناعي التشخيص والاستنتاجات والتدخلات من الأدلة، ثم تتحقق البوابة من المراجع قبل عرض التقرير."
@@ -1013,7 +1089,12 @@
     evidenceRatio: "نسبة مؤشرات الأدلة",
     sentenceCount: "عدد الجمل المحللة",
     recommendationCount: "عدد التوصيات",
-    developmentCount: "عدد جوانب التطوير"
+    developmentCount: "عدد جوانب التطوير",
+    visitCount: "عدد الزيارات",
+    ratingCount: "عدد التقديرات الرقمية",
+    excellentGoodPct: "نسبة التقديرات متميز أو جيد",
+    supportRatingPct: "نسبة التقديرات ملائم أو أقل",
+    numericNarrativeMismatchCount: "حالات عدم الاتساق بين التقدير والدليل السردي"
   };
 
   function formatEvidenceMetric(key) {
@@ -1193,7 +1274,7 @@
       const levelColumn = $("levelColumnSelect").value;
       const maxScore = parseNumber($("maxScoreInput").value);
       const thresholdPct = parseNumber($("masteryThresholdInput").value);
-      if (!narrativeMode && (!Number.isFinite(thresholdPct) || thresholdPct <= 0 || thresholdPct > 100)) {
+      if (!narrativeMode && state.type.id !== "supervision_multi_visit" && (!Number.isFinite(thresholdPct) || thresholdPct <= 0 || thresholdPct > 100)) {
         setMessage("setupMessage", "حد الإتقان يجب أن يكون بين 1 و100.", true);
         return;
       }
@@ -1498,7 +1579,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v1.0.6.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v1.1.0.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }

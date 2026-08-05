@@ -408,6 +408,366 @@
     }).filter(line => line.text);
   }
 
+
+
+  const SUPERVISION_VISIT_INDICATORS = [
+    { id: "student-achievement", label: "تحصيل الطلبة في الأعمال الصفية وغير الصفية", patterns: [/تحصيل الطلبه.*(?:الاعمال|العمال).*الصفي/] },
+    { id: "student-progress", label: "التقدم الدراسي للطلبة بما فيهم ذوو الإعاقة أو الاحتياجات التعليمية", patterns: [/التقدم الدراسي للطلبه.*(?:الاعاقه|العاقه).*(?:الاحتياجات|الحتياجات).*التعليميه/] },
+    { id: "learning-skills", label: "تطبيق مهارات التعلم وربطها بالواقع", patterns: [/تطبيق مهارات التعلم.*ربطها بالواقع/] },
+    { id: "values-identity", label: "الهوية العمانية والقيم الإنسانية", patterns: [/تمسك الطلبه.*الهويه العمانيه.*القيم.*(?:الانسانيه|النسانيه)/] },
+    { id: "safety-cleanliness", label: "الأمن والسلامة والنظافة في بيئة التعلم", patterns: [/متابعه جوانب.*(?:الامن|المن).*(?:السلامه|السلمه).*النظافه.*بيئه التعلم/] },
+    { id: "curriculum-planning", label: "تخطيط المنهاج لتحقيق نواتج التعلم", patterns: [/تخطيط المنهاج الدراسي.*نواتج التعلم/] },
+    { id: "classroom-management", label: "فاعلية الإدارة الصفية", patterns: [/فاعليه.*(?:الاداره|الدارة|الداره).*(?:الصفيه|لصفيه)/] },
+    { id: "teaching-strategies", label: "استراتيجيات التدريس الفعالة", patterns: [/توظيف استراتيجيات التدريس الفعاله/] },
+    { id: "resources", label: "المصادر والموارد التعليمية", patterns: [/تفعيل المصادر والموارد التعليميه/] },
+    { id: "assessment", label: "أساليب تقويم متنوعة", patterns: [/توظيف اساليب تقويم متنوعه/] },
+    { id: "professional-growth", label: "التقويم الذاتي والتطوير المهني", patterns: [/توظيف التقويم الذاتي.*التطوير المهني/] },
+    { id: "policies", label: "السياسات والأنظمة واللوائح", patterns: [/تطبيق السياسات.*(?:الانظمه|النظمه).*اللوائح/] },
+    { id: "initiatives", label: "المبادرات والأنشطة التربوية", patterns: [/تنفيذ مبادرات.*انشطه تربويه/] },
+  ];
+
+  const SUPERVISION_SCALE = Object.freeze({
+    1: "متميز",
+    2: "جيد",
+    3: "ملائم",
+    4: "غير ملائم",
+    5: "يحتاج إلى تدخل",
+  });
+
+  function normalizeDigits(value) {
+    const map = {"٠":"0","١":"1","٢":"2","٣":"3","٤":"4","٥":"5","٦":"6","٧":"7","٨":"8","٩":"9","٫":".","٬":""};
+    return String(value ?? "").replace(/[٠-٩٫٬]/g, char => map[char]);
+  }
+
+  function lineTextValue(line) {
+    return cleanMetadataValue(line?.text || "");
+  }
+
+  function lineCellValues(line) {
+    return (Array.isArray(line?.cells) ? line.cells : [])
+      .map(cleanMetadataValue)
+      .filter(value => value && !/^[:：|]+$/.test(value));
+  }
+
+  function pageText(lines) {
+    return (lines || []).map(lineTextValue).filter(Boolean).join("\n");
+  }
+
+  function findLine(lines, pattern) {
+    return (lines || []).find(line => pattern.test(normalize(lineTextValue(line)))) || null;
+  }
+
+  function valueFromLabeledLine(lines, pattern, predicate = null) {
+    const line = findLine(lines, pattern);
+    if (!line) return "";
+    const candidates = lineCellValues(line).filter(value => !pattern.test(normalize(value)) && !/^(?:الاسم|السم|رقم الملف|رقم الزياره|تاريخ الزياره|المجال|الماده|الحصه|عنوان الدرس|الصف|الفصل|المرحله)$/.test(normalize(value)));
+    const filtered = predicate ? candidates.filter(value => predicate(value, normalize(value))) : candidates;
+    if (filtered.length) return filtered.sort((a, b) => b.length - a.length)[0];
+    const raw = lineTextValue(line).replace(/[:：|]+/g, " ");
+    const stripped = cleanMetadataValue(raw.replace(pattern, " "));
+    return !predicate || predicate(stripped, normalize(stripped)) ? stripped : "";
+  }
+
+  function nearbyLines(lines, target, radius = 2) {
+    const index = (lines || []).indexOf(target);
+    if (index < 0) return target ? [target] : [];
+    const output = [];
+    for (let offset = 0; offset <= radius; offset += 1) {
+      if (offset === 0) output.push(lines[index]);
+      else {
+        if (lines[index - offset]) output.push(lines[index - offset]);
+        if (lines[index + offset]) output.push(lines[index + offset]);
+      }
+    }
+    return output;
+  }
+
+  function valueAfterCellLabel(line, pattern, predicate = null) {
+    const cells = lineCellValues(line);
+    const index = cells.findIndex(value => pattern.test(normalize(value)));
+    if (index < 0) return "";
+    for (let cursor = index + 1; cursor < cells.length; cursor += 1) {
+      const value = cells[cursor];
+      if (!value || /^[:：|]+$/.test(value)) continue;
+      if (predicate && !predicate(value, normalize(value))) continue;
+      return value;
+    }
+    return "";
+  }
+
+  function extractDateFromLine(lines, pattern) {
+    const line = findLine(lines, pattern);
+    for (const candidate of nearbyLines(lines, line, 2)) {
+      const match = normalizeDigits(lineTextValue(candidate)).match(/20\d{2}\s*[\/\-]\s*\d{1,2}\s*[\/\-]\s*\d{1,2}/);
+      if (match) return match[0].replace(/\s+/g, "");
+    }
+    return "";
+  }
+
+  function extractNumberFromLine(lines, pattern, minimumDigits = 1) {
+    const line = findLine(lines, pattern);
+    if (!line) return "";
+    const matcher = new RegExp(`^\\d{${minimumDigits},}$`);
+    for (const candidate of nearbyLines(lines, line, 2)) {
+      const values = lineCellValues(candidate).map(normalizeDigits).filter(value => matcher.test(value));
+      if (values.length) return values.sort((a, b) => a.length - b.length)[0];
+    }
+    return "";
+  }
+
+  function extractArabicName(lines) {
+    const line = findLine(lines, /^(?:الاسم|السم)$|(?:الاسم|السم)\s/);
+    if (!line) return "";
+    const blocked = /(?:الاسم|السم|رقم|تاريخ|الزياره|المرحله|الصف|الفصل|الحصه|المجال|الماده)/;
+    const values = lineCellValues(line).filter(value => /[\u0600-\u06FF]/.test(value) && !blocked.test(normalize(value)) && value.length >= 8);
+    if (values.length) return values.sort((a, b) => b.length - a.length)[0];
+    return "";
+  }
+
+  function extractSchoolFromPdfPages(pages) {
+    for (const page of pages) {
+      const line = findLine(page.lines, /مدرسه/);
+      if (!line) continue;
+      const text = lineTextValue(line);
+      const match = text.match(/(?:مدرسة|مدرسه)\s*[:：]?\s*(.+)/);
+      if (match) return cleanMetadataValue(match[1])
+        .replace(/(\d{1,2})\s*\(\s*[-–—/]\s*\)\s*(\d{1,2})/g, "($1-$2)")
+        .replace(/(\d{1,2})\s*\(\s*[-–—/]\s*(\d{1,2})\s*\)/g, "($1-$2)");
+      const values = lineCellValues(line).filter(value => /الباسط|للبنين|للبنات|الصفوف/.test(normalize(value)));
+      if (values.length) return cleanMetadataValue(values.join(" "));
+    }
+    return "";
+  }
+
+  function extractPdfCommonMetadata(pages) {
+    const all = pages.flatMap(page => page.lines || []);
+    const academicRaw = normalizeDigits(valueFromLabeledLine(all, /العام الدراس[يى]/, value => /20\d{2}\s*[\/\-]\s*20\d{2}/.test(normalizeDigits(value))) || (pageText(all).match(/20\d{2}\s*[\/\-]\s*20\d{2}/)?.[0] || ""));
+    const academic = normalizeAcademicYear(academicRaw);
+    const school = extractSchoolFromPdfPages(pages);
+    const regionLine = findLine(all, /محافظه|المنطقه/);
+    const region = regionLine ? lineTextValue(regionLine).match(/محافظة\s+[^\n:：]+|محافظه\s+[^\n:：]+/)?.[0] || lineTextValue(regionLine) : "";
+    return {
+      title: "استمارات زيارات إشرافية متعددة",
+      school,
+      grade: extractGradeFromSchool(school),
+      academicYear: academic.value,
+      academicYearRaw: academic.raw,
+      reportDate: extractDateFromLine(all, /^التاريخ$|التاريخ\s/),
+      region: cleanMetadataValue(region).replace(/\s+العام الدراس[يى].*$/i, ""),
+      aggregatedReport: true,
+      multiVisitReport: true,
+    };
+  }
+
+  function matchSupervisionIndicator(text) {
+    const normalized = normalize(text);
+    return SUPERVISION_VISIT_INDICATORS.find(item => item.patterns.some(pattern => pattern.test(normalized))) || null;
+  }
+
+  function extractRatingFromIndicatorLine(line, indicator) {
+    const cells = lineCellValues(line);
+    const labelIndex = cells.findIndex(value => indicator.patterns.some(pattern => pattern.test(normalize(value))));
+    const numericCells = cells.map((value, index) => ({ value: normalizeDigits(value), index })).filter(item => /^[1-5]$/.test(item.value));
+    if (labelIndex >= 0) {
+      const after = numericCells.find(item => item.index > labelIndex);
+      if (after) return Number(after.value);
+      const before = [...numericCells].reverse().find(item => item.index < labelIndex);
+      if (before) return Number(before.value);
+    }
+    const numbers = normalizeDigits(lineTextValue(line)).match(/\b[1-5]\b/g) || [];
+    return numbers.length ? Number(numbers.at(-1)) : NaN;
+  }
+
+  function parseSupervisionRatings(lines) {
+    const ratings = {};
+    const sourceRows = {};
+    for (let index = 0; index < (lines || []).length; index += 1) {
+      const line = lines[index];
+      const indicator = matchSupervisionIndicator(lineTextValue(line));
+      if (!indicator || ratings[indicator.id] !== undefined) continue;
+      let level = NaN;
+      const nextCells = lineCellValues(lines[index + 1]).map(normalizeDigits);
+      const nextStandalone = nextCells.length === 1 && /^[1-5]$/.test(nextCells[0]) ? nextCells[0] : "";
+      if (nextStandalone) level = Number(nextStandalone);
+      else level = extractRatingFromIndicatorLine(line, indicator);
+      if (!Number.isInteger(level) || level < 1 || level > 5) {
+        for (const candidate of [lines[index - 1]]) {
+          const cells = lineCellValues(candidate).map(normalizeDigits);
+          const standalone = cells.find(value => /^[1-5]$/.test(value));
+          if (standalone) { level = Number(standalone); break; }
+        }
+      }
+      if (!Number.isInteger(level) || level < 1 || level > 5) continue;
+      ratings[indicator.id] = level;
+      sourceRows[indicator.id] = line.lineIndex || null;
+    }
+    return { ratings, sourceRows };
+  }
+
+  function sectionIdForHeading(text) {
+    const n = normalize(text);
+    if (/جوانب.*(?:الاجاده|الجاده).*ادلتها/.test(n)) return "strengths";
+    if (/الجوانب.*تحتاج.*تطوير/.test(n)) return "development";
+    if (/الدعم المقدم/.test(n)) return "support";
+    if (/^التوصيات$/.test(n)) return "recommendations";
+    return "";
+  }
+
+  function parseSupervisionNarrative(lines) {
+    const output = { strengths: [], development: [], support: [], recommendations: [] };
+    let current = "";
+    for (const line of lines || []) {
+      const text = lineTextValue(line);
+      if (!text) continue;
+      const heading = sectionIdForHeading(text);
+      if (heading) { current = heading; continue; }
+      if (!current) continue;
+      const n = normalize(text);
+      if (/اسم الزائر|الوظيفه|توقيع المعلم|توقيع مدير المدرسه/.test(n)) continue;
+      if (/^(?:لا|ل) يوجد$|^لا توجد$/.test(n)) {
+        output[current].push(text);
+        continue;
+      }
+      if (text.length >= 8) output[current].push(text);
+    }
+    return Object.fromEntries(Object.entries(output).map(([key, values]) => [key, values.join("\n")]));
+  }
+
+  function isSupervisionVisitPage(lines) {
+    const text = normalize(pageText(lines));
+    const ratingHits = SUPERVISION_VISIT_INDICATORS.filter(item => item.patterns.some(pattern => pattern.test(text))).length;
+    return /استماره الزياره.*(?:الاشرافيه|الشرافيه)/.test(text) && ratingHits >= 8;
+  }
+
+  function parseVisitPage(page) {
+    const lines = page.lines || [];
+    const { ratings, sourceRows } = parseSupervisionRatings(lines);
+    if (Object.keys(ratings).length < 8) return null;
+    const subjectLine = findLine(lines, /المجال.*الماده/);
+    const lessonLine = findLine(lines, /عنوان الدرس/);
+    const gradeLine = findLine(lines, /^الصف$|الصف\s/);
+    const periodLine = findLine(lines, /^الحصه$|الحصه\s/);
+    const classLine = findLine(lines, /^الفصل$|الفصل\s/);
+    const subjectFromLabel = valueAfterCellLabel(subjectLine, /المجال.*الماده/, value => /الفيزياء|الكيمياء|الاحياء|الحياء|العلوم|اللغه العربيه|الرياضيات|الدراسات/.test(normalize(value)));
+    const subjectCandidates = lineCellValues(subjectLine).filter(value => /الفيزياء|الكيمياء|الاحياء|الحياء|العلوم|اللغه العربيه|الرياضيات|الدراسات/.test(normalize(value)));
+    const gradeFromLabel = valueAfterCellLabel(gradeLine, /^الصف$|الصف\s/, value => /الثامن|التاسع|العاشر|الحادي عشر|الثاني عشر|^\d{1,2}$/.test(normalizeDigits(normalize(value))));
+    const gradeCandidates = lineCellValues(gradeLine).filter(value => /الثامن|التاسع|العاشر|الحادي عشر|الثاني عشر|^\d{1,2}$/.test(normalizeDigits(normalize(value))));
+    const lessonFromLabel = valueAfterCellLabel(lessonLine, /عنوان الدرس/, value => !/المجال|الماده|الحصه/.test(normalize(value)) && value.length >= 2);
+    const lessonCandidates = lineCellValues(lessonLine).filter(value => !/عنوان الدرس|المجال|الماده|الحصه/.test(normalize(value)) && value.length >= 2);
+    const periodFromLabel = normalizeDigits(valueAfterCellLabel(periodLine, /^الحصه$|الحصه\s/, value => /^\d{1,2}$/.test(normalizeDigits(value))));
+    const periodCandidates = nearbyLines(lines, periodLine, 1).flatMap(lineCellValues).map(normalizeDigits).filter(value => /^\d{1,2}$/.test(value));
+    const classFromLabel = normalizeDigits(valueAfterCellLabel(classLine, /^الفصل$|الفصل\s/, value => /^\d{1,2}$/.test(normalizeDigits(value))));
+    const classCandidates = nearbyLines(lines, classLine, 1).flatMap(lineCellValues).map(normalizeDigits).filter(value => /^\d{1,2}$/.test(value));
+    return {
+      page: page.pageNumber,
+      visitId: `visit-${page.pageNumber}`,
+      visitNumber: extractNumberFromLine(lines, /رقم الزياره/, 1),
+      visitDate: extractDateFromLine(lines, /تاريخ الزياره/),
+      teacher: extractArabicName(lines),
+      fileNumber: extractNumberFromLine(lines, /رقم الملف/, 5),
+      subject: subjectFromLabel || subjectCandidates[0] || "",
+      grade: gradeFromLabel || gradeCandidates[0] || "",
+      classSection: classFromLabel || classCandidates[0] || "",
+      period: periodFromLabel || periodCandidates[0] || "",
+      lessonTitle: lessonFromLabel || lessonCandidates.sort((a, b) => b.length - a.length)[0] || "",
+      ratings,
+      ratingSourceRows: sourceRows,
+      narrative: { strengths: "", development: "", support: "", recommendations: "" },
+    };
+  }
+
+  function supervisionVisitRows(visits) {
+    return visits.map((visit, index) => {
+      const row = {
+        "معرف الزيارة": `زيارة ${index + 1}`,
+        "رقم الزيارة": visit.visitNumber,
+        "تاريخ الزيارة": visit.visitDate,
+        "المعلم": visit.teacher,
+        "رقم الملف": visit.fileNumber,
+        "المادة": visit.subject,
+        "الصف": visit.grade,
+        "الفصل": visit.classSection,
+        "الحصة": visit.period,
+        "عنوان الدرس": visit.lessonTitle,
+      };
+      SUPERVISION_VISIT_INDICATORS.forEach(indicator => { row[indicator.label] = visit.ratings[indicator.id] ?? ""; });
+      row["جوانب الإجادة"] = visit.narrative.strengths;
+      row["جوانب التطوير"] = visit.narrative.development;
+      row["الدعم المقدم"] = visit.narrative.support;
+      row["التوصيات"] = visit.narrative.recommendations;
+      return row;
+    });
+  }
+
+  function detectMultiVisitSupervisionPdf(pages) {
+    const visits = [];
+    let activeVisit = null;
+    for (const page of pages) {
+      if (isSupervisionVisitPage(page.lines)) {
+        const parsed = parseVisitPage(page);
+        if (parsed) { visits.push(parsed); activeVisit = parsed; }
+        continue;
+      }
+      if (activeVisit) {
+        const narrative = parseSupervisionNarrative(page.lines);
+        if (Object.values(narrative).some(Boolean)) activeVisit.narrative = narrative;
+      }
+    }
+    if (visits.length < 2) return null;
+    const ratingCount = visits.reduce((sum, visit) => sum + Object.keys(visit.ratings).length, 0);
+    if (ratingCount < visits.length * 8) return null;
+    const metadata = extractPdfCommonMetadata(pages);
+    const subjects = [...new Set(visits.map(visit => cleanMetadataValue(visit.subject)).filter(Boolean))];
+    metadata.subject = subjects.length === 1 ? subjects[0] : subjects.length ? `مواد متعددة: ${subjects.join("، ")}` : "";
+    metadata.visitCount = visits.length;
+    const warnings = [];
+    const expectedRatings = visits.length * SUPERVISION_VISIT_INDICATORS.length;
+    if (ratingCount < expectedRatings) warnings.push(`استُخرج ${ratingCount} تقديرًا من أصل ${expectedRatings} متوقعًا؛ راجع الزيارات ذات البنود الناقصة.`);
+    if (metadata.academicYearRaw && metadata.academicYearRaw !== metadata.academicYear) warnings.push(`تم توحيد اتجاه العام الدراسي من ${metadata.academicYearRaw} إلى ${metadata.academicYear} للعرض.`);
+    const rows = supervisionVisitRows(visits);
+    const headers = rows.length ? Object.keys(rows[0]) : [];
+    return {
+      dataset: {
+        id: "pdf-supervision-multi-visit",
+        name: `زيارات إشرافية متعددة · ${visits.length} زيارات`,
+        headers,
+        rows,
+        rawText: pages.flatMap(page => page.lines.map(lineTextValue)).join("\n"),
+        meta: {
+          sourceType: "pdf",
+          mode: "mixed",
+          specializedType: "supervision_multi_visit",
+          reportTitle: "استمارات زيارات إشرافية متعددة",
+          metadata,
+          visitCount: visits.length,
+          ratingCount,
+          expectedRatingCount: expectedRatings,
+          indicatorCount: SUPERVISION_VISIT_INDICATORS.length,
+          indicatorCatalog: SUPERVISION_VISIT_INDICATORS.map(item => ({ id: item.id, label: item.label })),
+          scale: SUPERVISION_SCALE,
+          scaleDirection: "lower-is-better",
+          visits: visits.map((visit, index) => ({
+            ref: `row:${index + 1}`,
+            visitNumber: visit.visitNumber,
+            visitDate: visit.visitDate,
+            subject: visit.subject,
+            grade: visit.grade,
+            lessonTitle: visit.lessonTitle,
+            ratingCount: Object.keys(visit.ratings).length,
+          })),
+          documentContext: {
+            aggregatedReport: true,
+            multiVisitReport: true,
+            entityScope: "explicit-multiple-visits-and-teachers",
+            contradictionPolicy: "compare-numeric-and-narrative-evidence-within-each-visit-only",
+          },
+        },
+      },
+      warnings,
+      visits,
+    };
+  }
+
   function mergeCompatiblePdfTables(datasets) {
     const groups = new Map();
     const other = [];
@@ -450,6 +810,7 @@
     const pdf = await loadingTask.promise;
     const pageDatasets = [];
     const allLines = [];
+    const pageRecords = [];
     let totalItems = 0;
 
     for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
@@ -457,6 +818,7 @@
       const content = await page.getTextContent({ includeMarkedContent: false });
       totalItems += content.items.length;
       const lines = groupPdfItemsIntoLines(content.items);
+      pageRecords.push({ pageNumber, lines });
       allLines.push(...lines.map(line => ({ ...line, page: pageNumber })));
       const matrix = lines.map(line => line.cells.length >= 2 ? line.cells : [line.text]);
       const table = matrixToTable(matrix);
@@ -477,7 +839,8 @@
       throw error;
     }
 
-    const datasets = mergeCompatiblePdfTables(pageDatasets);
+    const specialized = detectMultiVisitSupervisionPdf(pageRecords);
+    const datasets = specialized ? [specialized.dataset, ...mergeCompatiblePdfTables(pageDatasets)] : mergeCompatiblePdfTables(pageDatasets);
     const narrativeRows = allLines.map((line, index) => ({
       "م": index + 1,
       "الصفحة": line.page,
@@ -496,7 +859,11 @@
       name: file.name,
       kind: "pdf",
       datasets,
-      warnings: totalItems < 20 ? ["طبقة النص محدودة؛ راجع المعاينة قبل اعتماد التحليل."] : []
+      preferredDatasetId: specialized?.dataset?.id || "",
+      warnings: [
+        ...(totalItems < 20 ? ["طبقة النص محدودة؛ راجع المعاينة قبل اعتماد التحليل."] : []),
+        ...(specialized?.warnings || []),
+      ]
     };
   }
 
@@ -559,6 +926,10 @@
     renderPdfPages,
     imagePreview,
     constants: { PDF_MODULE_URL, PDF_WORKER_URL },
-    _test: { matrixToTable, groupPdfItemsIntoLines, paragraphRows, parseWordBody, parseWordMetadata, parseWordMetadataTokens, storyTextTokens }
+    _test: {
+      matrixToTable, groupPdfItemsIntoLines, paragraphRows, parseWordBody, parseWordMetadata, parseWordMetadataTokens, storyTextTokens,
+      detectMultiVisitSupervisionPdf, parseSupervisionRatings, parseSupervisionNarrative, parseVisitPage,
+      supervisionVisitRows, indicators: SUPERVISION_VISIT_INDICATORS, scale: SUPERVISION_SCALE,
+    }
   };
 })();
