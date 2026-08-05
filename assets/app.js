@@ -381,7 +381,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "1.0.5",
+      appVersion: "1.0.6",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -479,6 +479,17 @@
         title: sourceMeta.mode === "table" ? "تمت قراءة جدول Word" : "تمت قراءة النص السردي من Word",
         detail: "تم الاستخراج محليًا داخل المتصفح دون رفع المستند إلى خادم."
       });
+      const metadata = sourceMeta.metadata || {};
+      const extracted = [metadata.school, metadata.subject, metadata.grade, metadata.academicYear].filter(Boolean);
+      if (extracted.length) {
+        state.quality.info.unshift({
+          title: "تم استخراج بيانات ترويسة Word",
+          detail: [metadata.school, metadata.subject, metadata.grade ? `الصفوف ${metadata.grade}` : "", metadata.academicYear].filter(Boolean).join(" · ")
+        });
+      }
+      for (const warning of sourceMeta.sourceWarnings || []) {
+        state.quality.warnings.unshift({ title: "تنبيه تطبيع بيانات الترويسة", detail: String(warning) });
+      }
     }
     renderReview();
     showPanel(2);
@@ -527,7 +538,7 @@
       dataset.rows,
       `${source.name} · ${dataset.name}`,
       null,
-      { ...(dataset.meta || {}), fileName: source.name, datasetName: dataset.name, datasetCount: source.datasets.length },
+      { ...(dataset.meta || {}), fileName: source.name, datasetName: dataset.name, datasetCount: source.datasets.length, sourceWarnings: source.warnings || [] },
       dataset.rawText || ""
     );
     state.pendingSource = null;
@@ -938,7 +949,7 @@
     if (!window.TaqareerReconciliation?.composePrimary) throw new Error("محرك التحقق من التحليل الذكي غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "1.0.5",
+      appVersion: "1.0.6",
       pipeline: {
         mode: "ai-primary-analysis-v1",
         instruction: "المحرك المحلي يحسب المؤشرات والرسوم فقط. يبني الذكاء الاصطناعي التشخيص والاستنتاجات والتدخلات من الأدلة، ثم تتحقق البوابة من المراجع قبل عرض التقرير."
@@ -1487,7 +1498,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v1.0.5.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v1.0.6.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }

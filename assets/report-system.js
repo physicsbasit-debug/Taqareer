@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.0.5";
+  const VERSION = "1.0.6";
 
   function escapeHtml(value) {
     return String(value ?? "").replace(/[&<>'"]/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" }[char]));
@@ -32,15 +32,20 @@
     return Array.from({length:pageCount},()=>{const size=base+(extra-->0?1:0);const result=items.slice(cursor,cursor+size);cursor+=size;return result;});
   }
   function extractMetadata(context){
-    const meta=context.sourceMeta||{};const strings=flattenStrings([meta.reportTitle,meta.metadata?.title,meta.metadata?.preamble,meta.title,context.sourceName]);const joined=strings.join(" | ");
+    const meta=context.sourceMeta||{}, structured=meta.metadata&&typeof meta.metadata==="object"?meta.metadata:{};
+    const strings=flattenStrings([meta.reportTitle,structured.title,structured.preamble,meta.title,context.sourceName]);const joined=strings.join(" | ");
     const capture=patterns=>{for(const pattern of patterns){const match=joined.match(pattern);if(match?.[1])return match[1].trim().replace(/[|،؛]+$/g,"");}return"";};
+    const pick=(...values)=>values.find(value=>String(value||"").trim())||"";
     return {
-      title: meta.reportTitle||meta.metadata?.title||meta.title||`تقرير ${context.type?.name||"التحليل التربوي"}`,
-      school:capture([/المدرسة\s*[:：-]?\s*([^|]{3,90})/i,/([^|]{3,70}الصفوف\s*\([^)]*\))/i,/مدرسة\s+([^|]{3,90})/i]),
-      subject:capture([/مادة\s+دراسية\s*\(\s*([^)]+?)\s*\)/i,/المادة\s*[:：-]?\s*\(?\s*([^)|]{2,45})/i,/لمادة\s+\(?\s*([^)|]{2,45})/i]),
-      grade:capture([/الصف\s*[:：-]?\s*([^|\-]{1,35})/i]),
-      academicYear:capture([/(20\d{2}\s*[\/]\s*20\d{2})/,/العام\s*الدراس[يى]\s*[:：-]?\s*([^|\-]{4,15})/i]),
-      period:capture([/امتحان\s+نهاية\s+الفصل\s+الدراس[يى]\s+(الأول|الاول|الثاني)/i,/الفصل\s*الدراس[يى]\s*[:：-]?\s*(الأول|الاول|الثاني)/i,/الفترة\s*[:：-]?\s*([^|\-]{2,35})/i]),
+      title:pick(meta.reportTitle,structured.title,meta.title,`تقرير ${context.type?.name||"التحليل التربوي"}`),
+      school:pick(structured.school,capture([/المدرسة\s*[:：-]?\s*([^|]{3,90})/i,/([^|]{3,70}الصفوف\s*\([^)]*\))/i,/مدرسة\s+([^|]{3,90})/i])),
+      subject:pick(structured.subject,capture([/مادة\s+دراسية\s*\(\s*([^)]+?)\s*\)/i,/المادة\s*[:：-]?\s*\(?\s*([^)|]{2,45})/i,/لمادة\s+\(?\s*([^)|]{2,45})/i])),
+      grade:pick(structured.grade,capture([/الصف\s*[:：-]?\s*([^|\-]{1,35})/i])),
+      academicYear:pick(structured.academicYear,capture([/(20\d{2}\s*[\/]\s*20\d{2})/,/العام\s*الدراس[يى]\s*[:：-]?\s*([^|\-]{4,15})/i])),
+      period:pick(structured.period,capture([/امتحان\s+نهاية\s+الفصل\s+الدراس[يى]\s+(الأول|الاول|الثاني)/i,/الفصل\s*الدراس[يى]\s*[:：-]?\s*(الأول|الاول|الثاني)/i,/الفترة\s*[:：-]?\s*([^|\-]{2,35})/i])),
+      region:pick(structured.region),
+      reportDate:pick(structured.reportDate),
+      schoolCode:pick(structured.schoolCode),
       sourceName:context.sourceName||"—"
     };
   }

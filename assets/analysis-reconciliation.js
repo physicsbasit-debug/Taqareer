@@ -1,8 +1,8 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.0.5";
-  const CONTRACT_VERSION = "6.4.0";
+  const VERSION = "1.0.6";
+  const CONTRACT_VERSION = "6.5.0";
 
   const SCORE_TYPES = new Set(["student_results", "single_subject", "assessment_component", "level_distribution", "cross_subject"]);
   const NUMERIC_SCORE_TYPES = new Set(["student_results", "single_subject", "assessment_component"]);
@@ -769,7 +769,7 @@
     } : null;
 
     result._reconciliation = {
-      contractVersion: "6.4.0",
+      contractVersion: "6.5.0",
       responseContractVersion: String(primaryResult.contractVersion || "unknown"),
       family: familyOf(result),
       aiPrimary: true,

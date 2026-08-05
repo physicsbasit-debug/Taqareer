@@ -81,7 +81,7 @@ function monitoring() {
 
 function primaryResult() {
   return {
-    contractVersion: '6.4.0',
+    contractVersion: '6.5.0',
     analysisProfile: {
       method: 'تحليل علاقات الإتقان والتوزيع وفرص التدخل من الأدلة الرقمية.',
       dataAdequacy: 'كافية لاتخاذ قرار وصفي متمايز وغير كافية لتسمية مهارة بعينها.',
@@ -194,7 +194,7 @@ test('edge primary runtime accepts balanced non-duplicative result in one reques
   assert.equal(status, 200);
   assert.equal(body.ok, true);
   assert.equal(runtime.getCalls(), 1);
-  assert.equal(body.result.contractVersion, '6.4.0');
+  assert.equal(body.result.contractVersion, '6.5.0');
   assert.equal(body.result.diagnosticSections.length, 3);
   assert.equal(body.result.findings.length, 3);
   assert.equal(body.result.interventions.length, 2);

@@ -17,6 +17,30 @@ export type AnalysisUnit =
 export type ConfidenceLevel = "high" | "medium" | "low";
 export type ReviewStatus = "pending" | "approved" | "edited" | "rejected";
 
+export interface DocumentSourceMetadata {
+  title?: string;
+  school?: string;
+  subject?: string;
+  grade?: string;
+  academicYear?: string;
+  academicYearRaw?: string;
+  reportDate?: string;
+  region?: string;
+  schoolCode?: string;
+  directorate?: string;
+  ministry?: string;
+  printedBy?: string;
+  aggregatedReport?: boolean;
+}
+
+export interface NarrativeDocumentContext {
+  aggregatedReport: boolean;
+  entityScope: "aggregated-multiple-visits-or-teachers" | "single-or-unspecified";
+  contradictionPolicy:
+    | "treat-opposing-statements-as-contextual-variation-unless-same-entity-and-visit"
+    | "standard";
+}
+
 export interface EvidenceReference {
   sourceId: string;
   fileName: string;

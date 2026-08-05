@@ -38,6 +38,9 @@ test('primary prompt separates diagnosis from decision and requires balanced cov
   assert.match(edge, /أخرج 2-3 interventions لفئات أو قضايا مختلفة/);
   assert.match(edge, /monitoringPlan من 3 مراحل بالضبط/);
   assert.match(edge, /إذا كانت البيانات درجات كلية فقط، لا تسمِّ مهارة أو مفهومًا بعينه/);
+  assert.match(edge, /استخدم بيانات الترويسة المنظمة داخل source\.meta\.metadata/);
+  assert.match(edge, /تباينًا سياقيًا يحتاج فصل السجلات حسب المعلم أو الزيارة/);
+  assert.match(edge, /لا تنسب جميع الإيجابيات والسلبيات إلى شخص واحد/);
   assert.match(edge, /const diagnosticSections = units\.map/);
   assert.match(edge, /analysis: item\.diagnosticAnalysis/);
   assert.match(edge, /statement: item\.decisionFinding/);

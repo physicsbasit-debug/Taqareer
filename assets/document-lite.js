@@ -107,6 +107,113 @@
     return pieces.join("").replace(/[ \t]+\n/g, "\n").replace(/[ \t]{2,}/g, " ").trim();
   }
 
+  function parseXmlDocument(xml, label = "مستند Word") {
+    const doc = new DOMParser().parseFromString(xml, "application/xml");
+    if (doc.querySelector("parsererror")) throw new Error(`تعذر فهم بنية ${label}.`);
+    return doc;
+  }
+
+  function storyTextTokens(xml) {
+    if (!xml) return [];
+    const doc = parseXmlDocument(xml, "ترويسة Word");
+    return elementsByLocalName(doc, "t")
+      .map(node => String(node.textContent || "").replace(/\s+/g, " ").trim())
+      .filter(Boolean);
+  }
+
+  function cleanMetadataValue(value) {
+    return String(value || "")
+      .replace(/[|]+/g, " ")
+      .replace(/\s*[:：]\s*$/g, "")
+      .replace(/\(\s*(\d{1,2})\s+([\d]{1,2})\s*\)/g, "($1-$2)")
+      .replace(/\(\s*(\d{1,2})\s*[|\-–—/]\s*(\d{1,2})\s*[|]?\s*\)/g, "($1-$2)")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function previousMetadataToken(tokens, labelIndex, predicate = null, maxLookback = 10) {
+    const labelWords = /^(?:رقم الصفحة|التاريخ|الساعة|المنطقة|المدرسة|رمز المدرسة|العام الدراسي|العام الدراسى|طبع بواسطة)$/;
+    for (let index = labelIndex - 1; index >= 0 && labelIndex - index <= maxLookback; index -= 1) {
+      const value = cleanMetadataValue(tokens[index]);
+      const normalized = normalize(value);
+      if (!value || /^[:：|]+$/.test(value) || labelWords.test(normalized)) continue;
+      if (!predicate || predicate(value, normalized)) return value;
+    }
+    return "";
+  }
+
+  function valueBeforeLabel(tokens, labelPattern, predicate = null) {
+    const index = tokens.findIndex(token => labelPattern.test(normalize(cleanMetadataValue(token))));
+    return index >= 0 ? previousMetadataToken(tokens, index, predicate) : "";
+  }
+
+  function phraseBeforeLabel(tokens, labelPattern, anchorPattern, maxLookback = 7) {
+    const labelIndex = tokens.findIndex(token => labelPattern.test(normalize(cleanMetadataValue(token))));
+    if (labelIndex < 0) return "";
+    const parts = [];
+    for (let index = labelIndex - 1; index >= 0 && labelIndex - index <= maxLookback; index -= 1) {
+      const raw = String(tokens[index] || "").trim();
+      const cleaned = cleanMetadataValue(raw);
+      if (!cleaned || /^[:：|]+$/.test(cleaned)) continue;
+      parts.unshift(cleaned);
+      if (anchorPattern.test(normalize(cleaned))) break;
+    }
+    return cleanMetadataValue(parts.join(" "));
+  }
+
+  function normalizeAcademicYear(value) {
+    const raw = cleanMetadataValue(value);
+    const match = raw.match(/(20\d{2})\s*[\/\-]\s*(20\d{2})/);
+    if (!match) return { value: raw, raw, normalized: false };
+    const first = Number(match[1]);
+    const second = Number(match[2]);
+    if (Math.abs(first - second) === 1 && first > second) {
+      return { value: `${second}/${first}`, raw, normalized: true };
+    }
+    return { value: `${first}/${second}`, raw, normalized: false };
+  }
+
+  function extractSubjectFromTitle(title) {
+    const clean = cleanMetadataValue(title);
+    const matches = [...clean.matchAll(/لمادة\s+([^|،؛]+?)(?=$|\s{2,})/g)];
+    const candidate = matches.at(-1)?.[1] || clean.match(/المادة\s*[:：-]?\s*([^|،؛]+)/)?.[1] || "";
+    return cleanMetadataValue(candidate).replace(/^مادة\s+/, "");
+  }
+
+  function extractGradeFromSchool(school) {
+    const match = cleanMetadataValue(school).match(/\((\d{1,2})\s*[\-–—/]\s*(\d{1,2})\)/);
+    return match ? `${match[1]}-${match[2]}` : "";
+  }
+
+  function parseWordMetadataTokens(headerTokens = [], footerTokens = []) {
+    const title = cleanMetadataValue(headerTokens.find(token => /التقرير التجميعي|الزيارة الإشرافية|الزياره الاشرافيه/.test(normalize(token))) || "");
+    const school = phraseBeforeLabel(headerTokens, /^المدرسه$/, /الصفوف|مدرسه|للبنين|للبنات|الباسط/);
+    const academic = normalizeAcademicYear(valueBeforeLabel(headerTokens, /^العام الدراس[يى]$/, value => /20\d{2}\s*[\/\-]\s*20\d{2}/.test(value)));
+    const reportDate = valueBeforeLabel(headerTokens, /^التاريخ$/, value => /20\d{2}\s*[\/\-]\s*\d{1,2}\s*[\/\-]\s*\d{1,2}/.test(value));
+    const metadata = {
+      title,
+      school,
+      subject: extractSubjectFromTitle(title),
+      grade: extractGradeFromSchool(school),
+      academicYear: academic.value,
+      academicYearRaw: academic.raw,
+      reportDate,
+      region: valueBeforeLabel(headerTokens, /^المنطقه$/, value => !/^\d+$/.test(value)),
+      schoolCode: valueBeforeLabel(headerTokens, /^رمز المدرسه/, value => /^\d{3,8}$/.test(value)),
+      directorate: cleanMetadataValue(headerTokens.find(token => /المديريه العامه للتعليم/.test(normalize(token))) || ""),
+      ministry: cleanMetadataValue(headerTokens.find(token => /وزاره التعليم/.test(normalize(token))) || ""),
+      printedBy: valueBeforeLabel(footerTokens, /^طبع بواسطه$/, value => !/^\d+$/.test(value)),
+      aggregatedReport: /التقرير التجميعي/.test(normalize(title))
+    };
+    const warnings = [];
+    if (academic.normalized) warnings.push(`تم توحيد اتجاه العام الدراسي من ${academic.raw} إلى ${academic.value} للعرض، مع الاحتفاظ بالقيمة الأصلية في بيانات المصدر.`);
+    return { metadata, warnings, headerTokens, footerTokens };
+  }
+
+  function parseWordMetadata(headerXmls = [], footerXmls = []) {
+    return parseWordMetadataTokens(headerXmls.flatMap(storyTextTokens), footerXmls.flatMap(storyTextTokens));
+  }
+
   function makeUniqueHeaders(values) {
     const counts = new Map();
     return values.map((value, index) => {
@@ -175,8 +282,7 @@
   }
 
   function parseWordBody(xml) {
-    const doc = new DOMParser().parseFromString(xml, "application/xml");
-    if (doc.querySelector("parsererror")) throw new Error("تعذر فهم بنية مستند Word.");
+    const doc = parseXmlDocument(xml, "مستند Word");
     const body = elementsByLocalName(doc, "body")[0];
     if (!body) throw new Error("لم يُعثر على محتوى مستند Word.");
 
@@ -209,18 +315,34 @@
     const zip = createZipReader(await file.arrayBuffer(), "ملف Word");
     const xml = await zip.readText("word/document.xml");
     if (!xml) throw new Error("لم يُعثر على المحتوى الداخلي المتوقع في ملف Word.");
+    const headerNames = zip.names.filter(name => /^word\/header\d+\.xml$/i.test(name)).sort();
+    const footerNames = zip.names.filter(name => /^word\/footer\d+\.xml$/i.test(name)).sort();
+    const headerXmls = (await Promise.all(headerNames.map(name => zip.readText(name)))).filter(Boolean);
+    const footerXmls = (await Promise.all(footerNames.map(name => zip.readText(name)))).filter(Boolean);
+    const metadataResult = parseWordMetadata(headerXmls, footerXmls);
     const { paragraphs, tables } = parseWordBody(xml);
+    const bodyTitle = paragraphs.find(text => /التقرير التجميعي|الزيارة الإشرافية|الزياره الاشرافيه/i.test(text)) || paragraphs.find(text => /تقرير|استماره|استمارة/i.test(text)) || "";
+    const reportTitle = metadataResult.metadata.title || bodyTitle;
+    const commonMeta = {
+      sourceType: "docx",
+      reportTitle,
+      metadata: { ...metadataResult.metadata, title: reportTitle },
+      documentContext: {
+        aggregatedReport: Boolean(metadataResult.metadata.aggregatedReport),
+        entityScope: metadataResult.metadata.aggregatedReport ? "aggregated-multiple-visits-or-teachers" : "single-or-unspecified",
+        contradictionPolicy: metadataResult.metadata.aggregatedReport ? "treat-opposing-statements-as-contextual-variation-unless-same-entity-and-visit" : "standard"
+      }
+    };
     const datasets = tables.map(table => ({
       id: `docx-table-${table.tableIndex}`,
       name: `جدول Word ${table.tableIndex}`,
       headers: table.headers,
       rows: table.rows,
-      meta: { sourceType: "docx", mode: "table", tableIndex: table.tableIndex, headerRow: table.headerRow }
+      meta: { ...commonMeta, mode: "table", tableIndex: table.tableIndex, headerRow: table.headerRow }
     }));
 
     if (paragraphs.length) {
       const narrativeRows = paragraphRows(paragraphs);
-      const reportTitle = paragraphs.find(text => /التقرير التجميعي|الزيارة الإشرافية|الزياره الاشرافيه/i.test(text)) || paragraphs.find(text => /تقرير|استماره|استمارة/i.test(text)) || "";
       const sectionCounts = narrativeRows.reduce((output, row) => {
         const section = row["القسم"] || "النص العام";
         output[section] = (output[section] || 0) + 1;
@@ -232,11 +354,11 @@
         headers: ["م", "القسم", "النص"],
         rows: narrativeRows,
         rawText: paragraphs.join("\n"),
-        meta: { sourceType: "docx", mode: "narrative", paragraphCount: paragraphs.length, reportTitle, sectionCounts }
+        meta: { ...commonMeta, mode: "narrative", paragraphCount: paragraphs.length, sectionCounts }
       });
     }
     if (!datasets.length) throw new Error("ملف Word لا يحتوي نصًا أو جدولًا واضحًا قابلًا للتحليل.");
-    return { name: file.name, kind: "docx", datasets, warnings: [] };
+    return { name: file.name, kind: "docx", datasets, warnings: metadataResult.warnings };
   }
 
   function arabicRatio(text) {
@@ -437,6 +559,6 @@
     renderPdfPages,
     imagePreview,
     constants: { PDF_MODULE_URL, PDF_WORKER_URL },
-    _test: { matrixToTable, groupPdfItemsIntoLines, paragraphRows, parseWordBody }
+    _test: { matrixToTable, groupPdfItemsIntoLines, paragraphRows, parseWordBody, parseWordMetadata, parseWordMetadataTokens, storyTextTokens }
   };
 })();

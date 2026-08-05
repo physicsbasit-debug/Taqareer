@@ -855,6 +855,39 @@
     return score;
   }
 
+  const NARRATIVE_VARIATION_RULES = [
+    { id: "cooperative-learning", label: "التعلم التعاوني", topic: /تعلم تعاوني|مجموعات|عمل جماعي/, positive: /فعال|فاعل|متميز|نجاح|تفاعل|يطبق|يوظف|تقسيم الطلبه/, gap: /لم يطبق|لم تطبق|غياب|ضعف|قلل من فرص|تضمين انشطه تعاونيه|تعزيز التعلم الجماعي/ },
+    { id: "digital-resources", label: "التقنيات والمصادر الرقمية", topic: /تقنيات|رقمي|منصه نور|سبوره تفاعليه|مصادر التعلم|عرض تفاعلي|فيديو/, positive: /متميز|فعال|فاعل|بمهاره|عزز|اثرى|يستفيد|استخدم/, gap: /اقتصار.*الكتاب|غياب.*تقني|ادخال ادوات رقميه|توسيع.*المصادر|تعزيز استخدام|الحاجه|ضعف/ },
+    { id: "planning", label: "التخطيط وتسلسل الأهداف", topic: /تخطيط|خطه فصليه|نواتج التعلم|اهداف|تحضير/, positive: /متميز|دقيق|متسلسل|تسلسل واضح|توافق تام|كامل/, gap: /فجوات|غياب التوثيق|ضعف الارتباط|اغلب دروسه|بحاجه|يحتاج/ },
+    { id: "classroom-management", label: "إدارة الصف وزمن التعلم", topic: /اداره الصف|اداره زمن|زمن التعلم|انضباط|دافعيه/, positive: /متميز|فعال|فاعل|بكفاءه|استثمار الوقت|انضباط الصف/, gap: /فاقد زمني|ضعف.*دافعيه|ضعف.*انضباط|تطبيق استراتيجيات مختلفه|بحاجه|يحتاج/ },
+    { id: "assessment", label: "التقويم والتغذية الراجعة", topic: /تقويم|تقييم|تغذيه راجعه|اختبارات قصيره|بطاقات ملاحظه/, positive: /متنوع|متميز|فعال|فاعل|فوريه|تراعي التمايز/, gap: /توسيع|تنويع|تعزيز استخدام|يستحسن|بحاجه|يحتاج|غياب/ }
+  ];
+
+  function detectContextualVariations(sentences, sourceMeta = {}) {
+    const aggregated = Boolean(sourceMeta?.documentContext?.aggregatedReport || sourceMeta?.metadata?.aggregatedReport);
+    const output = [];
+    for (const rule of NARRATIVE_VARIATION_RULES) {
+      const related = sentences.filter(item => rule.topic.test(normalize(item.text)));
+      const positive = related.filter(item => rule.positive.test(normalize(item.text)) && !rule.gap.test(normalize(item.text)));
+      const gaps = related.filter(item => rule.gap.test(normalize(item.text)) || item.section.includes("التطوير"));
+      if (!positive.length || !gaps.length) continue;
+      output.push({
+        id: rule.id,
+        theme: rule.label,
+        status: aggregated ? "تباين سياقي يحتاج فصل السجلات" : "تباين يحتاج تحققًا",
+        detail: aggregated
+          ? "ظهرت صياغات إيجابية وأخرى تطويرية في تقرير تجميعي؛ لا تعد تعارضًا مؤكدًا قبل فصلها حسب المعلم أو الزيارة."
+          : "ظهرت صياغات إيجابية وأخرى تطويرية في المجال نفسه؛ يلزم التحقق من وحدة الحالة والزمن قبل اعتماد التعارض.",
+        positiveRefs: [...new Set(positive.slice(0, 3).map(item => item.ref))],
+        developmentRefs: [...new Set(gaps.slice(0, 3).map(item => item.ref))],
+        samplePositive: positive[0].text,
+        sampleDevelopment: gaps[0].text
+      });
+      if (output.length >= 8) break;
+    }
+    return output;
+  }
+
   function extractNarrativeSections(context) {
     const rows = context.rows || [];
     const sectionHeader = findHeader(context.headers || [], ["القسم"]);
@@ -919,6 +952,7 @@
     const contradictions = [];
     if (noDevelopmentClaims.length && substantiveDevelopment.length) contradictions.push({ title: "تعارض داخل قسم التطوير", detail: "ظهر نص يفيد بعدم وجود جوانب تطوير، مع وجود بنود تطوير أخرى في القسم نفسه.", refs: [...noDevelopmentClaims.map(item => item.ref), ...substantiveDevelopment.slice(0, 3).map(item => item.ref)] });
     const dateAnomalies = allEntries.filter(item => /(?:19|20)\d{3,}|\b\d{1,2}\/\d{1,2}\/\d{5,}\b/.test(item.text)).map(item => ({ text: item.text, ref: item.ref }));
+    const contextualVariations = detectContextualVariations(themed, context.sourceMeta || {});
     const sectionCounts = Object.entries(sections).map(([id, entries]) => ({ id, label: SECTION_PATTERNS.find(item => item.id === id)?.label || "غير مصنف", count: entries.length }));
 
     const alignmentThemes = unique(themed.map(item => item.theme)).map(theme => {
@@ -935,7 +969,7 @@
     const alignedPct = developmentCoverage.length ? mean(developmentCoverage.map(item => item.alignment)) : 100;
 
     result.sections = sections; result.themes = themes; result.evidenceLevels = evidenceLevels; result.actionLevels = actionLevels;
-    result.duplicates = duplicates; result.contradictions = contradictions; result.dateAnomalies = dateAnomalies; result.alignmentThemes = alignmentThemes;
+    result.duplicates = duplicates; result.contradictions = contradictions; result.contextualVariations = contextualVariations; result.dateAnomalies = dateAnomalies; result.alignmentThemes = alignmentThemes;
     result.sentenceCount = themed.length; result.evidenceCount = evidenceLevels[0].count + evidenceLevels[1].count;
     result.evidenceRatio = pct(result.evidenceCount, themed.length); result.recommendationCount = recommendations.length;
     result.developmentCount = substantiveDevelopment.length; result.strengthCount = (sections.strengths || []).length;
@@ -949,7 +983,8 @@
       metric("actionablePct", "التوصيات القابلة للقياس", round(actionablePct), `${actionLevels[0].count} من ${recommendations.length}`, "percent"),
       metric("duplicationPct", "مؤشر التكرار", round(duplicationPct), `${duplicates.length} زوجًا متشابهًا`, "percent"),
       metric("alignmentPct", "اتساق التطوير مع الدعم والتوصيات", round(alignedPct), "متوسط تغطية المجالات", "percent"),
-      metric("contradictionCount", "التعارضات المكتشفة", contradictions.length, "تحتاج مراجعة", "integer"),
+      metric("contradictionCount", "التعارضات المؤكدة محليًا", contradictions.length, "تحتاج مراجعة", "integer"),
+      metric("contextVariationCount", "التباينات السياقية", contextualVariations.length, contextualVariations.length ? "تحتاج فصلًا حسب المعلم أو الزيارة" : "لم تكتشف", "integer"),
       metric("dateAnomalies", "مشكلات التواريخ", dateAnomalies.length, "قيمة غير منطقية", "integer")
     ];
     result.charts = [
@@ -1019,9 +1054,9 @@
       { stage: "زيارة أو متابعة لاحقة", timing: "بعد 2-4 أسابيع", measure: "أدلة تنفيذ التوصيات وأثرها", owner: "المشرف والمعلم" },
       { stage: "تحديث سجل النمو", timing: "بعد المتابعة", measure: "ما تحقق وما يحتاج تعديلًا", owner: "فريق المادة" }
     ];
-    result.limitations = ["تحليل اللغة يقدّر قوة الدليل من الصياغة ولا يثبت صحة الواقعة الميدانية.", "التكرار قد يكون ناتجًا عن دمج عدة زيارات أو معلمين، ويحتاج تفسيرًا سياقيًا.", "إخفاء الأسماء يحمي الخصوصية لكنه قد يمنع ربط بعض التوصيات بحالاتها الفردية."];
+    result.limitations = ["تحليل اللغة يقدّر قوة الدليل من الصياغة ولا يثبت صحة الواقعة الميدانية.", "التكرار والتباين قد يكونان ناتجين عن دمج عدة زيارات أو معلمين؛ لا يُعتمد التعارض إلا بعد ثبوت وحدة المعلم والزيارة والزمن.", "إخفاء الأسماء يحمي الخصوصية لكنه قد يمنع ربط بعض التوصيات بحالاتها الفردية."];
     result.executiveTitle = evidenceStrongPct >= 40 ? "تقرير غني جزئيًا بالأدلة ويحتاج ضبط الاتساق" : "التقرير يحتاج تقوية الأدلة وخطة المتابعة";
-    result.executiveSummary = `حلل النظام ${themed.length} جملة موزعة على ${sectionCounts.length} أقسام. بلغت الأدلة القوية ${round(evidenceStrongPct)}% والتوصيات القابلة للقياس ${round(actionablePct)}%، مع اتساق ${round(alignedPct)}% بين جوانب التطوير والدعم والتوصيات. اكتُشف ${duplicates.length} تكرارًا محتملًا و${contradictions.length} تعارضًا و${dateAnomalies.length} مشكلة تاريخية. يجب مراجعة هذه النقاط قبل اعتماد التقرير وبناء خطة النمو.`;
+    result.executiveSummary = `حلل النظام ${themed.length} جملة موزعة على ${sectionCounts.length} أقسام. بلغت الأدلة القوية ${round(evidenceStrongPct)}% والتوصيات القابلة للقياس ${round(actionablePct)}%، مع اتساق ${round(alignedPct)}% بين جوانب التطوير والدعم والتوصيات. اكتُشف ${duplicates.length} تكرارًا محتملًا و${contradictions.length} تعارضًا مؤكدًا محليًا و${contextualVariations.length} تباينًا سياقيًا يحتاج فصل السجلات و${dateAnomalies.length} مشكلة تاريخية. يجب مراجعة هذه النقاط قبل اعتماد التقرير وبناء خطة النمو.`;
     result.action = result.improvementPlan[0] ? { title: result.improvementPlan[0].action, text: `${result.improvementPlan[0].responsibleRole} - ${result.improvementPlan[0].timeframe}`, priority: result.improvementPlan[0].priority, indicator: result.improvementPlan[0].successIndicator } : result.action;
     result.evidenceMap = evidenceMapFromMetrics(result.metrics);
     return result;
