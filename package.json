@@ -1,23 +1,20 @@
 {
-  "name": "wathiq",
-  "version": "0.0.53",
+  "name": "taqareer",
+  "version": "1.0.0",
   "private": true,
-  "type": "module",
-  "description": "واثق: فهرستها حسب الصفحات والمقاطع، ثم إنشاء اختبارات علوم موثقة وفق المرجع العُماني وبأسلوب تقويمي مستلهم من كامبريدج، مع شجرة كتاب مكتملة تُدمج من الهياكل المعتمدة والعناوين المرقمة، وتنقل ثابت بين الوحدات يحفظ اختيارات الدروس، ومخطط جودة ينوّع المهارات والسياقات الحياتية والمثيرات، ورسومات SVG حتمية وصور ثنائية الأبعاد مولدة ومدققة ضمن نظام هجين منضبط، واعتماد وتصدير آمن، وتقليل استهلاك Gemini. يضيف الإصدار 0.0.53 محرك المرئيات التعليمية ثنائية الأبعاد Visual First: يولد المشاهد السياقية والكهرباء الساكنة الآمنة تلقائيًا بصور 2D مدققة علميًا، يعيد المحاولة بملاحظات المدقق، ويوسع التحقق البصري من الوضوح وجودة الطباعة والعلاقة العلمية. كما يحول الرسوم الحتمية الاحتياطية إلى رسوم 2D ملونة ومصقولة، ويحافظ على المخططات الحسابية والبيانات والأسهم تحت سيطرة واثق لضمان الدقة.",
+  "description": "تقارير: محرك تحليل الاستمارات التربوية القائم على الأدلة، مع ذكاء اصطناعي بوصفه المحلل الأساسي وحسابات محلية محمية.",
   "scripts": {
-    "build": "node scripts/build.mjs",
-    "dev": "node scripts/serve.mjs",
-    "test": "npm run build && node --test tests/*.test.mjs",
-    "check": "npm run test"
-  },
-  "devDependencies": {
-    "typescript": "^5.8.0"
+    "build": "node scripts/verify-static.cjs",
+    "test": "node --test tests/ai-primary-analysis.test.cjs tests/report-ai-primary.test.cjs && node tests/mastery-metrics.test.js && node tests/mastery-integration.test.js && node tests/deep-analysis.test.js && node tests/chart-completeness.test.js",
+    "check:syntax": "node scripts/check-syntax.cjs",
+    "check:static": "node scripts/verify-static.cjs",
+    "check": "npm run test && npm run check:syntax && npm run check:static"
   },
   "engines": {
     "node": ">=20"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/physicsbasit-debug/wathiq.git"
+    "url": "https://github.com/physicsbasit-debug/Taqareer.git"
   }
 }

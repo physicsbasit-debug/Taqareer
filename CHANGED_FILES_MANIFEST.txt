@@ -1,25 +1,35 @@
-Phase 1-C3 v0.9.7 — Automatic Silent AI Enhancement
+Phase 2-A — AI-Native Analytical Core — v1.0.0
 
-assets/app.js
-assets/ai-client.js
-assets/deep-analysis-orchestrator.js
-assets/runtime-config.js
-assets/deep-analysis.js
-assets/analysis-reconciliation.js
-assets/performance-pipeline.js
-assets/report-system.js
-index.html
-manifest.json
-supabase/functions/analyze-educational-form/index.ts
-supabase/functions/analyze-educational-form/README.md
-SUPABASE_FUNCTION_GEMINI_V0_12_0.txt
-tests/app-fast-background-contract.test.js
-tests/edge-fast-enhancement.test.js
-tests/automatic-silent-ai.test.js
-docs/AUTOMATIC_SILENT_AI.md
-docs/RELEASE_NOTES.md
-docs/AI_SETUP.md
-docs/TEST_REPORT.md
-README.md
-APPLY_INSTRUCTIONS.txt
-CHANGED_FILES_MANIFEST.txt
+MODIFIED
+- index.html
+- manifest.json
+- package.json
+- README.md
+- APPLY_INSTRUCTIONS.txt
+- GITHUB_UPLOAD_INSTRUCTIONS.md
+- CHANGED_FILES_MANIFEST.txt
+- assets/ai-client.js
+- assets/analysis-reconciliation.js
+- assets/app.js
+- assets/deep-analysis-orchestrator.js
+- assets/deep-analysis.js
+- assets/performance-pipeline.js
+- assets/report-system.js
+- supabase/functions/analyze-educational-form/index.ts
+- supabase/functions/analyze-educational-form/README.md
+
+ADDED
+- SUPABASE_FUNCTION_GEMINI_V0_13_0.txt
+- README_PHASE_2_A_AI_NATIVE.md
+- APPLY_PHASE_2_A.txt
+- TEST_REPORT_PHASE_2_A.md
+- scripts/check-syntax.cjs
+- scripts/verify-static.cjs
+- tests/ai-primary-analysis.test.cjs
+- tests/report-ai-primary.test.cjs
+- DELETE_OBSOLETE_FILES_PHASE_2_A.txt
+
+EDGE CONTRACT
+- Operation: analyze_primary
+- Contract: 6.0.0
+- Edge snapshot: V0.13.0

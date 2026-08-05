@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="تقارير - منصة التحليل التربوي الذكي للبيانات والاستمارات التعليمية" />
-  <title>تقارير | التحليل التربوي التكيفي العميق v0.9.7</title>
+  <title>تقارير | محرك التحليل التربوي بالذكاء الاصطناعي v1.0.0</title>
   <link rel="stylesheet" href="assets/styles.css" />
 </head>
 <body>
@@ -18,7 +18,7 @@
         </div>
       </a>
       <div class="top-actions">
-        <span class="version-badge">نسخة تشغيلية v0.9.7</span>
+        <span class="version-badge">نسخة تشغيلية v1.0.0</span>
         <span id="aiHeaderStatus" class="version-badge">الذكاء الاصطناعي غير مربوط</span>
         <button id="openAiSettingsTopBtn" class="ghost-button" type="button">إعداد الذكاء الاصطناعي</button>
         <button id="resetTopBtn" class="ghost-button" type="button">بدء تحليل جديد</button>
@@ -174,7 +174,7 @@
             <h4>مراجعة النص السردي</h4>
             <p class="muted-copy">عدّل أخطاء الاستخراج الواضحة فقط. سيُحلل النص كما يظهر هنا.</p>
             <textarea id="narrativeTextReview" class="narrative-review" rows="16" placeholder="النص المستخرج من التقرير..."></textarea>
-            <div class="soft-note">يبدأ التحليل بقواعد تربوية محلية، ثم يضيف قراءة ذكية عميقة عند تفعيل الاتصال. لا يعتمد حكمًا نهائيًا دون مراجعتك.</div>
+            <div class="soft-note">تُحسب المؤشرات والأدلة محليًا، ثم يبني الذكاء الاصطناعي التشخيص والاستنتاجات والتدخلات من الصفر. لا تُعرض قوالب محلية بديلة بوصفها تحليلًا عميقًا.</div>
           </article>
 
           <article class="card">
@@ -183,20 +183,20 @@
           </article>
 
           <article class="card ai-card">
-            <div class="card-heading-inline"><h4>طبقة الذكاء الاصطناعي</h4><span class="mode-pill">اختيارية مع رجوع محلي</span></div>
+            <div class="card-heading-inline"><h4>قلب التحليل الذكي</h4><span class="mode-pill">أساسي للتحليل التربوي</span></div>
             <p id="aiConnectionStatus">أدخل رابط وظيفة Supabase والمفتاح العام مرة واحدة، ثم يتولى التطبيق بقية العمل.</p>
             <div class="ai-controls">
-              <label class="switch-row"><input id="aiModeToggle" type="checkbox" checked /><span>استخدام التحليل الذكي عند توفر الاتصال</span></label>
+              <label class="switch-row"><input id="aiModeToggle" type="checkbox" checked /><span>تفعيل المحلل الذكي الأساسي</span></label>
               <label class="switch-row"><input id="maskPersonalDataInput" type="checkbox" checked /><span>إخفاء الأسماء والحقول الشخصية قبل الإرسال</span></label>
               <button id="openAiSettingsBtn" class="secondary compact" type="button">إعداد الاتصال واختباره</button>
             </div>
-            <ul class="clean-list"><li>قراءة الصور وملفات PDF الممسوحة.</li><li>فهم نوع النموذج وهدفه حتى عند ظهور نوع جديد.</li><li>ربط الاستنتاجات بمراجع صفوف أو أسطر أو مؤشرات.</li><li>اقتراح أدوات الجودة وخطة تحسين قابلة للقياس.</li></ul>
+            <ul class="clean-list"><li>قراءة الصور وملفات PDF الممسوحة.</li><li>فهم نوع النموذج وهدفه حتى عند ظهور نوع جديد.</li><li>ربط الاستنتاجات بمراجع صفوف أو أسطر أو مؤشرات.</li><li>إنشاء تشخيص واستنتاجات وفرضيات وتدخلات مخصصة للسياق.</li></ul>
             <div class="soft-note">لا يوضع مفتاح Gemini داخل GitHub Pages. يُحفظ في أسرار وظيفة Supabase، بينما يحتفظ المتصفح فقط برابط الوظيفة والمفتاح العام الآمن.</div>
           </article>
 
           <article class="card deterministic-card">
-            <h4>المحرك الحتمي</h4>
-            <ul class="clean-list"><li>العد والمتوسط والوسيط والمدى.</li><li>فحص الاكتمال والتكرار والقيم غير الصالحة.</li><li>نسبة الإتقان عند تأكيد الدرجة الكلية.</li><li>عدم اختراع قيم ناقصة أو استنتاج سببية من مجرد نمط.</li></ul>
+            <h4>محرك الحساب والأدلة</h4>
+            <ul class="clean-list"><li>العد والمتوسط والوسيط والمدى.</li><li>فحص الاكتمال والتكرار والقيم غير الصالحة.</li><li>نسبة الإتقان عند تأكيد الدرجة الكلية.</li><li>تزويد المحلل الذكي بأرقام ورسوم ومراجع أدلة لا يحق له تغييرها.</li></ul>
           </article>
         </div>
 
@@ -213,7 +213,7 @@
             <span class="eyebrow">الخطوة الرابعة</span>
             <h3>تحليل تربوي عميق قابل للمراجعة</h3>
           </div>
-          <span id="analysisModeChip" class="success-chip">تحليل محلي مكتمل</span>
+          <span id="analysisModeChip" class="success-chip">تحليل ذكاء اصطناعي موثق</span>
         </div>
 
         <div id="aiResultNotice" class="ai-result-notice hidden"></div>
@@ -286,13 +286,13 @@
         <div><span class="eyebrow light">شفافية التطوير</span><h3>ما يعمل الآن وما يأتي لاحقًا</h3></div>
         <div class="status-grid">
           <div><strong>يعمل فعليًا</strong><span>الجداول وWord وPDF النصي، والتحليل الرقمي والسردي، والقراءة البصرية والتحليل العميق عند ربط وظيفة الذكاء الاصطناعي.</span></div>
-          <div><strong>لا يتعطل عند الفشل</strong><span>إذا تعذر الاتصال، يحتفظ التطبيق بالتحليل المحلي ويكمل العمل تلقائيًا دون رسائل تقنية أو أزرار إعادة في صفحة النتائج.</span></div>
+          <div><strong>لا يزوّر العمق</strong><span>إذا تعذر التحليل الذكي، يعرض التطبيق الخطأ بوضوح ولا يستبدله بقوالب محلية منمقة توحي بتحليل لم يحدث.</span></div>
           <div><strong>القادم</strong><span>حفظ المشاريع، المقارنات الزمنية، تصدير Word، اعتماد الاستنتاجات، وحسابات المستخدمين والصلاحيات.</span></div>
         </div>
       </section>
     </main>
 
-    <footer><span>تقارير · v0.9.7</span><span>ذكاء اصطناعي قوي، وحسابات لا تفاوض الواقع.</span></footer>
+    <footer><span>تقارير · v1.0.0</span><span>الذكاء الاصطناعي يحلل، والأرقام لا تفاوض الواقع.</span></footer>
   </div>
 
   <dialog id="sheetDialog">

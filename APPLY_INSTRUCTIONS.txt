@@ -1,8 +1,10 @@
-تقارير v0.9.7 — Automatic Silent AI Enhancement
+تقارير v1.0.0 — Phase 2-A
 
-1) فك حزمة changed_files_only.
-2) ارفع جميع محتوياتها إلى جذر مستودع Taqareer ووافق على الاستبدال.
-3) لا تعدّل .github أو .nojekyll.
-4) افتح Supabase وانشر محتوى SUPABASE_FUNCTION_GEMINI_V0_12_0.txt داخل الوظيفة الحالية analyze-educational-form.
-5) نفّذ Ctrl + Shift + R.
-6) شغّل تحليلًا جديدًا. التحسين الخارجي يبدأ تلقائيًا ولا يظهر كخطوة مستقلة.
+1. ارفع ملفات الحزمة فوق المستودع مع الحفاظ على المسارات.
+2. استبدل وظيفة Supabase analyze-educational-form بمحتوى SUPABASE_FUNCTION_GEMINI_V0_13_0.txt.
+3. أعد نشر الوظيفة.
+4. لا SQL ولا أسرار جديدة.
+5. حدّث الموقع تحديثًا قويًا.
+6. نفّذ اختبار قبول حي بملف درجات وملف سردي.
+
+للمستودع الأنظف استخدم حزمة full_clean_backup بدل changed_files_only؛ فهي تزيل بقايا مشروع واثق والاختبارات التاريخية التي لا تخص المسار الحالي.
