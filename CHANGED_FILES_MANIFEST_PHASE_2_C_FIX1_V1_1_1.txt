@@ -1,0 +1,21 @@
+Phase 2-C Fix 1 v1.1.1 - الملفات الجديدة أو المعدلة
+
+assets/document-lite.js
+assets/report-system.js
+assets/deep-analysis.js
+assets/deep-analysis-orchestrator.js
+assets/analysis-reconciliation.js
+assets/app.js
+tests/multi-visit-pdf.test.cjs
+tests/report-ai-primary.test.cjs
+scripts/verify-static.cjs
+index.html
+package.json
+manifest.json
+README.md
+GITHUB_UPLOAD_INSTRUCTIONS.md
+docs/RELEASE_NOTES.md
+README_PHASE_2_C_FIX1_REPORT_LAYOUT.md
+APPLY_PHASE_2_C_FIX1_V1_1_1.txt
+TEST_REPORT_PHASE_2_C_FIX1_V1_1_1.md
+CHANGED_FILES_MANIFEST_PHASE_2_C_FIX1_V1_1_1.txt

@@ -676,6 +676,35 @@
     };
   }
 
+  const SUPERVISION_GRADE_NUMBERS = Object.freeze({
+    "الاول": 1, "الثاني": 2, "الثالث": 3, "الرابع": 4, "الخامس": 5, "السادس": 6,
+    "السابع": 7, "الثامن": 8, "التاسع": 9, "العاشر": 10, "الحادي عشر": 11, "الثاني عشر": 12,
+  });
+
+  function supervisionGradeNumber(value) {
+    const text = normalizeDigits(normalize(value));
+    if (/^\d{1,2}$/.test(text)) {
+      const numeric = Number(text);
+      return numeric >= 1 && numeric <= 12 ? numeric : null;
+    }
+    for (const [label, number] of Object.entries(SUPERVISION_GRADE_NUMBERS)) {
+      if (text.includes(label)) return number;
+    }
+    return null;
+  }
+
+  function summarizeSupervisionGrades(visits) {
+    const raw = [...new Set(visits.map(visit => cleanMetadataValue(visit.grade)).filter(Boolean))];
+    if (!raw.length) return "";
+    const numbers = [...new Set(raw.map(supervisionGradeNumber).filter(Number.isInteger))].sort((a, b) => a - b);
+    if (numbers.length === raw.length) {
+      if (numbers.length === 1) return String(numbers[0]);
+      const contiguous = numbers.every((number, index) => index === 0 || number === numbers[index - 1] + 1);
+      return contiguous ? `${numbers[0]}-${numbers[numbers.length - 1]}` : `متعدد: ${numbers.join("، ")}`;
+    }
+    return raw.length === 1 ? raw[0] : `متعدد: ${raw.join("، ")}`;
+  }
+
   function supervisionVisitRows(visits) {
     return visits.map((visit, index) => {
       const row = {
@@ -719,6 +748,7 @@
     const metadata = extractPdfCommonMetadata(pages);
     const subjects = [...new Set(visits.map(visit => cleanMetadataValue(visit.subject)).filter(Boolean))];
     metadata.subject = subjects.length === 1 ? subjects[0] : subjects.length ? `مواد متعددة: ${subjects.join("، ")}` : "";
+    metadata.grade = summarizeSupervisionGrades(visits);
     metadata.visitCount = visits.length;
     const warnings = [];
     const expectedRatings = visits.length * SUPERVISION_VISIT_INDICATORS.length;

@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.1.0";
+  const VERSION = "1.1.1";
   const CONTRACT_VERSION = "6.6.0";
 
   const SCORE_TYPES = new Set(["student_results", "single_subject", "assessment_component", "level_distribution", "cross_subject"]);

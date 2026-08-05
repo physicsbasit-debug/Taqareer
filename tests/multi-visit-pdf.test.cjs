@@ -125,3 +125,59 @@ test('frontend and Edge contract explicitly protect multi-visit context and pers
   assert.match(edge, /المقياس معكوس: 1 متميز و5 يحتاج إلى تدخل/);
   assert.match(edge, /داخل نفس الزيارة|بالزيارة نفسها|الزيارة نفسها/);
 });
+
+test('multi-visit metadata summarizes contiguous grades for the official report header', () => {
+  const docs = loadDocuments();
+  const pages = [
+    visitPage(1, 'المعلم الأول', '16140001', '43', '2026/03/05', 'الفيزياء', 'الثامن', 'الصوت', Array(13).fill(1)),
+    narrativePage(2, 'لا يوجد'),
+    visitPage(3, 'المعلم الثاني', '16140002', '44', '2026/04/16', 'العلوم', 'التاسع', 'الشحنات', Array(13).fill(1)),
+    narrativePage(4, 'لا يوجد'),
+    visitPage(5, 'المعلم الثالث', '16140003', '45', '2026/04/17', 'الأحياء', 'العاشر', 'النتح', Array(13).fill(1)),
+    narrativePage(6, 'لا يوجد'),
+  ];
+  const parsed = docs._test.detectMultiVisitSupervisionPdf(pages);
+  assert.ok(parsed);
+  assert.equal(parsed.dataset.meta.metadata.grade, '8-10');
+});
+
+test('multi-visit report moves all four charts to print-safe analytical pages and keeps every bar row', () => {
+  const docs = loadDocuments();
+  const pages = [
+    visitPage(1, 'المعلم الأول', '16140001', '43', '2026/03/05', 'الفيزياء', 'الثامن', 'الصوت', [1,2,1,2,1,1,2,1,1,1,2,1,1]),
+    narrativePage(2, 'لا يوجد'),
+    visitPage(3, 'المعلم الثاني', '16140002', '44', '2026/04/16', 'العلوم', 'التاسع', 'الشحنات', [1,2,1,1,2,1,1,2,1,1,1,2,1]),
+    narrativePage(4, 'لا يوجد'),
+    visitPage(5, 'المعلم الثالث', '16140003', '45', '2026/04/17', 'الأحياء', 'العاشر', 'النتح', [1,1,2,1,1,2,1,1,1,2,1,2,1]),
+    narrativePage(6, 'لا يوجد'),
+  ];
+  const parsed = docs._test.detectMultiVisitSupervisionPdf(pages);
+  const sandbox = { window: {}, console, Intl, Date, Math, Set, Map, structuredClone, Array, Object, String, Number, RegExp, JSON };
+  vm.createContext(sandbox);
+  for (const file of ['mastery-metrics.js', 'deep-analysis.js', 'report-system.js']) {
+    vm.runInContext(fs.readFileSync(path.join(root, 'assets', file), 'utf8'), sandbox, { filename: file });
+  }
+  const analysis = sandbox.window.TaqareerDeepAnalytics.analyzeEvidence({
+    typeId: 'supervision_multi_visit',
+    headers: parsed.dataset.headers,
+    rows: parsed.dataset.rows,
+    sourceMeta: parsed.dataset.meta,
+  });
+  analysis._reconciliation = { aiApplied: true };
+  analysis.executiveTitle = 'اختبار تقرير الزيارات المتعددة';
+  analysis.executiveSummary = 'اختبار توزيع الرسوم بعيدًا عن الصفحة التنفيذية المكتظة.';
+  const html = sandbox.window.TaqareerReports.buildReportHtml({
+    analysis,
+    type: { id: 'supervision_multi_visit', name: 'زيارات إشرافية متعددة' },
+    sourceName: 'multi.pdf',
+    sourceMeta: parsed.dataset.meta,
+  });
+  const sheets = html.split('<section class="report-sheet">').slice(1);
+  assert.equal(sandbox.window.TaqareerReports.VERSION, '1.1.1');
+  assert.doesNotMatch(sheets[0], /supervision-level-distribution|supervision-indicator-performance/);
+  assert.match(sheets.slice(1).join('\n'), /supervision-level-distribution/);
+  assert.match(sheets.slice(1).join('\n'), /supervision-indicator-performance/);
+  assert.match(html, /الصف \/ الفئة<\/span><strong>8-10<\/strong>/);
+  assert.equal((html.match(/class="bar-row"/g) || []).length, 5 + 13 + 3 + 3);
+  assert.match(html, /chart-card chart-wide chart-dense[^>]*data-chart-id="supervision-indicator-performance"/);
+});
