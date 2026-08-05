@@ -9,14 +9,28 @@ const root = path.resolve(__dirname, '..');
 const edgePath = path.join(root, 'supabase/functions/analyze-educational-form/index.ts');
 
 function payload() {
+  const groups = [
+    { id: 'mastery', label: 'حققوا حد الإتقان', count: 48, percentage: 17.9 },
+    { id: 'near_mastery', label: 'قريبون من الإتقان', count: 7, percentage: 2.6 },
+    { id: 'moderate_gap', label: 'دون الإتقان بفجوة متوسطة', count: 28, percentage: 10.4 },
+    { id: 'deep_gap', label: 'دون الإتقان بفجوة عميقة', count: 185, percentage: 69 },
+  ];
   return {
     locale: 'ar-OM',
     recognizedType: { id: 'assessment_component', nameAr: 'درجات مكوّن تقويمي' },
     availableEvidenceRefs: [
-      'metric:masteryPct', 'metric:deepGapCount', 'metric:nearMasteryCount',
+      'metric:n', 'metric:masteryCount', 'metric:masteryPct', 'metric:deepGapCount', 'metric:nearMasteryCount', 'metric:moderateGapCount',
       'metric:sd', 'metric:cv', 'metric:skewness', 'metric:mean', 'metric:median',
     ],
-    evidenceAnalysis: { metrics: [], charts: [], evidenceCatalog: [] },
+    evidenceAnalysis: {
+      metrics: [
+        { id: 'n', value: 268 }, { id: 'masteryCount', value: 48 }, { id: 'masteryPct', value: 17.9 },
+        { id: 'nearMasteryCount', value: 7 }, { id: 'moderateGapCount', value: 28 }, { id: 'deepGapCount', value: 185 },
+      ],
+      charts: [{ id: 'intervention-segments', data: groups }],
+      interventionMathContext: { totalCount: 268, baselineMasteryCount: 48, baselineMasteryRate: 17.9, groups },
+      evidenceCatalog: [],
+    },
     data: { mode: 'table', rowCount: 268, sentRowCount: 24, sampleRows: [] },
   };
 }
@@ -38,16 +52,18 @@ function unit(index, title, analysis, decision, refs, severity = 'high') {
   };
 }
 
-function intervention(priority, issue, targetGroup, refs) {
+function intervention(priority, issue, targetGroup, refs, options = {}) {
   return {
     priority,
     issue,
     targetGroup,
+    targetGroupIds: options.targetGroupIds || [],
     action: `تنفيذ مسار تعليمي مخصص لـ${targetGroup} يبدأ بقياس تشخيصي قصير ثم أنشطة متدرجة.` ,
     implementationSteps: ['تحديد خط الأساس', 'تنفيذ أنشطة متدرجة', 'إعادة قياس قصيرة'],
     responsibleRole: 'معلم المادة وفريقها',
     timeframe: 'ثلاثة أسابيع',
-    successIndicator: 'تحسن الفئة المستهدفة بمقدار قابل للقياس مقارنة بخط الأساس',
+    successIndicator: 'مسودة نصية لا يعتمدها الخادم في ملفات الدرجات',
+    successMetric: options.successMetric || { mode: 'custom', targetValue: 0, targetSegmentId: '' },
     monitoringMethod: 'قياس أسبوعي مختصر ومقارنة توزيع الفئات',
     contingency: 'تعديل شدة التدخل أو إحالة الحالات غير المستجيبة إلى دعم فردي',
     resources: ['مهام تشخيصية قصيرة'],
@@ -65,7 +81,7 @@ function monitoring() {
 
 function primaryResult() {
   return {
-    contractVersion: '6.3.0',
+    contractVersion: '6.4.0',
     analysisProfile: {
       method: 'تحليل علاقات الإتقان والتوزيع وفرص التدخل من الأدلة الرقمية.',
       dataAdequacy: 'كافية لاتخاذ قرار وصفي متمايز وغير كافية لتسمية مهارة بعينها.',
@@ -86,8 +102,14 @@ function primaryResult() {
       unit(3, 'فرصة الرفع السريع', 'وجود فئة قريبة من حد الإتقان يوفر فرصة لتحسن سريع بتدخل قصير، بالتوازي مع مسار أطول للفجوة العميقة حتى لا تستهلك مجموعة واحدة جميع الموارد.', 'اعتماد مسارين متزامنين يحقق أثرًا سريعًا دون إهمال الحالات الأعمق.', ['metric:nearMasteryCount', 'metric:deepGapCount'], 'medium'),
     ],
     interventions: [
-      intervention('عاجلة جدًا', 'الفجوة العميقة', 'الطلبة في الفجوة العميقة', ['metric:deepGapCount', 'metric:masteryPct']),
-      intervention('عالية', 'الاقتراب من الإتقان', 'الطلبة القريبون من حد الإتقان', ['metric:nearMasteryCount', 'metric:masteryPct']),
+      intervention('عاجلة جدًا', 'الفجوة العميقة', 'الطلبة في الفجوة العميقة', ['metric:deepGapCount', 'metric:masteryPct'], {
+        targetGroupIds: ['deep_gap'],
+        successMetric: { mode: 'segment_reduction', targetValue: 20, targetSegmentId: 'deep_gap' },
+      }),
+      intervention('عالية', 'الاقتراب من الإتقان', 'الطلبة القريبون وذوو الفجوة المتوسطة', ['metric:nearMasteryCount', 'metric:moderateGapCount', 'metric:masteryPct'], {
+        targetGroupIds: ['near_mastery', 'moderate_gap'],
+        successMetric: { mode: 'mastery_gain', targetValue: 25, targetSegmentId: '' },
+      }),
     ],
     methodChecks: [
       { name: 'فحص التشتت النسبي', reason: 'يحدد ما إذا كان المتوسط يمثل الصف أو يخفي مجموعات مختلفة.', interpretation: 'ارتفاع التشتت يدعم تقسيم التدخل بدل تعميم إجراء واحد.', requiredData: [], evidenceRefs: ['metric:sd', 'metric:cv'] },
@@ -156,11 +178,11 @@ async function createRuntime(responses) {
   return { handler, getCalls: () => calls };
 }
 
-async function invoke(runtime) {
+async function invoke(runtime, customPayload = payload()) {
   const request = new Request('https://edge.test/analyze', {
     method: 'POST',
     headers: { 'content-type': 'application/json', origin: 'https://example.test' },
-    body: JSON.stringify({ operation: 'analyze_primary', payload: payload() }),
+    body: JSON.stringify({ operation: 'analyze_primary', payload: customPayload }),
   });
   const response = await runtime.handler(request);
   return { status: response.status, body: await response.json() };
@@ -172,7 +194,7 @@ test('edge primary runtime accepts balanced non-duplicative result in one reques
   assert.equal(status, 200);
   assert.equal(body.ok, true);
   assert.equal(runtime.getCalls(), 1);
-  assert.equal(body.result.contractVersion, '6.3.0');
+  assert.equal(body.result.contractVersion, '6.4.0');
   assert.equal(body.result.diagnosticSections.length, 3);
   assert.equal(body.result.findings.length, 3);
   assert.equal(body.result.interventions.length, 2);
@@ -181,6 +203,54 @@ test('edge primary runtime accepts balanced non-duplicative result in one reques
   assert.notEqual(body.result.diagnosticSections[0].analysis, body.result.findings[0].statement);
   assert.equal(body.serverTiming.rescueUsed, false);
   assert.equal(body.serverTiming.distinctTargetGroups, 2);
+  assert.equal(body.result.interventions[1].numericGuard.applied, true);
+  assert.equal(body.result.interventions[1].numericGuard.mode, 'mastery_gain');
+  assert.equal(body.result.interventions[1].numericGuard.eligibleCount, 35);
+  assert.equal(body.result.interventions[1].numericGuard.targetCount, 67);
+  assert.equal(body.result.interventions[1].numericGuard.feasibleGain, 19);
+  assert.match(body.result.interventions[1].successIndicator, /من 48 إلى 67/);
+});
+
+test('edge numeric guard clamps an impossible mastery target to the selected groups capacity', async () => {
+  const impossible = primaryResult();
+  impossible.interventions[1].targetGroupIds = ['mastery', 'near_mastery'];
+  impossible.interventions[1].successMetric = { mode: 'mastery_gain', targetValue: 25, targetSegmentId: '' };
+  const runtime = await createRuntime([geminiRaw(impossible)]);
+  const { status, body } = await invoke(runtime);
+  assert.equal(status, 200);
+  assert.equal(body.ok, true);
+  const guarded = body.result.interventions[1];
+  assert.deepEqual(guarded.targetGroupIds, ['near_mastery']);
+  assert.equal(guarded.numericGuard.eligibleCount, 7);
+  assert.equal(guarded.numericGuard.requiredGain, 19);
+  assert.equal(guarded.numericGuard.feasibleGain, 7);
+  assert.equal(guarded.numericGuard.targetCount, 55);
+  assert.equal(guarded.numericGuard.targetRate, 20.5);
+  assert.equal(guarded.numericGuard.adjusted, true);
+  assert.match(guarded.successIndicator, /من 48 إلى 55/);
+  assert.doesNotMatch(guarded.successIndicator, /25%/);
+});
+
+test('edge preserves cross-subject analysis when score segmentation math is not applicable', async () => {
+  const result = primaryResult();
+  result.interventions = result.interventions.map((item, index) => ({
+    ...item,
+    targetGroup: index === 0 ? 'طلبة المادة الأضعف' : 'الطلبة المتعثرون في أكثر من مادة',
+    targetGroupIds: [],
+    successIndicator: index === 0 ? 'تحسن متوسط المادة في القياس اللاحق' : 'تحسن مادتين على الأقل لكل حالة',
+    successMetric: { mode: 'custom', targetValue: 0, targetSegmentId: '' },
+  }));
+  const crossPayload = {
+    ...payload(),
+    recognizedType: { id: 'cross_subject', nameAr: 'مقارنة مواد متعددة' },
+    evidenceAnalysis: { metrics: [], charts: [], evidenceCatalog: [] },
+  };
+  const runtime = await createRuntime([geminiRaw(result)]);
+  const { status, body } = await invoke(runtime, crossPayload);
+  assert.equal(status, 200);
+  assert.equal(body.ok, true);
+  assert.equal(body.result.interventions.length, 2);
+  assert.equal(body.result.interventions[0].numericGuard, undefined);
 });
 
 test('edge runtime rescues an incomplete first response without returning to local templates', async () => {

@@ -381,7 +381,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "1.0.4",
+      appVersion: "1.0.5",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -907,6 +907,17 @@
       metrics,
       charts,
       calculationLimitations: (analysis.limitations || []).slice(0, 12),
+      interventionMathContext: Array.isArray(analysis.segments) && analysis.segments.length ? {
+        totalCount: Number(analysis.n || 0),
+        baselineMasteryCount: Number(analysis.masteryCount || 0),
+        baselineMasteryRate: Number(analysis.masteryPctDisplay ?? analysis.masteryPct ?? 0),
+        groups: analysis.segments.slice(0, 4).map(item => ({
+          id: String(item.id || ""),
+          label: String(item.label || ""),
+          count: Number(item.count || 0),
+          percentage: Number(item.percentage || 0)
+        }))
+      } : null,
       evidenceCatalog: Object.entries(analysis.evidenceMap || {}).slice(0, 80).map(([ref, text]) => ({ ref, text }))
     };
   }
@@ -927,7 +938,7 @@
     if (!window.TaqareerReconciliation?.composePrimary) throw new Error("محرك التحقق من التحليل الذكي غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "1.0.4",
+      appVersion: "1.0.5",
       pipeline: {
         mode: "ai-primary-analysis-v1",
         instruction: "المحرك المحلي يحسب المؤشرات والرسوم فقط. يبني الذكاء الاصطناعي التشخيص والاستنتاجات والتدخلات من الأدلة، ثم تتحقق البوابة من المراجع قبل عرض التقرير."
@@ -1476,7 +1487,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v1.0.4.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v1.0.5.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }

@@ -314,6 +314,9 @@
       ...(Number.isFinite(masteryPct) ? [
         metric("masteryCutoffScore", "درجة حد الإتقان", masteryAnalysis.summary.masteryCutoffScore, `${thresholdPct}% من ${maxScore}`),
         metric("masteryCount", "حققوا حد الإتقان", masteryCount, `من أصل ${n}`, "integer"),
+        metric("nearMasteryCount", "القريبون من الإتقان", segments.find(item => item.id === "near_mastery")?.count || 0, "عدد الطلبة داخل هامش 5 نقاط مئوية دون الحد", "integer"),
+        metric("moderateGapCount", "الفجوة المتوسطة", segments.find(item => item.id === "moderate_gap")?.count || 0, "عدد الطلبة بين هامش القريب وحد الفجوة العميقة", "integer"),
+        metric("deepGapCount", "الفجوة العميقة", segments.find(item => item.id === "deep_gap")?.count || 0, "عدد الطلبة الأبعد من الحد بـ15 نقطة مئوية أو أكثر", "integer"),
         metric("nonMasteryCount", "لم يحققوا الإتقان", masteryAnalysis.summary.nonMasteryCount, `من أصل ${n}`, "integer"),
         metric("masteryPct", "نسبة انتشار الإتقان", masteryPctDisplay, `القيمة الخام ${round(masteryPct, 4)}%`, "percent"),
         metric("masteryJudgement", "الحكم وفق سلم بوصلة الإتقان", masteryJudgement.label, `بني على ${round(masteryPct, 4)}%`),

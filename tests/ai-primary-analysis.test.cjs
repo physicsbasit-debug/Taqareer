@@ -22,10 +22,48 @@ function loadBrowserScript(relativePath, extra = {}) {
   return window;
 }
 
+function localScoreEvidence() {
+  return {
+    typeId: 'single_subject',
+    n: 100,
+    masteryCount: 42,
+    masteryPctDisplay: 42,
+    segments: [
+      { id: 'mastery', label: 'حققوا حد الإتقان', count: 42, percentage: 42 },
+      { id: 'near_mastery', label: 'قريبون من الإتقان', count: 8, percentage: 8 },
+      { id: 'moderate_gap', label: 'دون الإتقان بفجوة متوسطة', count: 12, percentage: 12 },
+      { id: 'deep_gap', label: 'دون الإتقان بفجوة عميقة', count: 38, percentage: 38 },
+    ],
+    metrics: [
+      { id: 'mean', label: 'المتوسط', value: 61 },
+      { id: 'masteryPct', label: 'الإتقان', value: 42 },
+      { id: 'masteryCount', label: 'المتقنون', value: 42 },
+      { id: 'nearMasteryCount', label: 'القريبون', value: 8 },
+      { id: 'moderateGapCount', label: 'الفجوة المتوسطة', value: 12 },
+      { id: 'deepGapCount', label: 'الفجوة العميقة', value: 38 },
+      { id: 'sd', label: 'التشتت', value: 18 },
+    ],
+    charts: [{ id: 'intervention-segments', type: 'bar', title: 'فئات التدخل', data: [] }],
+    evidenceMap: {
+      'metric:mean': 'المتوسط: 61',
+      'metric:masteryPct': 'الإتقان: 42%',
+      'metric:masteryCount': 'المتقنون: 42',
+      'metric:nearMasteryCount': 'القريبون: 8',
+      'metric:moderateGapCount': 'الفجوة المتوسطة: 12',
+      'metric:deepGapCount': 'الفجوة العميقة: 38',
+      'metric:sd': 'التشتت: 18',
+      'metric:n': 'السجلات: 100',
+    },
+    limitations: [],
+  };
+}
+
+const scoreRefs = ['metric:mean', 'metric:masteryPct', 'metric:masteryCount', 'metric:nearMasteryCount', 'metric:moderateGapCount', 'metric:deepGapCount', 'metric:sd', 'metric:n'];
+
 function primaryFixture() {
   const refs = ['metric:mean', 'metric:masteryPct', 'metric:sd'];
   return {
-    contractVersion: '6.3.0',
+    contractVersion: '6.4.0',
     analysisProfile: {
       method: 'تحليل علاقات الأداء والأولوية من الأدلة الرقمية',
       dataAdequacy: 'كافية للقراءة الوصفية، وغير كافية لإثبات السبب',
@@ -53,8 +91,20 @@ function primaryFixture() {
     ],
     qualityTools: [{ id: 'q1', name: 'فحص التشتت', reason: 'يكشف أثر تفاوت الدرجات على قرار التمايز.', interpretation: 'ارتفاع التشتت يستدعي تدخلات مختلفة الشدة بدل مسار واحد.', requiredData: [], evidenceRefs: ['metric:sd'] }],
     interventions: [
-      { id: 'i1', priority: 'عالية', issue: 'فجوة الإتقان', targetGroup: 'الطلبة دون الحد', action: 'تدخل متدرج مبني على تشخيص قصير.', implementationSteps: ['تشخيص', 'تجميع مرن', 'إعادة قياس'], responsibleRole: 'معلم المادة', timeframe: 'أسبوعان', successIndicator: 'ارتفاع نسبة الإتقان في القياس اللاحق', monitoringMethod: 'مقارنة قبلي وبعدي', contingency: 'تدخل فردي للحالات غير المتحسنة', resources: ['مهام قصيرة'], evidenceRefs: ['metric:masteryPct'] },
-      { id: 'i2', priority: 'متوسطة', issue: 'التفاوت', targetGroup: 'الفئات المتباينة', action: 'تنويع مستوى المهام.', implementationSteps: ['تصنيف الفئات', 'مهام متدرجة'], responsibleRole: 'معلم المادة', timeframe: 'ثلاثة أسابيع', successIndicator: 'انخفاض التفاوت مع تحسن المتوسط', monitoringMethod: 'متابعة التوزيع', contingency: 'مراجعة صعوبة الأدوات', resources: [], evidenceRefs: ['metric:sd'] },
+      {
+        id: 'i1', priority: 'عالية', issue: 'الفجوة العميقة', targetGroup: 'مسودة يتجاهلها العميل', targetGroupIds: ['deep_gap'],
+        action: 'تدخل متدرج مبني على تشخيص قصير.', implementationSteps: ['تشخيص', 'تجميع مرن', 'إعادة قياس'], responsibleRole: 'معلم المادة', timeframe: 'أسبوعان',
+        successIndicator: 'مسودة يتجاهلها العميل', successMetric: { mode: 'segment_reduction', targetValue: 20, targetSegmentId: 'deep_gap' },
+        numericGuard: { applied: true, mode: 'segment_reduction', totalCount: 100, segmentId: 'deep_gap', baselineSegmentCount: 38, reductionCount: 8, targetSegmentCount: 30, targetReductionRate: 21.1, adjusted: false, adjustmentReasons: [] },
+        monitoringMethod: 'مقارنة قبلي وبعدي', contingency: 'تدخل فردي للحالات غير المتحسنة', resources: ['مهام قصيرة'], evidenceRefs: ['metric:masteryPct', 'metric:deepGapCount', 'metric:n']
+      },
+      {
+        id: 'i2', priority: 'متوسطة', issue: 'فرصة رفع الإتقان', targetGroup: 'مسودة يتجاهلها العميل', targetGroupIds: ['near_mastery', 'moderate_gap'],
+        action: 'تنويع مستوى المهام.', implementationSteps: ['تصنيف الفئات', 'مهام متدرجة'], responsibleRole: 'معلم المادة', timeframe: 'ثلاثة أسابيع',
+        successIndicator: 'مسودة يتجاهلها العميل', successMetric: { mode: 'mastery_gain', targetValue: 55, targetSegmentId: '' },
+        numericGuard: { applied: true, mode: 'mastery_gain', totalCount: 100, baselineCount: 42, baselineRate: 42, eligibleCount: 20, requestedTargetRate: 55, requiredGain: 13, feasibleGain: 13, targetCount: 55, targetRate: 55, adjusted: false, adjustmentReasons: [] },
+        monitoringMethod: 'متابعة التوزيع', contingency: 'مراجعة صعوبة الأدوات', resources: [], evidenceRefs: ['metric:masteryPct', 'metric:nearMasteryCount', 'metric:moderateGapCount', 'metric:n']
+      },
     ],
     monitoringPlan: [
       { id: 'm1', stage: 'خط الأساس', timing: 'الآن', measure: 'توثيق الإتقان والتفاوت', owner: 'معلم المادة', evidenceRefs: ['metric:masteryPct', 'metric:sd'] },
@@ -70,18 +120,14 @@ function primaryFixture() {
 test('AI primary composition replaces local prose templates and accepts variable counts', () => {
   const window = loadBrowserScript('assets/analysis-reconciliation.js');
   const local = {
-    typeId: 'single_subject',
-    metrics: [{ id: 'mean', label: 'المتوسط', value: 61 }, { id: 'masteryPct', label: 'الإتقان', value: 42 }, { id: 'sd', label: 'التشتت', value: 18 }],
-    charts: [{ id: 'distribution', type: 'bar', title: 'التوزيع', data: [] }],
-    evidenceMap: { 'metric:mean': 'المتوسط: 61', 'metric:masteryPct': 'الإتقان: 42%', 'metric:sd': 'التشتت: 18' },
+    ...localScoreEvidence(),
     diagnosticSections: [{ title: 'قالب محلي', analysis: 'نص محلي جامد' }],
     findings: [{ title: 'استنتاج محلي محفوظ' }],
     improvementPlan: [{ issue: 'خطة جاهزة', action: 'نفذ القالب' }],
     monitoringPlan: [],
-    limitations: [],
   };
   const result = window.TaqareerReconciliation.composePrimary(local, primaryFixture(), {
-    availableEvidenceRefs: ['metric:mean', 'metric:masteryPct', 'metric:sd'],
+    availableEvidenceRefs: scoreRefs,
   });
   assert.equal(result._reconciliation.aiPrimary, true);
   assert.equal(result.diagnosticSections.length, 3);
@@ -93,13 +139,23 @@ test('AI primary composition replaces local prose templates and accepts variable
   assert.equal(result.metrics[1].value, 42);
 });
 
+test('client independently rejects an impossible score intervention target', () => {
+  const window = loadBrowserScript('assets/analysis-reconciliation.js');
+  const bad = primaryFixture();
+  bad.interventions[1].numericGuard.targetCount = 80;
+  bad.interventions[1].numericGuard.feasibleGain = 38;
+  assert.throws(() => window.TaqareerReconciliation.composePrimary(localScoreEvidence(), bad, {
+    availableEvidenceRefs: scoreRefs,
+  }), /هدف إتقان غير متسق/);
+});
+
 test('AI primary composition rejects an analysis without enough evidence-backed reasoning', () => {
   const window = loadBrowserScript('assets/analysis-reconciliation.js');
   const bad = primaryFixture();
   bad.diagnosticSections = [{ ...bad.diagnosticSections[0], evidenceRefs: ['metric:not-allowed'] }];
   bad.findings = [{ ...bad.findings[0], evidenceRefs: ['metric:not-allowed'] }];
-  assert.throws(() => window.TaqareerReconciliation.composePrimary({ typeId: 'single_subject', metrics: [], charts: [], evidenceMap: {} }, bad, {
-    availableEvidenceRefs: ['metric:mean'],
+  assert.throws(() => window.TaqareerReconciliation.composePrimary(localScoreEvidence(), bad, {
+    availableEvidenceRefs: scoreRefs,
   }), /وحدات قرار وتدخلين متمايزين وثلاث مراحل متابعة/);
 });
 
@@ -108,8 +164,8 @@ test('client rejects a primary result with one intervention or fewer than three 
   const bad = primaryFixture();
   bad.interventions = bad.interventions.slice(0, 1);
   bad.monitoringPlan = bad.monitoringPlan.slice(0, 2);
-  assert.throws(() => window.TaqareerReconciliation.composePrimary({ typeId: 'single_subject', metrics: [], charts: [], evidenceMap: {} }, bad, {
-    availableEvidenceRefs: ['metric:mean', 'metric:masteryPct', 'metric:sd'],
+  assert.throws(() => window.TaqareerReconciliation.composePrimary(localScoreEvidence(), bad, {
+    availableEvidenceRefs: scoreRefs,
   }), /تدخلين متمايزين وثلاث مراحل متابعة/);
 });
 
@@ -197,7 +253,7 @@ test('edge function exposes the analyze_primary operation and evidence-first con
   assert.match(source, /operation === "analyze_primary"/);
   assert.match(source, /primaryAnalysisInstructions/);
   assert.match(source, /كل وحدة وتدخل وفحص ومرحلة متابعة تستخدم evidenceRefs/);
-  assert.match(source, /contractVersion: "6\.3\.0"/);
+  assert.match(source, /contractVersion: "6\.4\.0"/);
   assert.match(source, /analysisUnits/);
   assert.match(source, /nonDuplicativeDecisionContract: true/);
   assert.match(source, /thinkingConfig: \{ thinkingLevel \}/);

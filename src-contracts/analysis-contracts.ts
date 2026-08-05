@@ -84,9 +84,25 @@ export interface AnalysisPlan {
 export interface ActionRecommendation {
   actionAr: string;
   targetGroupAr: string;
+  targetGroupIds?: Array<"mastery" | "near_mastery" | "moderate_gap" | "deep_gap" | string>;
   ownerAr?: string;
   timeframeAr?: string;
   successIndicatorAr: string;
+  successMetric?: {
+    mode: "mastery_gain" | "segment_reduction" | "mastery_maintenance" | "custom";
+    targetValue: number;
+    targetSegmentId?: string;
+  };
+  numericGuard?: {
+    applied: boolean;
+    adjusted?: boolean;
+    totalCount?: number;
+    baselineCount?: number;
+    eligibleCount?: number;
+    feasibleGain?: number;
+    targetCount?: number;
+    targetRate?: number;
+  };
   followUpToolAr: string;
   linkedFindingIds: string[];
 }

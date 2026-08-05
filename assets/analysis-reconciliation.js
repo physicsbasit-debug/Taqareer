@@ -1,10 +1,11 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.0.4";
-  const CONTRACT_VERSION = "6.3.0";
+  const VERSION = "1.0.5";
+  const CONTRACT_VERSION = "6.4.0";
 
-  const SCORE_TYPES = new Set(["student_results", "assessment_component", "cross_subject"]);
+  const SCORE_TYPES = new Set(["student_results", "single_subject", "assessment_component", "level_distribution", "cross_subject"]);
+  const NUMERIC_SCORE_TYPES = new Set(["student_results", "single_subject", "assessment_component"]);
   const LOCKED_SCORE_COUNTS = Object.freeze({ diagnosticSections: 4, findings: 5, interventions: 4, monitoring: 4 });
 
   const PATCH_FIELD_POLICY = Object.freeze({
@@ -539,6 +540,92 @@
     return text;
   }
 
+  const SCORE_GROUP_LABELS = Object.freeze({
+    mastery: "حققوا حد الإتقان",
+    near_mastery: "قريبون من الإتقان",
+    moderate_gap: "دون الإتقان بفجوة متوسطة",
+    deep_gap: "دون الإتقان بفجوة عميقة",
+  });
+
+  function roundDecimal(value, decimals = 1) {
+    const factor = 10 ** decimals;
+    return Math.round((Number(value) + Number.EPSILON) * factor) / factor;
+  }
+
+  function localScoreInterventionContext(localEvidence) {
+    const segments = (Array.isArray(localEvidence?.segments) ? localEvidence.segments : [])
+      .map(item => ({
+        id: String(item?.id || ""),
+        label: String(item?.label || SCORE_GROUP_LABELS[String(item?.id || "")] || ""),
+        count: Math.max(0, Math.trunc(Number(item?.count || 0))),
+        percentage: Number(item?.percentage || 0),
+      }))
+      .filter(item => SCORE_GROUP_LABELS[item.id]);
+    const totalCount = Math.max(0, Math.trunc(Number(localEvidence?.n || 0)));
+    const baselineMasteryCount = Math.max(0, Math.trunc(Number(localEvidence?.masteryCount || 0)));
+    const baselineMasteryRate = Number(localEvidence?.masteryPctDisplay ?? localEvidence?.masteryPct ?? 0);
+    if (!segments.length || !totalCount || !Number.isFinite(baselineMasteryRate)) return null;
+    return { segments, totalCount, baselineMasteryCount, baselineMasteryRate: roundDecimal(baselineMasteryRate, 1) };
+  }
+
+  function clientGuardScoreIntervention(item, context) {
+    const guard = item?.numericGuard && typeof item.numericGuard === "object" ? item.numericGuard : null;
+    if (!guard?.applied) throw new Error("رفض محرك التحقق تدخلًا رقميًا لم يمر بالحارس الحسابي الخادمي.");
+    const groupMap = new Map(context.segments.map(group => [group.id, group]));
+    const targetGroupIds = uniqueStrings(item?.targetGroupIds || []).filter(id => groupMap.has(id)).slice(0, 4);
+    const groups = targetGroupIds.map(id => groupMap.get(id)).filter(Boolean);
+    const targetGroup = groups.map(group => `${group.label} (${group.count} طالبًا)`).join("، ");
+    const mode = String(guard.mode || item?.successMetric?.mode || "");
+    let successIndicator = "";
+
+    if (Number(guard.totalCount) !== context.totalCount) {
+      throw new Error("رفض محرك التحقق تدخلًا بُني على إجمالي سجلات لا يطابق الحساب المحلي.");
+    }
+
+    if (mode === "mastery_gain") {
+      const eligibleCount = groups.filter(group => group.id !== "mastery").reduce((sum, group) => sum + group.count, 0);
+      const baselineCount = Math.trunc(Number(guard.baselineCount));
+      const feasibleGain = Math.trunc(Number(guard.feasibleGain));
+      const targetCount = Math.trunc(Number(guard.targetCount));
+      const targetRate = roundDecimal((targetCount / context.totalCount) * 100, 1);
+      if (baselineCount !== context.baselineMasteryCount || eligibleCount !== Math.trunc(Number(guard.eligibleCount)) || feasibleGain < 1 || feasibleGain > eligibleCount || targetCount !== baselineCount + feasibleGain || targetCount > baselineCount + eligibleCount || Math.abs(targetRate - Number(guard.targetRate)) > 0.11) {
+        throw new Error("رفض محرك التحقق هدف إتقان غير متسق مع حجم الفئات المستهدفة.");
+      }
+      const conversionRate = roundDecimal((feasibleGain / eligibleCount) * 100, 1);
+      successIndicator = `رفع عدد المتقنين من ${baselineCount} إلى ${targetCount} طالبًا على الأقل، عبر انتقال ${feasibleGain} من أصل ${eligibleCount} طالبًا مستهدفًا (${conversionRate}%) إلى الإتقان، بما يرفع النسبة من ${context.baselineMasteryRate}% إلى ${targetRate}% تقريبًا.`;
+    } else if (mode === "segment_reduction") {
+      const segment = groupMap.get(String(guard.segmentId || ""));
+      const baselineSegmentCount = Math.trunc(Number(guard.baselineSegmentCount));
+      const reductionCount = Math.trunc(Number(guard.reductionCount));
+      const targetSegmentCount = Math.trunc(Number(guard.targetSegmentCount));
+      if (!segment || segment.id === "mastery" || baselineSegmentCount !== segment.count || reductionCount < 1 || reductionCount > segment.count || targetSegmentCount !== segment.count - reductionCount) {
+        throw new Error("رفض محرك التحقق هدف خفض فئة غير متسق مع التوزيع المحلي.");
+      }
+      const reductionRate = roundDecimal((reductionCount / segment.count) * 100, 1);
+      successIndicator = `خفض عدد ${segment.label} من ${segment.count} إلى ${targetSegmentCount} طالبًا على الأكثر، أي انتقال ${reductionCount} طالبًا (${reductionRate}%) إلى فئة أعلى في القياس اللاحق.`;
+    } else if (mode === "mastery_maintenance") {
+      const mastery = groupMap.get("mastery") || { label: SCORE_GROUP_LABELS.mastery, count: context.baselineMasteryCount };
+      const retainedCount = Math.trunc(Number(guard.retainedCount));
+      if (Math.trunc(Number(guard.baselineMasteryCount)) !== mastery.count || retainedCount < 0 || retainedCount > mastery.count) {
+        throw new Error("رفض محرك التحقق هدف تثبيت لا يطابق عدد المتقنين المحلي.");
+      }
+      const retentionRate = mastery.count ? roundDecimal((retainedCount / mastery.count) * 100, 1) : 0;
+      successIndicator = mastery.count
+        ? `الحفاظ على إتقان ما لا يقل عن ${retainedCount} من أصل ${mastery.count} طالبًا متقنًا (${retentionRate}%)، مع تحقق معيار المهمة الإثرائية المحدد في المتابعة.`
+        : "لا توجد فئة متقنة حاليًا؛ يُستبدل هدف التثبيت بقياس كسب الإتقان بعد التدخل العلاجي.";
+    } else {
+      throw new Error("رفض محرك التحقق نمط مؤشر رقمي غير مدعوم لملف الدرجات.");
+    }
+
+    return {
+      targetGroup: targetGroup || trimText(item?.targetGroup, 360),
+      targetGroupIds,
+      successIndicator,
+      successMetric: clone(item?.successMetric || {}),
+      numericGuard: clone(guard),
+    };
+  }
+
   function composePrimary(localEvidence, primaryResult, options = {}) {
     const result = canonicalize(localEvidence || {});
     if (!primaryResult || typeof primaryResult !== "object") throw new Error("لم تصل نتيجة التحليل الذكي الأساسي.");
@@ -606,25 +693,45 @@
       }))
       .filter(item => item.name && item.reason);
 
+    const numericScoreType = NUMERIC_SCORE_TYPES.has(String(result.typeId || ""));
+    const scoreInterventionContext = numericScoreType ? localScoreInterventionContext(localEvidence) : null;
+    if (numericScoreType && !scoreInterventionContext) {
+      throw new Error("تعذر التحقق محليًا من فئات التدخل الرقمية.");
+    }
+
     result.improvementPlan = (Array.isArray(primaryResult.interventions) ? primaryResult.interventions : [])
       .slice(0, 8)
-      .map((item, index) => ({
-        id: String(item?.id || `intervention.ai.${index + 1}`),
-        priority: trimText(item?.priority, 160) || `أولوية ${index + 1}`,
-        issue: trimText(item?.issue, 360),
-        targetGroup: trimText(item?.targetGroup, 360),
-        action: trimText(item?.action, 1500),
-        implementationSteps: clampItems(item?.implementationSteps, 6, 700),
-        responsibleRole: trimText(item?.responsibleRole, 320),
-        timeframe: trimText(item?.timeframe, 260),
-        successIndicator: trimText(item?.successIndicator, 900),
-        monitoringMethod: trimText(item?.monitoringMethod, 820),
-        contingency: trimText(item?.contingency, 900),
-        resources: clampItems(item?.resources, 6, 540),
-        evidenceRefs: cleanPrimaryRefs(item?.evidenceRefs, allowedEvidence, 10),
-        source: "gemini-primary",
-      }))
-      .filter(item => item.issue && item.action && item.successIndicator && item.evidenceRefs.length);
+      .map((item, index) => {
+        const base = {
+          id: String(item?.id || `intervention.ai.${index + 1}`),
+          priority: trimText(item?.priority, 160) || `أولوية ${index + 1}`,
+          issue: trimText(item?.issue, 360),
+          targetGroup: trimText(item?.targetGroup, 360),
+          targetGroupIds: clampItems(item?.targetGroupIds, 4, 80),
+          action: trimText(item?.action, 1500),
+          implementationSteps: clampItems(item?.implementationSteps, 6, 700),
+          responsibleRole: trimText(item?.responsibleRole, 320),
+          timeframe: trimText(item?.timeframe, 260),
+          successIndicator: trimText(item?.successIndicator, 900),
+          successMetric: clone(item?.successMetric || {}),
+          numericGuard: clone(item?.numericGuard || null),
+          monitoringMethod: trimText(item?.monitoringMethod, 820),
+          contingency: trimText(item?.contingency, 900),
+          resources: clampItems(item?.resources, 6, 540),
+          evidenceRefs: cleanPrimaryRefs(item?.evidenceRefs, allowedEvidence, 10),
+          source: "gemini-primary",
+        };
+        if (scoreInterventionContext) {
+          const guarded = clientGuardScoreIntervention(item, scoreInterventionContext);
+          base.targetGroup = guarded.targetGroup;
+          base.targetGroupIds = guarded.targetGroupIds;
+          base.successIndicator = guarded.successIndicator;
+          base.successMetric = guarded.successMetric;
+          base.numericGuard = guarded.numericGuard;
+        }
+        return base;
+      })
+      .filter(item => item.issue && item.targetGroup && item.action && item.successIndicator && item.evidenceRefs.length);
 
     result.monitoringPlan = (Array.isArray(primaryResult.monitoringPlan) ? primaryResult.monitoringPlan : [])
       .slice(0, 8)
@@ -662,7 +769,7 @@
     } : null;
 
     result._reconciliation = {
-      contractVersion: "6.3.0",
+      contractVersion: "6.4.0",
       responseContractVersion: String(primaryResult.contractVersion || "unknown"),
       family: familyOf(result),
       aiPrimary: true,

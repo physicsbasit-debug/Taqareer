@@ -1,0 +1,24 @@
+Phase 2-B Fix 1 v1.0.5 changed files
+
+assets/analysis-reconciliation.js
+assets/app.js
+assets/deep-analysis-orchestrator.js
+assets/deep-analysis.js
+assets/report-system.js
+index.html
+manifest.json
+package.json
+scripts/verify-static.cjs
+src-contracts/analysis-contracts.ts
+supabase/functions/analyze-educational-form/index.ts
+supabase/functions/analyze-educational-form/README.md
+tests/ai-primary-analysis.test.cjs
+tests/ai-primary-performance.test.cjs
+tests/edge-primary-runtime.test.cjs
+tests/report-ai-primary.test.cjs
+README.md
+README_PHASE_2_B_FIX1_NUMERIC_GUARD.md
+APPLY_PHASE_2_B_FIX1_V1_0_5.txt
+TEST_REPORT_PHASE_2_B_FIX1_V1_0_5.md
+SUPABASE_FUNCTION_GEMINI_V0_13_5.txt
+CHANGED_FILES_MANIFEST_PHASE_2_B_FIX1_V1_0_5.txt

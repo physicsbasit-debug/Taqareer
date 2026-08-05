@@ -21,7 +21,7 @@ test('official report renders only an AI-primary reconciled analysis', () => {
     limitations: [],
   };
   const primary = {
-    contractVersion: '6.3.0',
+    contractVersion: '6.4.0',
     analysisProfile: { method: 'تحليل اتجاهات مدعوم بالأدلة', dataAdequacy: 'كافية وصفيًا', dimensions: ['الاتجاه', 'الفجوة'], decisionUses: ['ترتيب الأولويات'] },
     executive: { title: 'رضا متوسط يخفي أولوية محددة', summary: 'تشير النتيجة إلى اتجاه إيجابي غير حاسم، ويجب التركيز على البنود الأقل قبل إطلاق حكم عام.', overallJudgement: 'تحسين موجه', confidence: 'متوسطة', evidenceRefs: ['metric:positivePct'], limitations: [] },
     diagnosticSections: [
@@ -47,10 +47,10 @@ test('official report renders only an AI-primary reconciled analysis', () => {
   const analysis = sandbox.window.TaqareerReconciliation.composePrimary(local, primary, { availableEvidenceRefs: ['metric:positivePct'] });
   const context = { analysis, type: { name: 'استبانة اتجاهات أو رضا' }, sourceName: 'survey.csv', sourceMeta: {}, quality: { completeness: 100 }, recognitionStatus: 'معتمد' };
   const html = sandbox.window.TaqareerReports.buildReportHtml(context, { autoPrint: false });
-  assert.equal(sandbox.window.TaqareerReports.VERSION, '1.0.4');
+  assert.equal(sandbox.window.TaqareerReports.VERSION, '1.0.5');
   assert.match(html, /تحليل ذكاء اصطناعي موثق/);
   assert.match(html, /رضا متوسط يخفي أولوية محددة/);
-  assert.match(html, /تقارير v1\.0\.4/);
+  assert.match(html, /تقارير v1\.0\.5/);
   assert.match(html, /خط الأساس/);
   assert.match(html, /فحص تجانس الاتجاه/);
   assert.doesNotMatch(html, /تحليل متخصص حتمي/);

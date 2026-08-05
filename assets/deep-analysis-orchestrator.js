@@ -3,8 +3,8 @@
 
   // Phase 2-A: الذكاء الاصطناعي هو مالك التحليل التربوي، بينما يبقى
   // المحرك المحلي مسؤولًا عن الحسابات والرسوم وحزمة الأدلة فقط.
-  const VERSION = "1.0.4";
-  const PROTOCOL_VERSION = "6.3.0";
+  const VERSION = "1.0.5";
+  const PROTOCOL_VERSION = "6.4.0";
   const LABELS = Object.freeze({ primary: "التحليل التربوي الذكي" });
   const TASK_LABELS = Object.freeze({ "analysis.primary": "التحليل التربوي الذكي" });
 
@@ -68,6 +68,22 @@
         thresholdPct: source.thresholdPct ?? null,
         maxScore: source.maxScore ?? null,
       },
+      interventionMathContext: source.interventionMathContext && typeof source.interventionMathContext === "object"
+        ? {
+            totalCount: Number(source.interventionMathContext.totalCount || 0),
+            baselineMasteryCount: Number(source.interventionMathContext.baselineMasteryCount || 0),
+            baselineMasteryRate: Number(source.interventionMathContext.baselineMasteryRate || 0),
+            groups: (Array.isArray(source.interventionMathContext.groups) ? source.interventionMathContext.groups : [])
+              .slice(0, 4)
+              .map(item => ({
+                id: String(item?.id || ""),
+                label: String(item?.label || "").slice(0, 180),
+                count: Number(item?.count || 0),
+                percentage: Number(item?.percentage || 0),
+              }))
+              .filter(item => item.id),
+          }
+        : null,
     };
   }
 
@@ -144,6 +160,8 @@
         everyInterventionMustAddressAFinding: true,
         diagnosticAndDecisionTextMustDiffer: true,
         interventionsMustCoverDistinctGroupsOrIssues: true,
+        interventionTargetsAndIndicatorsAreServerCalculatedForScores: true,
+        impossibleNumericTargetsMustBeAdjustedOrRejected: true,
         monitoringMustIncludeBaselineCheckpointAndImpact: true,
         aggregateScoresCannotNameSpecificSkillsWithoutEvidence: true,
         acknowledgeMissingData: true,

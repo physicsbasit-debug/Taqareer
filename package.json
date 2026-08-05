@@ -1,8 +1,8 @@
 {
   "name": "taqareer",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "private": true,
-  "description": "تقارير: تحليل تربوي يقوده الذكاء الاصطناعي بعقد متوازن يفصل التشخيص عن القرار، ويفرض تدخلات متمايزة وثلاث مراحل متابعة مع الحفاظ على التفكير المضبوط ومسار الإنقاذ.",
+  "description": "تقارير: تحليل تربوي يقوده الذكاء الاصطناعي، مع حارس عددي خادمي وعميل يمنع أهداف التدخل المستحيلة ويحافظ على العمق المتوازن والتفكير المضبوط ومسار الإنقاذ.",
   "scripts": {
     "build": "node scripts/verify-static.cjs",
     "test": "node --test tests/ai-primary-analysis.test.cjs tests/report-ai-primary.test.cjs tests/ai-primary-performance.test.cjs tests/edge-primary-runtime.test.cjs && node tests/mastery-metrics.test.js && node tests/mastery-integration.test.js && node tests/deep-analysis.test.js && node tests/chart-completeness.test.js",

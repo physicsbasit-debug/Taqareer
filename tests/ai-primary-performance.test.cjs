@@ -59,3 +59,20 @@ test('schema constrains balanced output and thinking remains explicitly controll
   assert.match(edge, /firstThoughtTokens/);
   assert.match(edge, /finalCandidateTokens/);
 });
+
+test('score intervention arithmetic is structured and server-owned', () => {
+  const edge = read('supabase/functions/analyze-educational-form/index.ts');
+  const app = read('assets/app.js');
+  const orchestrator = read('assets/deep-analysis-orchestrator.js');
+  const reconciliation = read('assets/analysis-reconciliation.js');
+  assert.match(edge, /targetGroupIds: \{ type: "array"/);
+  assert.match(edge, /successMetric: \{/);
+  assert.match(edge, /mode: \{ type: "string", enum: \["mastery_gain", "segment_reduction", "mastery_maintenance", "custom"\]/);
+  assert.match(edge, /applyScoreInterventionGuard/);
+  assert.match(edge, /خُفّض الهدف إلى الحد الممكن داخل الفئات المستهدفة/);
+  assert.match(edge, /const feasibleGain = Math\.min\(eligibleCount, requestedGain\)/);
+  assert.match(app, /interventionMathContext/);
+  assert.match(orchestrator, /interventionTargetsAndIndicatorsAreServerCalculatedForScores: true/);
+  assert.match(reconciliation, /clientGuardScoreIntervention/);
+  assert.match(reconciliation, /هدف إتقان غير متسق مع حجم الفئات المستهدفة/);
+});

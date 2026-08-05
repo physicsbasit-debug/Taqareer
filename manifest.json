@@ -1,8 +1,8 @@
 {
   "app": "تقارير",
-  "version": "1.0.4",
-  "phase": "Phase 2-B - Balanced Analytical Depth",
-  "releaseName": "Balanced Analytical Depth & Decision Coverage",
+  "version": "1.0.5",
+  "phase": "Phase 2-B Fix 1 - Numeric Intervention Guard",
+  "releaseName": "Server-Owned Numeric Intervention Guard",
   "buildType": "static-github-pages-plus-supabase-edge-function",
   "supportedInputs": {
     "table": [
@@ -53,7 +53,7 @@
     ],
     "canonicalContract": "local-calculations-are-authoritative-ai-owns-educational-analysis",
     "aiContribution": "Gemini is the primary educational analyst and creates diagnosis, findings, hypotheses, interventions and monitoring from verified evidence; it does not edit local prose templates",
-    "reconciliation": "server and client validate evidence references and minimum analytical completeness before any result is shown",
+    "reconciliation": "server computes score intervention groups and success indicators, then client independently revalidates them against local counts before display",
     "routingRule": "form type shapes the evidence dossier and analytical lens, but the AI chooses depth and item counts according to the actual evidence"
   },
   "features": [
@@ -97,7 +97,11 @@
     "distinct-target-group-interventions",
     "three-stage-ai-monitoring-plan",
     "method-check-required-on-primary-path",
-    "aggregate-score-scope-guard"
+    "aggregate-score-scope-guard",
+    "server-owned-score-intervention-math",
+    "numeric-intervention-feasibility-guard",
+    "client-revalidated-intervention-targets",
+    "structured-target-group-identifiers"
   ],
   "runtime": {
     "frontend": "GitHub Pages static site",
@@ -108,8 +112,8 @@
     "enrichmentOperation": "analyze_primary",
     "legacyAnalyzeThinkingBudget": 1024,
     "classificationThinkingBudget": 0,
-    "reconciliationContractVersion": "6.3.0",
-    "edgeFunctionVersion": "0.13.4",
+    "reconciliationContractVersion": "6.4.0",
+    "edgeFunctionVersion": "0.13.5",
     "fastEnhancementModel": "gemini-3.5-flash-lite",
     "fastEnhancementThinkingBudget": 192,
     "fastEnhancementMaxOutputTokens": 2600,
@@ -119,7 +123,8 @@
     "primaryAnalysisThinkingLevel": "low",
     "primaryRescueModel": "gemini-3.5-flash-lite",
     "primaryRescueThinkingLevel": "minimal",
-    "primaryRescueMaxOutputTokens": 6144
+    "primaryRescueMaxOutputTokens": 6144,
+    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.0.5"
   },
   "security": {
     "geminiKeyInBrowser": false,
@@ -129,7 +134,9 @@
     "evidenceReferencesValidatedServerSide": true,
     "targetIdsValidatedServerSide": true,
     "deterministicCountsLockedClientSide": false,
-    "primaryAnalysisRequiredForReport": true
+    "primaryAnalysisRequiredForReport": true,
+    "numericInterventionTargetsValidatedServerSide": true,
+    "numericInterventionTargetsRevalidatedClientSide": true
   },
   "acceptanceCoverage": {
     "analysisFamilies": 11,
@@ -141,7 +148,8 @@
     "failureBehavior": "no official report is shown when the primary AI analysis fails",
     "cacheBehavior": "primary educational analysis is not reused; every run requests a fresh evidence-grounded reading",
     "nonDuplication": "diagnosticAnalysis and decisionFinding are separate fields and near-duplicate text is rejected",
-    "scopeGuard": "aggregate score data cannot name a specific skill or concept without item-level evidence"
+    "scopeGuard": "aggregate score data cannot name a specific skill or concept without item-level evidence",
+    "numericInterventionGuard": "score interventions use structured group IDs and server-owned arithmetic; impossible targets are reduced to feasible limits and revalidated in the browser"
   },
   "performance": {
     "scoreContextRows": 24,
@@ -158,7 +166,7 @@
     "databaseChanges": false,
     "newSecretsRequired": false,
     "currentFrontendOperation": "analyze_primary",
-    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.0.4",
+    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.0.5",
     "classificationAndVision": "retained"
   },
   "notYetEnabled": [
