@@ -381,7 +381,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "1.0.1",
+      appVersion: "1.0.3",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -927,7 +927,7 @@
     if (!window.TaqareerReconciliation?.composePrimary) throw new Error("محرك التحقق من التحليل الذكي غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "1.0.1",
+      appVersion: "1.0.3",
       pipeline: {
         mode: "ai-primary-analysis-v1",
         instruction: "المحرك المحلي يحسب المؤشرات والرسوم فقط. يبني الذكاء الاصطناعي التشخيص والاستنتاجات والتدخلات من الأدلة، ثم تتحقق البوابة من المراجع قبل عرض التقرير."
@@ -1086,11 +1086,13 @@
     const update = () => {
       const seconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
       runButton.textContent = `جارٍ بناء التحليل الذكي… ${seconds}ث`;
-      const stage = seconds < 7
+      const stage = seconds < 6
         ? "يبني المحلل الذكي القراءة التشخيصية من الأدلة."
-        : seconds < 16
+        : seconds < 14
           ? "يربط الاستنتاجات بالأدلة ويرتب الأولويات."
-          : "يكمل التدخلات ويتحقق من سلامة النتيجة.";
+          : seconds < 24
+            ? "يصوغ التدخلات ضمن عقد موجز مضبوط."
+            : "يتم التحقق النهائي، وقد يعمل مسار الإنقاذ المختصر عند الحاجة.";
       setMessage("setupMessage", `${evidenceSummary ? `اكتملت الحسابات: ${evidenceSummary}. ` : "اكتملت الحسابات. "}${stage}`);
     };
     update();
@@ -1474,7 +1476,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v1.0.1.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v1.0.3.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }

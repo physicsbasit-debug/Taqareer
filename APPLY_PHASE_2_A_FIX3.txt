@@ -1,0 +1,16 @@
+تقارير v1.0.3 — Phase 2-A Fix 3
+
+أسرع اختبار للعلاج:
+1) افتح Supabase > Edge Functions > analyze-educational-form.
+2) استبدل الكود كاملًا بمحتوى SUPABASE_FUNCTION_GEMINI_V0_13_3.txt.
+3) اضغط Deploy.
+4) أعد تحليل الملف نفسه.
+
+لا تحتاج إلى رفع GitHub لاختبار العلاج، لأن سبب MAX_TOKENS وعلاجه داخل Edge Function.
+
+بعد نجاح الاختبار الحي:
+- ارفع حزمة changed_files_only فوق المستودع لمزامنة v1.0.3.
+- أو استخدم full_clean_backup كنسخة احتياطية كاملة.
+
+لا SQL جديد.
+لا أسرار جديدة.

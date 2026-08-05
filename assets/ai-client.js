@@ -109,7 +109,7 @@
   }
 
   async function analyzePrimaryDetailed(payload) {
-    return invoke("analyze_primary", payload, { timeoutMs: 32000 });
+    return invoke("analyze_primary", payload, { timeoutMs: 45000 });
   }
 
   // يبقى للتوافق مع نتائج v0.9.7 القديمة، لكنه ليس جزءًا من المسار الحالي.

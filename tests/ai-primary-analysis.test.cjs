@@ -25,7 +25,7 @@ function loadBrowserScript(relativePath, extra = {}) {
 function primaryFixture() {
   const refs = ['metric:mean', 'metric:masteryPct', 'metric:sd'];
   return {
-    contractVersion: '6.0.0',
+    contractVersion: '6.2.0',
     analysisProfile: {
       method: 'تحليل علاقات الأداء والأولوية من الأدلة الرقمية',
       dataAdequacy: 'كافية للقراءة الوصفية، وغير كافية لإثبات السبب',
@@ -185,6 +185,10 @@ test('edge function exposes the analyze_primary operation and evidence-first con
   const source = fs.readFileSync(path.join(root, 'supabase/functions/analyze-educational-form/index.ts'), 'utf8');
   assert.match(source, /operation === "analyze_primary"/);
   assert.match(source, /primaryAnalysisInstructions/);
-  assert.match(source, /كل حقيقة أو استنتاج أو تدخل يجب أن يستخدم evidenceRefs/);
-  assert.match(source, /contractVersion: "6\.0\.0"/);
+  assert.match(source, /كل وحدة وتدخل يجب أن يستخدم evidenceRefs/);
+  assert.match(source, /contractVersion: "6\.2\.0"/);
+  assert.match(source, /analysisUnits/);
+  assert.match(source, /compactDecisionContract: true/);
+  assert.match(source, /thinkingConfig: \{ thinkingLevel \}/);
+  assert.match(source, /primaryRescueInstructions/);
 });

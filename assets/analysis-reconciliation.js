@@ -662,7 +662,7 @@
     } : null;
 
     result._reconciliation = {
-      contractVersion: "6.0.0",
+      contractVersion: "6.2.0",
       responseContractVersion: String(primaryResult.contractVersion || "unknown"),
       family: familyOf(result),
       aiPrimary: true,
