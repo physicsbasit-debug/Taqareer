@@ -1,8 +1,8 @@
 {
   "app": "تقارير",
-  "version": "1.1.5",
-  "phase": "Phase 2-C Fix 5 - Network Transport & CORS Health Guard",
-  "releaseName": "Network Transport & CORS Health Guard",
+  "version": "1.2.0",
+  "phase": "Phase 2-D - Adaptive Semantic Analysis Router",
+  "releaseName": "Adaptive Semantic Analysis Router",
   "buildType": "static-github-pages-plus-supabase-edge-function",
   "supportedInputs": {
     "table": [
@@ -33,7 +33,8 @@
       "document-ingestion",
       "ministry-excel-normalization",
       "data-quality-validation",
-      "form-recognition",
+      "semantic-structure-profiling",
+      "ai-semantic-type-verification",
       "evidence-contract",
       "report-rendering"
     ],
@@ -52,10 +53,10 @@
       "behavior-attendance-and-discipline",
       "adaptive-new-form-contract"
     ],
-    "canonicalContract": "local-calculations-are-authoritative-ai-owns-educational-analysis",
+    "canonicalContract": "local-structure-and-calculations-are-authoritative-ai-verifies-meaning-and-owns-educational-analysis",
     "aiContribution": "Gemini is the primary educational analyst and creates diagnosis, findings, hypotheses, interventions and monitoring from verified evidence; it does not edit local prose templates",
     "reconciliation": "server computes score intervention groups and success indicators, then client independently revalidates them against local counts before display",
-    "routingRule": "form type shapes the evidence dossier and analytical lens, but the AI chooses depth and item counts according to the actual evidence"
+    "routingRule": "a semantic profile determines unit of analysis, aggregation, measures, scale direction and required analytical families; known type labels are optional routing hints, not a mandatory template"
   },
   "features": [
     "adaptive-analysis-router",
@@ -126,7 +127,15 @@
     "multi-visit-sample-scope-context",
     "server-enforced-intervention-scope",
     "client-revalidated-sample-scope",
-    "no-school-wide-generalization-from-department-sample"
+    "no-school-wide-generalization-from-department-sample",
+    "semantic-data-profile-v2",
+    "ai-verification-for-every-input",
+    "capability-based-analysis-routing",
+    "profile-driven-setup-fields",
+    "dynamic-runtime-form-type",
+    "aggregate-row-double-count-guard",
+    "level-distribution-without-score-settings",
+    "crystal-report-xlsx-normalization"
   ],
   "runtime": {
     "frontend": "GitHub Pages static site",
@@ -138,7 +147,7 @@
     "legacyAnalyzeThinkingBudget": 1024,
     "classificationThinkingBudget": 0,
     "reconciliationContractVersion": "6.6.0",
-    "edgeFunctionVersion": "0.14.4",
+    "edgeFunctionVersion": "0.15.0",
     "fastEnhancementModel": "gemini-3.5-flash-lite",
     "fastEnhancementThinkingBudget": 192,
     "fastEnhancementMaxOutputTokens": 2600,
@@ -149,7 +158,7 @@
     "primaryRescueModel": "gemini-3.5-flash-lite",
     "primaryRescueThinkingLevel": "minimal",
     "primaryRescueMaxOutputTokens": 6144,
-    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.1.5",
+    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.2.0",
     "primaryModelFallbackOrder": [
       "gemini-3.5-flash",
       "gemini-3.6-flash",
@@ -166,7 +175,9 @@
     "networkHealthRetryAttempts": 2,
     "networkTransportErrorCode": "AI_NETWORK_FETCH_FAILED",
     "endpointAutoNormalization": true,
-    "corsAllowedOriginNormalization": "URL origin, including GitHub Pages URLs with repository paths"
+    "corsAllowedOriginNormalization": "URL origin, including GitHub Pages URLs with repository paths",
+    "semanticProfileVersion": "2.0.0",
+    "classificationMode": "always-ai-verified-with-local-structural-guard"
   },
   "security": {
     "geminiKeyInBrowser": false,
@@ -200,7 +211,9 @@
     "aggregateNarrativeContext": "opposing statements in aggregated reports are treated as contextual variation unless the same teacher, visit and time are evidenced",
     "multiVisitSupervisionPdf": "extract visits, 13 reversed-scale indicators, narratives and metadata; compare only within explicit visit context",
     "transientGeminiFallback": "503/429/408/5xx switch models after one bounded attempt; the server returns an Arabic retryable error before the browser aborts; raw provider errors are not shown",
-    "multiVisitScopeGuard": "interventions are limited to the teachers, department, subjects and visits present in the analyzed sample; broader school-wide targets are narrowed server-side and revalidated in the browser"
+    "multiVisitScopeGuard": "interventions are limited to the teachers, department, subjects and visits present in the analyzed sample; broader school-wide targets are narrowed server-side and revalidated in the browser",
+    "semanticRouter": "every supported input receives a local structural profile and Gemini semantic verification; setup controls and analyzer selection follow the profile rather than a single universal method",
+    "aggregateDistribution": "grouped level distributions use level columns and exclude aggregate rows from totals, then use aggregate values only for consistency checks"
   },
   "performance": {
     "scoreContextRows": 24,
@@ -217,7 +230,7 @@
     "databaseChanges": false,
     "newSecretsRequired": false,
     "currentFrontendOperation": "analyze_primary",
-    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.1.5",
+    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.2.0",
     "classificationAndVision": "retained"
   },
   "notYetEnabled": [
@@ -226,9 +239,9 @@
     "user-accounts",
     "role-based-access-control",
     "durable-rate-limiting",
-    "saved-dynamic-form-registry",
     "direct-rpt-reading",
-    "legacy-doc-and-xls-reading"
+    "legacy-doc-and-xls-reading",
+    "persistent-dynamic-form-registry"
   ],
   "description": null
 }

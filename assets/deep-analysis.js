@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.1.5";
+  const VERSION = "1.2.0";
 
   function masteryEngine() {
     const engine = window.TaqareerMasteryMetrics;
@@ -464,10 +464,19 @@
 
   function analyzeLevelDistribution(context) {
     const result = createBase(context, "levels", "تحليل توزيع مستويات الأداء ومقارنة المجموعات وترتيب أولوية التدخل");
-    const levelColumns = context.headers.map(header => ({ header, level: canonicalLevel(header) })).filter(item => LEVEL_ORDER.includes(item.level));
-    if (levelColumns.length < 2) throw new Error("لم تُكتشف أعمدة مستويات أداء كافية.");
-    const groupHeader = findHeader(context.headers, ["الصف", "الشعبة", "البيان", "المجموعة"]) || context.headers.find(header => !levelColumns.some(item => item.header === header)) || "المجموعة";
-    const groups = context.rows.map((row, index) => {
+    const profile = context.analysisProfile && typeof context.analysisProfile === "object" ? context.analysisProfile : {};
+    const profiledLevels = Array.isArray(profile?.columnRoles?.levels) ? profile.columnRoles.levels : [];
+    const levelColumns = (profiledLevels.length ? profiledLevels : context.headers.map(header => ({ header, level: canonicalLevel(header) })))
+      .map(item => ({ header: String(item.header || ""), level: canonicalLevel(item.level || item.header) }))
+      .filter(item => item.header && LEVEL_ORDER.includes(item.level));
+    if (levelColumns.length < 2) throw new Error("لم يكتمل ملف بنية توزيع المستويات. أعد التحقق الدلالي من الأعمدة بدل اختيار عمود درجة يدويًا.");
+    const groupHeader = String(profile?.columnRoles?.group || findHeader(context.headers, ["الصف", "الشعبة", "البيان", "المجموعة", "الفئة"]) || context.headers.find(header => !levelColumns.some(item => item.header === header)) || "المجموعة");
+    const aggregateIndexes = new Set(Array.isArray(profile?.rowRoles?.aggregateRowIndexes) ? profile.rowRoles.aggregateRowIndexes.map(Number) : []);
+    const dataIndexes = Array.isArray(profile?.rowRoles?.dataRowIndexes) && profile.rowRoles.dataRowIndexes.length
+      ? new Set(profile.rowRoles.dataRowIndexes.map(Number))
+      : null;
+    const sourceRows = context.rows.map((row, index) => ({ row, index })).filter(item => !aggregateIndexes.has(item.index) && (!dataIndexes || dataIndexes.has(item.index)));
+    const groups = sourceRows.map(({ row, index }) => {
       const counts = Object.fromEntries(LEVEL_ORDER.map(level => [level, 0]));
       levelColumns.forEach(item => counts[item.level] += parseNumber(row[item.header]) || 0);
       const total = sum(Object.values(counts));
@@ -475,12 +484,21 @@
         group: String(row[groupHeader] || `مجموعة ${index + 1}`),
         counts,
         total,
-        percentages: Object.fromEntries(LEVEL_ORDER.map(level => [level, round(pct(counts[level], total))]))
+        percentages: Object.fromEntries(LEVEL_ORDER.map(level => [level, round(pct(counts[level], total))])),
+        sourceIndex: index,
       };
     }).filter(group => group.total > 0);
     const totals = Object.fromEntries(LEVEL_ORDER.map(level => [level, groups.reduce((total, group) => total + group.counts[level], 0)]));
     const total = sum(Object.values(totals));
     const entries = LEVEL_ORDER.map(label => ({ label, count: totals[label], pct: round(pct(totals[label], total)) }));
+    const totalHeader = String(profile?.columnRoles?.total || "");
+    const successCountHeader = String(profile?.columnRoles?.successCount || "");
+    const successRateHeader = String(profile?.columnRoles?.successRate || "");
+    const aggregateRows = [...aggregateIndexes].map(index => context.rows[index]).filter(Boolean);
+    const reportedTotal = aggregateRows.length && totalHeader ? parseNumber(aggregateRows[0][totalHeader]) : NaN;
+    const reportedSuccessCount = aggregateRows.length && successCountHeader ? parseNumber(aggregateRows[0][successCountHeader]) : NaN;
+    const reportedSuccessRate = aggregateRows.length && successRateHeader ? parseNumber(aggregateRows[0][successRateHeader]) : NaN;
+    const aggregateConsistent = !Number.isFinite(reportedTotal) || Math.abs(reportedTotal - total) < 0.01;
     const highCount = totals["أ"] + totals["ب"], lowCount = totals["د"] + totals["هـ"];
     const highPct = pct(highCount, total), lowPct = pct(lowCount, total);
     const concentration = entropy(Object.values(totals));
@@ -496,7 +514,7 @@
 
     result.total = total; result.entries = entries; result.groups = groups; result.highPct = highPct; result.lowPct = lowPct;
     result.analysisProfile.dataSufficiency = groups.length > 1 ? "مرتفعة للمقارنة الوصفية" : "كافية للتوزيع العام فقط";
-    result.analysisProfile.dimensions = ["حجم الفئات", "المستويات العليا والدنيا", "المقارنة بين المجموعات", "تركيز التوزيع"];
+    result.analysisProfile.dimensions = ["حجم الفئات", "المستويات العليا والدنيا", "المقارنة بين المجموعات", "تركيز التوزيع", ...(Number.isFinite(reportedSuccessRate) ? ["اتساق النجاح مع توزيع المستويات"] : [])];
     result.analysisProfile.decisionUse = ["تحديد أولوية الصفوف أو الشعب", "اختيار التدخل الجماعي أو الفردي", "متابعة انتقال المستويات"];
 
     result.metrics = [
@@ -504,7 +522,10 @@
       metric("highPct", "المستويات العليا (أ+ب)", round(highPct), `${highCount} طالبًا`, "percent"),
       metric("lowPct", "المستويات الدنيا (د+هـ)", round(lowPct), `${lowCount} طالبًا`, "percent"),
       metric("groupCount", "عدد المجموعات", groups.length, "صفوف أو شعب", "integer"),
-      metric("entropy", "تنوع التوزيع", round(concentration, 2), "كلما ارتفع توزعت الحالات على فئات أكثر")
+      metric("entropy", "تنوع التوزيع", round(concentration, 2), "كلما ارتفع توزعت الحالات على فئات أكثر"),
+      ...(Number.isFinite(reportedTotal) ? [metric("reportedTotal", "الإجمالي المعلن", reportedTotal, aggregateConsistent ? "متسق مع مجموع الشعب" : `يختلف عن المحسوب ${total}`, "integer")] : []),
+      ...(Number.isFinite(reportedSuccessCount) ? [metric("reportedSuccessCount", "جملة النجاح المعلنة", reportedSuccessCount, "من صف الإجمالي", "integer")] : []),
+      ...(Number.isFinite(reportedSuccessRate) ? [metric("reportedSuccessRate", "نسبة النجاح المعلنة", reportedSuccessRate, "مؤشر مستقل عن توزيع أ-هـ", "percent")] : [])
     ];
     result.charts = [
       chart("levels-overall", "bar", "التوزيع العام لمستويات الأداء", "الأعداد والنسب في المستويات أ إلى هـ.", entries.map(item => ({ ...item, percentage: item.pct })), { xKey: "label", yKey: "count" }),
@@ -548,7 +569,8 @@
       qualityTool("distribution", "تحليل توزيع المستويات", true, "توجد فئات أداء رسمية وأعداد لكل فئة.", entries, `المستويات الدنيا ${round(lowPct)}% والعليا ${round(highPct)}%.`),
       qualityTool("comparison", "مصفوفة مقارنة المجموعات", groups.length > 1, "تتطلب أكثر من صف أو شعبة.", groupComparisons, groups.length > 1 ? `أعلى احتياج ظاهر في ${worstGroup.group}.` : "لا توجد مجموعات كافية للمقارنة."),
       qualityTool("gap", "تحليل فجوة المستويات", true, "يعامل المستويات الدنيا كفجوة تحتاج انتقالًا في القياس القادم.", { lowPct: round(lowPct), targetLowPct: Math.max(0, Math.floor(lowPct - 10)), highPct: round(highPct), targetHighPct: Math.min(100, Math.ceil(highPct + 10)) }, "يركز على انتقال الطلبة بين الفئات بدل المتوسط فقط."),
-      qualityTool("priority", "مصفوفة أولوية الصفوف أو الشعب", groups.length > 1, "ترتب المجموعات حسب نسبة المستويات الدنيا وحجمها.", groupComparisons.sort((a, b) => b.lowPct - a.lowPct), "الأولوية للمجموعة الأعلى في د وهـ.")
+      qualityTool("priority", "مصفوفة أولوية الصفوف أو الشعب", groups.length > 1, "ترتب المجموعات حسب نسبة المستويات الدنيا وحجمها.", groupComparisons.sort((a, b) => b.lowPct - a.lowPct), "الأولوية للمجموعة الأعلى في د وهـ."),
+      qualityTool("aggregate_consistency", "فحص المجاميع المعلنة", Number.isFinite(reportedTotal), "يقارن صف الإجمالي بمجموع الشعب دون إدخاله مرتين في الحساب.", { reportedTotal, computedTotal: total, aggregateConsistent, reportedSuccessCount, reportedSuccessRate }, Number.isFinite(reportedTotal) ? (aggregateConsistent ? "الإجمالي المعلن متسق مع مجموع الشعب." : "الإجمالي المعلن يحتاج مراجعة.") : "لا يوجد صف إجمالي صريح.")
     ];
 
     result.improvementPlan = [
@@ -561,7 +583,7 @@
       { stage: "متابعة التنفيذ", timing: "أسبوعيًا", measure: "الحضور في المجموعات العلاجية وإنجاز المهام المستهدفة", owner: "معلم المادة" },
       { stage: "إعادة توزيع المستويات", timing: "بعد 3 أسابيع", measure: "الانتقال بين أ-هـ", owner: "فريق المادة" }
     ];
-    result.limitations = ["توزيع المستويات يصف النتيجة ولا يحدد المهارات أو أسباب الضعف.", "لا يجوز مقارنة المجموعات سببيًا دون معلومات عن حجمها وظروفها وتكافؤ أدوات القياس."];
+    result.limitations = ["توزيع المستويات يصف النتيجة ولا يحدد المهارات أو أسباب الضعف.", "لا يجوز مقارنة المجموعات سببيًا دون معلومات عن حجمها وظروفها وتكافؤ أدوات القياس.", ...(aggregateRows.length ? ["استُبعد صف الإجمالي من التجميع لتجنب احتساب الطلبة مرتين، ثم استُخدم فقط لفحص الاتساق."] : [])];
     result.executiveTitle = `المستويات الدنيا ${round(lowPct)}%`;
     result.executiveSummary = `شمل التحليل ${total} طالبًا عبر ${groups.length} مجموعة. بلغت المستويات العليا ${round(highPct)}% والدنيا ${round(lowPct)}%. ${groups.length > 1 ? `ظهرت أعلى أولوية في «${worstGroup.group}».` : "لا تتوفر مقارنة بين مجموعات متعددة."} يلزم ربط التوزيع ببيانات المهارات أو مفردات الاختبار قبل تشخيص الأسباب.`;
     result.action = { title: result.improvementPlan[0].action, text: `${result.improvementPlan[0].responsibleRole} - ${result.improvementPlan[0].timeframe}`, priority: result.improvementPlan[0].priority, indicator: result.improvementPlan[0].successIndicator };
@@ -1604,6 +1626,7 @@
       headers: Array.isArray(input.headers) ? input.headers : [],
       rows: Array.isArray(input.rows) ? input.rows : [],
       sourceMeta: input.sourceMeta || {},
+      analysisProfile: input.analysisProfile || {},
       narrativeText: input.narrativeText || "",
       scoreColumn: input.scoreColumn || "",
       levelColumn: input.levelColumn || "",
@@ -1611,8 +1634,15 @@
       thresholdPct: parseNumber(input.thresholdPct),
       quality: input.quality || {}
     };
-    const analyzer = analyzers[context.typeId] || analyzeGeneric;
+    const profiledAnalyzerId = String(context.analysisProfile?.analyzerId || "");
+    const capabilityFamilies = Array.isArray(context.analysisProfile?.analysisFamilies) ? context.analysisProfile.analysisFamilies : [];
+    const inferredAnalyzerId = profiledAnalyzerId && analyzers[profiledAnalyzerId]
+      ? profiledAnalyzerId
+      : capabilityFamilies.includes("distribution_analysis") ? "level_distribution"
+      : context.typeId;
+    const analyzer = analyzers[inferredAnalyzerId] || analyzeGeneric;
     const result = analyzer(context);
+    result.analysisRouting = { requestedTypeId: context.typeId, analyzerId: inferredAnalyzerId, semanticProfileVersion: context.analysisProfile?.profileVersion || null };
     if (!Array.isArray(result.diagnosticSections) || !result.diagnosticSections.length) {
       result.diagnosticSections = deriveDiagnosticSections(result);
     }

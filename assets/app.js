@@ -80,7 +80,7 @@
     analysis: null, reconciledAnalysis: null, aiResult: null, aiError: "", aiWarning: "", aiUsed: false, aiPending: false,
     aiSegments: { results: {}, failures: {}, statuses: {}, taskResults: {}, taskFailures: {}, taskStatuses: {}, taskPlan: [], failedTaskIds: [], recovery: null },
     performance: { spans: [], cacheHit: false, payloadChars: 0, aiUsage: null, aiModel: "", aiServerTiming: null, segmentTimings: {} },
-    localRecognition: null, aiRecognition: null, recognitionStatus: "محلي", recognitionRequestId: 0, analysisRequestId: 0,
+    localRecognition: null, aiRecognition: null, semanticProfile: null, recognitionStatus: "محلي", recognitionRequestId: 0, analysisRequestId: 0,
     sampleMaxScore: null, pendingSource: null, sourceMeta: null, pendingManualFileName: "", pendingVisualPreview: null
   };
 
@@ -256,7 +256,7 @@
   const REQUIRED_FIELDS = {
     single_subject: [["اسم الطالب", "الطالب"], ["الدرجة", "المجموع"]],
     assessment_component: [["اسم الطالب", "الطالب"], ["عنصر المادة", "عنصر التقويم"], ["درجة عنصر المادة", "درجة العنصر", "الدرجة"]],
-    level_distribution: [["الصف", "البيان"], ["المجموع"]],
+    level_distribution: [["الصف", "الشعبة", "المجموعة", "البيان", "الفئة"], ["المجموع", "الإجمالي", "جملة عامة", "العدد الكلي"]],
     cross_subject: [["اسم الطالب", "الطالب"]],
     supervision_indicator: [["بنود التقويم", "البند"], ["المتوسط"]],
     supervision_multi_visit: [["معرف الزيارة"], ["تاريخ الزيارة"], ["المادة"], ["جوانب الإجادة"], ["التوصيات"]],
@@ -286,7 +286,17 @@
     return formTypes.find(type => type.id === id) || null;
   }
 
-  function classify(headers, rows, sourceMeta = {}, rawText = "") {
+  function dynamicTypeFromRecognition(classification, semanticProfile) {
+    const name = String(classification?.nameAr || semanticProfile?.typeNameAr || "نوع بيانات جديد").trim();
+    const purpose = String(classification?.purpose || semanticProfile?.purpose || classification?.rationale || semanticProfile?.rationale || "تحليل تكيفي وفق البنية والأدلة الفعلية.").trim();
+    const analyzerId = String(semanticProfile?.analyzerId || "adaptive_generic");
+    const safeId = String(classification?.id || semanticProfile?.recommendedTypeId || "dynamic")
+      .replace(/[^a-zA-Z0-9_-]+/g, "_")
+      .replace(/^_+|_+$/g, "") || "dynamic";
+    return { id: safeId.startsWith("dynamic_") ? safeId : `dynamic_${safeId}`, name, purpose, keywords: [], min: 0, dynamic: true, analyzerId };
+  }
+
+  function classify(headers, rows, sourceMeta = {}, rawText = "", semanticProfile = null) {
     const headerText = normalize(headers.join(" | "));
     const titleText = normalize(sourceMeta?.reportTitle || sourceMeta?.metadata?.title || sourceMeta?.title || "");
     const tableSample = normalize(rows.slice(0, 45).map(row => Object.values(row).join(" ")).join(" "));
@@ -299,6 +309,10 @@
     };
     const has = phrase => allText.includes(normalize(phrase));
     const headerHas = phrase => headerText.includes(normalize(phrase));
+
+    if (semanticProfile?.recommendedTypeId && semanticProfile.recommendedTypeId !== "unknown") {
+      add(semanticProfile.recommendedTypeId, Math.max(36, Math.round(Number(semanticProfile.confidence || 0) * 0.72)), `ملف دلالي: ${semanticProfile.rationale || semanticProfile.shape || "بنية مكتشفة"}`);
+    }
 
     if (sourceMeta?.specializedType === "supervision_multi_visit") {
       add("supervision_multi_visit", 140, "اكتشاف بنية PDF متعددة الزيارات والجداول");
@@ -378,7 +392,7 @@
     };
   }
 
-  function assessQuality(headers, rows, type, sourceMeta = {}) {
+  function assessQuality(headers, rows, type, sourceMeta = {}, semanticProfile = null) {
     const blockers = [], warnings = [], info = [];
     if (!headers.length) blockers.push({ title: "لا توجد عناوين أعمدة", detail: "لا يمكن فهم بنية البيانات دون عناوين." });
     if (!rows.length) blockers.push({ title: "لا توجد سجلات", detail: "الملف لا يحتوي بيانات بعد صف العناوين." });
@@ -392,7 +406,14 @@
     rows.forEach(row => basisHeaders.forEach(header => { if (String(row[header] ?? "").trim() === "") missing++; }));
     const completeness = Math.round((1 - missing / denominator) * 1000) / 10;
 
-    const missingRequirements = requirements.filter(aliases => !findHeader(headers, aliases));
+    let missingRequirements = requirements.filter(aliases => !findHeader(headers, aliases));
+    if (type?.id === "level_distribution" && semanticProfile?.shape === "categorical_distribution" && (semanticProfile?.columnRoles?.levels || []).length >= 2) {
+      missingRequirements = [];
+      info.push({
+        title: "اكتملت بنية توزيع المستويات دلاليًا",
+        detail: `حدد التطبيق ${semanticProfile.columnRoles.levels.length} أعمدة مستويات، ووحدة المقارنة «${semanticProfile.columnRoles.group || "المجموعة"}»، دون الحاجة إلى عمود درجات فردية.`
+      });
+    }
     if (missingRequirements.length) {
       warnings.push({
         title: `${missingRequirements.length} حقل أساسي غير مؤكد`,
@@ -437,7 +458,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "1.1.5",
+      appVersion: "1.2.0",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -445,6 +466,7 @@
         confidence: state.localRecognition.confidence,
         rationale: state.localRecognition.rationale
       } : null,
+      semanticProfile: state.semanticProfile || null,
       headers: state.headers.slice(0, 40),
       sampleRows: maskedRows,
       narrativeExcerpt: redactRecognitionText(state.narrativeText || state.rawText),
@@ -453,10 +475,8 @@
   }
 
   async function maybeVerifyRecognition(requestId) {
-    const knownHighConfidence = state.type.id !== "unknown" && state.confidence >= 95;
-    const shouldVerify = aiReady() && !knownHighConfidence && (
-      state.type.id === "unknown" || state.confidence < 90 || state.sourceMeta?.mode === "narrative" || state.sourceMeta?.normalization?.applied
-    );
+    // كل ملف يمر بتحقق دلالي من Gemini عند توفر الاتصال؛ الملف المحلي البنيوي يبقى حارسًا للأعمدة والحسابات.
+    const shouldVerify = aiReady();
     if (!shouldVerify || !window.TaqareerAI?.classify) return;
     state.recognitionStatus = "جارٍ التحقق دلاليًا بواسطة Gemini…";
     renderReview();
@@ -470,21 +490,37 @@
       if (!cached && cacheKey) perfApi().cacheSet(cacheKey, result, 30 * 24 * 60 * 60 * 1000);
       if (requestId !== state.recognitionRequestId) return;
       const classification = result?.classification || result;
-      const known = typeById(String(classification?.id || ""));
+      const aiProfile = result?.analysisProfile || classification?.analysisProfile || null;
+      const routedId = String(aiProfile?.recommendedTypeId || aiProfile?.analyzerId || classification?.id || "");
+      const known = typeById(String(classification?.id || routedId));
       state.aiRecognition = classification || null;
-      const aiConfidence = Math.max(0, Math.min(100, Math.round(Number(classification?.confidence) || 0)));
-      const adopt = known && known.id !== "unknown" && (
-        state.type.id === "unknown" || state.confidence < 85 || aiConfidence >= state.confidence + 8 ||
+      if (window.TaqareerAnalysisProfiler?.mergeProfiles) {
+        state.semanticProfile = window.TaqareerAnalysisProfiler.mergeProfiles(state.semanticProfile, aiProfile, state.headers);
+      }
+      const aiConfidence = Math.max(0, Math.min(100, Math.round(Number(classification?.confidence ?? aiProfile?.confidence) || 0)));
+      const adoptKnown = known && known.id !== "unknown" && (
+        state.type.id === "unknown" || state.confidence < 85 || aiConfidence >= state.confidence + 5 ||
+        state.semanticProfile?.recommendedTypeId === known.id ||
         (state.sourceMeta?.mode === "narrative" && known.id === "supervision_narrative")
       );
-      if (adopt) {
+      let adoptedDynamic = false;
+      if (adoptKnown) {
         state.type = known;
         state.confidence = Math.max(state.confidence, aiConfidence);
-        state.quality = assessQuality(state.headers, state.rows, state.type, state.sourceMeta);
+      } else if ((!known || known.id === "unknown") && (classification?.nameAr || aiProfile?.typeNameAr || classification?.suggestedNewType?.nameAr)) {
+        const dynamicClassification = classification?.suggestedNewType?.nameAr
+          ? { ...classification, nameAr: classification.suggestedNewType.nameAr, purpose: classification.suggestedNewType.purpose || classification.purpose }
+          : classification;
+        state.type = dynamicTypeFromRecognition(dynamicClassification, state.semanticProfile);
+        state.confidence = Math.max(state.confidence, aiConfidence || Number(state.semanticProfile?.confidence || 0));
+        adoptedDynamic = true;
       }
-      state.recognitionStatus = known
-        ? `تحقق هجين: المحرك المحلي + Gemini${adopt ? " · تم اعتماد التصنيف الدلالي" : " · التصنيف المحلي متسق"}${cached ? " · من الذاكرة المؤقتة" : ""}`
-        : "تحقق Gemini اقترح نوعًا جديدًا للمراجعة";
+      state.quality = assessQuality(state.headers, state.rows, state.type, state.sourceMeta, state.semanticProfile);
+      state.recognitionStatus = adoptedDynamic
+        ? `تحقق دلالي تكيفي: أنشأ Gemini نوعًا ومسار تحليل خاصين بالملف${cached ? " · من الذاكرة المؤقتة" : ""}`
+        : known
+          ? `تحقق دلالي هجين: ملف البنية + Gemini${adoptKnown ? " · تم اعتماد مسار التحليل" : " · المسار المحلي متسق"}${cached ? " · من الذاكرة المؤقتة" : ""}`
+          : "تحقق Gemini بنى ملفًا دلاليًا لنوع جديد بدل إجباره على قالب معروف";
       state.quality.info = state.quality.info.filter(item => item.title !== "تحقق دلالي من النوع");
       state.quality.info.unshift({
         title: "تحقق دلالي من النوع",
@@ -510,14 +546,30 @@
     state.narrativeText = sourceMeta?.mode === "narrative"
       ? (rawText || rows.map(row => row["النص"] ?? Object.values(row).join(" ")).join("\n"))
       : "";
-    const recognized = classify(state.headers, state.rows, sourceMeta || {}, state.rawText);
+    state.semanticProfile = window.TaqareerAnalysisProfiler?.profileTable?.({
+      headers: state.headers,
+      rows: state.rows,
+      sourceMeta: sourceMeta || {},
+      typeId: state.type?.id || "unknown"
+    }) || null;
+    const recognized = classify(state.headers, state.rows, sourceMeta || {}, state.rawText, state.semanticProfile);
+    if (state.semanticProfile && (!state.semanticProfile.recommendedTypeId || state.semanticProfile.recommendedTypeId === "unknown")) {
+      state.semanticProfile.recommendedTypeId = recognized.type.id;
+      state.semanticProfile.analyzerId = state.semanticProfile.analyzerId || recognized.type.id;
+    }
     state.localRecognition = recognized;
     state.aiRecognition = null;
     state.recognitionStatus = `تصنيف محلي: ${recognized.rationale}`;
     state.type = recognized.type;
     state.confidence = recognized.confidence;
-    state.quality = assessQuality(state.headers, state.rows, state.type, sourceMeta || {});
+    state.quality = assessQuality(state.headers, state.rows, state.type, sourceMeta || {}, state.semanticProfile);
     const recognitionRequestId = ++state.recognitionRequestId;
+    if (state.semanticProfile) {
+      state.quality.info.unshift({
+        title: "ملف دلالي لبنية البيانات",
+        detail: `${state.semanticProfile.rationale || "تم تحديد وحدة التحليل والمقاييس."} مسار الحساب: ${state.semanticProfile.analyzerId || state.type.id}.`
+      });
+    }
     if (sourceMeta?.headerRow) {
       state.quality.info.unshift({
         title: `تم اكتشاف صف العناوين في الصف ${sourceMeta.headerRow}`,
@@ -812,6 +864,11 @@
   }
 
   function renderReview() {
+    const typeSelect = $("typeSelect");
+    if (state.type?.dynamic && typeSelect && ![...typeSelect.options].some(option => option.value === state.type.id)) {
+      typeSelect.add(new Option(`${state.type.name} (نوع تكيفي)`, state.type.id));
+    }
+    if (typeSelect && [...typeSelect.options].some(option => option.value === state.type.id)) typeSelect.value = state.type.id;
     $("recognizedType").textContent = state.type.name;
     $("recognizedPurpose").textContent = state.type.purpose;
     const recognitionSource = $("recognitionSource");
@@ -862,7 +919,8 @@
   function renderSetup() {
     const narrativeMode = isNarrativeMode();
     const multiVisitMode = state.type.id === "supervision_multi_visit";
-    $("measurementCard").classList.toggle("hidden", narrativeMode || multiVisitMode);
+    const requiresScoreSettings = state.semanticProfile?.requiresScoreSettings ?? ["single_subject", "assessment_component", "cross_subject"].includes(state.type.id);
+    $("measurementCard").classList.toggle("hidden", narrativeMode || multiVisitMode || !requiresScoreSettings);
     $("narrativeSetupCard").classList.toggle("hidden", !narrativeMode);
     if (narrativeMode) {
       $("narrativeTextReview").value = state.narrativeText || state.rows.map(row => row["النص"] ?? Object.values(row).join(" ")).join("\n");
@@ -898,7 +956,21 @@
         : ["ملف تعريف للحقول الرقمية والفئوية", "تحقق دلالي عبر Gemini لتحديد الهدف", "بناء خطة تحليل متخصصة جديدة", "حفظ النوع لاحقًا في السجل الديناميكي"]
     };
 
-    $("analysisPlan").innerHTML = plans[state.type.id].map(x => `<li>${escapeHtml(x)}</li>`).join("");
+    const semanticFamilies = Array.isArray(state.semanticProfile?.analysisFamilies) ? state.semanticProfile.analysisFamilies : [];
+    const familyLabels = {
+      distribution_analysis: "تحليل توزيع الفئات ومركز التوزيع",
+      group_comparison: "مقارنة المجموعات وترتيب الأولوية",
+      concentration_analysis: "قياس التركّز والتفاوت بين المستويات",
+      aggregate_consistency_check: "مطابقة المجاميع والنسب مع الصف الإجمالي",
+      comparative_analysis: "مقارنة المقاييس أو الفئات وفق بنية الملف",
+      indicator_analysis: "تحليل المؤشرات وترتيب الفجوات",
+      narrative_evidence: "تحليل الأدلة السردية وقوة الاستدلال",
+      adaptive_profile_analysis: "بناء تحليل تكيفي وفق ملف البنية الدلالي"
+    };
+    const selectedPlan = semanticFamilies.length
+      ? semanticFamilies.map(item => familyLabels[item] || String(item).replace(/_/g, " ")).slice(0, 4)
+      : (plans[state.type.id] || plans.unknown);
+    $("analysisPlan").innerHTML = selectedPlan.map(x => `<li>${escapeHtml(x)}</li>`).join("");
     updateAiStatusUi();
   }
 
@@ -1070,7 +1142,7 @@
     if (!window.TaqareerReconciliation?.composePrimary) throw new Error("محرك التحقق من التحليل الذكي غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "1.1.5",
+      appVersion: "1.2.0",
       pipeline: {
         mode: "ai-primary-analysis-v1",
         instruction: "المحرك المحلي يحسب المؤشرات والرسوم فقط. يبني الذكاء الاصطناعي التشخيص والاستنتاجات والتدخلات من الأدلة، ثم تتحقق البوابة من المراجع قبل عرض التقرير."
@@ -1084,7 +1156,8 @@
         id: state.type.id,
         nameAr: state.type.name,
         purpose: state.type.purpose,
-        confidence: state.confidence
+        confidence: state.confidence,
+        semanticProfile: state.semanticProfile || null
       },
       quality: {
         completeness: state.quality?.completeness,
@@ -1319,7 +1392,8 @@
       const levelColumn = $("levelColumnSelect").value;
       const maxScore = parseNumber($("maxScoreInput").value);
       const thresholdPct = parseNumber($("masteryThresholdInput").value);
-      if (!narrativeMode && state.type.id !== "supervision_multi_visit" && (!Number.isFinite(thresholdPct) || thresholdPct <= 0 || thresholdPct > 100)) {
+      const requiresScoreSettings = state.semanticProfile?.requiresScoreSettings ?? ["single_subject", "assessment_component", "cross_subject"].includes(state.type.id);
+      if (requiresScoreSettings && !narrativeMode && state.type.id !== "supervision_multi_visit" && (!Number.isFinite(thresholdPct) || thresholdPct <= 0 || thresholdPct > 100)) {
         setMessage("setupMessage", "حد الإتقان يجب أن يكون بين 1 و100.", true);
         return;
       }
@@ -1334,6 +1408,7 @@
         headers: state.headers,
         rows: state.rows,
         sourceMeta: state.sourceMeta,
+        analysisProfile: state.semanticProfile,
         narrativeText,
         scoreColumn,
         levelColumn,
@@ -1611,11 +1686,11 @@
   function exportAnalysis() {
     const payload = {
       app: "تقارير",
-      version: "1.0.1",
+      version: "1.2.0",
       generatedAt: new Date().toISOString(),
       source: state.sourceName,
       sourceMeta: state.sourceMeta,
-      recognizedType: { id: state.type.id, name: state.type.name, confidence: state.confidence },
+      recognizedType: { id: state.type.id, name: state.type.name, confidence: state.confidence, semanticProfile: state.semanticProfile },
       quality: state.quality,
       localAnalysis: state.analysis,
       aiDelta: state.aiResult,
@@ -1624,7 +1699,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v1.1.5.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v1.2.0.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
@@ -1638,7 +1713,7 @@
       analysis: null, reconciledAnalysis: null, aiResult: null, aiError: "", aiWarning: "", aiUsed: false, aiPending: false,
       aiSegments: { results: {}, failures: {}, statuses: {}, taskResults: {}, taskFailures: {}, taskStatuses: {}, taskPlan: [], failedTaskIds: [], recovery: null },
       performance: { spans: [], cacheHit: false, payloadChars: 0, aiUsage: null, aiModel: "", aiServerTiming: null, segmentTimings: {} },
-      localRecognition: null, aiRecognition: null, recognitionStatus: "محلي", recognitionRequestId: state.recognitionRequestId + 1,
+      localRecognition: null, aiRecognition: null, semanticProfile: null, recognitionStatus: "محلي", recognitionRequestId: state.recognitionRequestId + 1,
       analysisRequestId: state.analysisRequestId + 1,
       sampleMaxScore: null, pendingSource: null, sourceMeta: null, pendingManualFileName: "", pendingVisualPreview: null
     });
@@ -1697,7 +1772,7 @@
     });
     window.addEventListener?.("taqareer-ai-health", updateAiStatusUi);
     $("changeTypeBtn").addEventListener("click",()=>{ $("typeSelect").value=state.type.id; $("typeDialog").showModal(); });
-    $("applyTypeBtn").addEventListener("click", e => { e.preventDefault(); const chosen=formTypes.find(t=>t.id===$("typeSelect").value); if(chosen){state.type=chosen;state.confidence=100;state.recognitionStatus="اعتماد يدوي من المستخدم";state.quality=assessQuality(state.headers,state.rows,state.type,state.sourceMeta||{});renderReview();} $("typeDialog").close(); });
+    $("applyTypeBtn").addEventListener("click", e => { e.preventDefault(); const chosen=formTypes.find(t=>t.id===$("typeSelect").value) || (state.type?.id === $("typeSelect").value ? state.type : null); if(chosen){state.type=chosen;state.confidence=100;state.recognitionStatus="اعتماد يدوي من المستخدم";state.semanticProfile=window.TaqareerAnalysisProfiler?.profileTable?.({headers:state.headers,rows:state.rows,sourceMeta:state.sourceMeta||{},typeId:state.type.id})||state.semanticProfile;state.quality=assessQuality(state.headers,state.rows,state.type,state.sourceMeta||{},state.semanticProfile);renderReview();} $("typeDialog").close(); });
     updateAiStatusUi();
     verifyAiConnectionOnLoad();
   }

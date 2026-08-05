@@ -60,16 +60,16 @@ test('health operation verifies Edge connectivity without calling Gemini', async
   const response = await runtime.handler(new Request('https://edge.test/analyze', {
     method: 'POST',
     headers: { 'content-type': 'application/json', origin: 'https://physicsbasit-debug.github.io' },
-    body: JSON.stringify({ operation: 'health', payload: { clientVersion: '1.1.5' } }),
+    body: JSON.stringify({ operation: 'health', payload: { clientVersion: '1.2.0' } }),
   }));
   const body = await response.json();
   assert.equal(response.status, 200);
   assert.equal(body.ok, true);
   assert.equal(body.operation, 'health');
-  assert.equal(body.edgeVersion, '0.14.4');
+  assert.equal(body.edgeVersion, '0.15.0');
   assert.equal(body.aiKeyConfigured, true);
   assert.equal(body.provider, 'supabase-edge');
-  assert.equal(response.headers.get('x-taqareer-edge-version'), '0.14.4');
+  assert.equal(response.headers.get('x-taqareer-edge-version'), '0.15.0');
   assert.equal(runtime.getGeminiCalls(), 0);
 });
 

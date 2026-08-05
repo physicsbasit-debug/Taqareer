@@ -1,12 +1,16 @@
 {
-  "registryVersion": "1.0.0",
-  "status": "draft-for-implementation",
+  "registryVersion": "1.2.0",
+  "status": "runtime-semantic-router-enabled",
   "principles": {
     "openEndedTypes": true,
     "aiCentral": true,
     "deterministicCalculations": true,
     "evidenceRequired": true,
-    "humanApprovalRequired": true
+    "humanApprovalRequired": true,
+    "semanticProfileFirst": true,
+    "knownTypesAreHintsNotMandatoryTemplates": true,
+    "runtimeDynamicType": true,
+    "persistentDynamicTypeRegistry": false
   },
   "types": [
     {
@@ -313,6 +317,54 @@
         "cross_subject_comparison_without_normalization"
       ],
       "reportTemplate": "cross_subject_profile_report.v1"
+    },
+    {
+      "id": "student_results.aggregated_level_distribution.v2",
+      "nameAr": "كشف توزيع مستويات الأداء المجمع",
+      "unitOfAnalysis": "group",
+      "modality": "aggregated_categorical_numeric",
+      "sourceExamples": [
+        "كشف نسب مستويات الطلبة المحفوظ من Crystal Reports بصيغة XLSX"
+      ],
+      "recognition": {
+        "titleSignals": [
+          "كشف بنسب مستويات الطلبة",
+          "نسب مستويات الطلبة"
+        ],
+        "requiredFields": [
+          "group_label",
+          "at_least_two_level_columns"
+        ],
+        "fieldSignals": [
+          "الشعبة",
+          "أ",
+          "ب",
+          "ج",
+          "د",
+          "هـ",
+          "جملة عامة",
+          "جملة النجاح",
+          "نسبة النجاح"
+        ],
+        "aggregateRowPolicy": "exclude_from_group_totals_use_for_consistency_only"
+      },
+      "analysisFamilies": [
+        "distribution_analysis",
+        "group_comparison",
+        "concentration_analysis",
+        "aggregate_consistency_check"
+      ],
+      "qualityTools": [
+        "aggregate_total_check",
+        "success_rate_check",
+        "group_size_check"
+      ],
+      "forbiddenInferences": [
+        "treat_aggregate_row_as_group",
+        "request_individual_score_settings",
+        "infer_skill_causes_from_distribution_only"
+      ],
+      "reportTemplate": "level_distribution_report.v2"
     }
   ],
   "unknownTypeWorkflow": {

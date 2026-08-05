@@ -48,6 +48,35 @@ export interface NarrativeDocumentContext {
     | "standard";
 }
 
+
+export interface SemanticAnalysisProfile {
+  profileVersion: string;
+  shape: string;
+  unitOfAnalysis: AnalysisUnit | "group" | "row" | "statement" | string;
+  dataNature: string;
+  aggregationLevel: "individual" | "aggregated" | "document" | "unknown" | string;
+  orientation: string;
+  measureType: string;
+  scaleDirection: string;
+  analyzerId: string;
+  recommendedTypeId: string;
+  requiresScoreSettings: boolean;
+  confidence: number;
+  rationale: string;
+  analysisFamilies: string[];
+  columnRoles?: Record<string, unknown>;
+  rowRoles?: {
+    dataRowIndexes?: number[];
+    aggregateRowIndexes?: number[];
+  };
+}
+
+export interface AdaptiveAnalysisRoute {
+  requestedTypeId: string;
+  analyzerId: string;
+  semanticProfileVersion: string | null;
+}
+
 export interface EvidenceReference {
   sourceId: string;
   fileName: string;

@@ -10,10 +10,14 @@ const required = [
   'visitCount?: number;',
   '"explicit-multiple-visits-and-teachers"',
   '"compare-numeric-and-narrative-evidence-within-each-visit-only"',
+  'export interface SemanticAnalysisProfile',
+  'requiresScoreSettings: boolean;',
+  'aggregateRowIndexes?: number[];',
+  'export interface AdaptiveAnalysisRoute',
 ];
 for (const token of required) {
   if (!source.includes(token)) throw new Error(`Missing contract token: ${token}`);
 }
 // Ensure the file contains only TypeScript declarations/interfaces, not accidental runtime fragments.
 if (/\b(eval|Function)\s*\(/.test(source)) throw new Error('Unsafe runtime expression in contracts');
-console.log('PASS: analysis contracts include multi-visit supervisory context');
+console.log('PASS: analysis contracts include multi-visit context and adaptive semantic routing');
