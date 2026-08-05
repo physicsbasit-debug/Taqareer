@@ -134,6 +134,16 @@ export interface ActionRecommendation {
     targetCount?: number;
     targetRate?: number;
   };
+  scopeGuard?: {
+    applied: boolean;
+    adjusted?: boolean;
+    scopeType?: string;
+    sampleOnly?: boolean;
+    visitCount?: number;
+    populationLabel?: string;
+    originalTargetGroup?: string;
+    finalTargetGroup?: string;
+  };
   followUpToolAr: string;
   linkedFindingIds: string[];
 }

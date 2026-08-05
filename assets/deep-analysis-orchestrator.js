@@ -3,7 +3,7 @@
 
   // Phase 2-A: الذكاء الاصطناعي هو مالك التحليل التربوي، بينما يبقى
   // المحرك المحلي مسؤولًا عن الحسابات والرسوم وحزمة الأدلة فقط.
-  const VERSION = "1.1.3";
+  const VERSION = "1.1.4";
   const PROTOCOL_VERSION = "6.6.0";
   const LABELS = Object.freeze({ primary: "التحليل التربوي الذكي" });
   const TASK_LABELS = Object.freeze({ "analysis.primary": "التحليل التربوي الذكي" });
@@ -68,6 +68,19 @@
         thresholdPct: source.thresholdPct ?? null,
         maxScore: source.maxScore ?? null,
       },
+      scopeContext: source.scopeContext && typeof source.scopeContext === "object"
+        ? {
+            scopeType: String(source.scopeContext.scopeType || ""),
+            sampleOnly: Boolean(source.scopeContext.sampleOnly),
+            visitCount: Number(source.scopeContext.visitCount || 0),
+            school: String(source.scopeContext.school || "").slice(0, 220),
+            gradeRange: String(source.scopeContext.gradeRange || "").slice(0, 120),
+            subjects: (Array.isArray(source.scopeContext.subjects) ? source.scopeContext.subjects : []).slice(0, 12).map(item => String(item).slice(0, 120)),
+            departmentLabel: String(source.scopeContext.departmentLabel || "").slice(0, 220),
+            populationLabel: String(source.scopeContext.populationLabel || "").slice(0, 260),
+            forbiddenBroaderPopulations: (Array.isArray(source.scopeContext.forbiddenBroaderPopulations) ? source.scopeContext.forbiddenBroaderPopulations : []).slice(0, 8).map(item => String(item).slice(0, 180)),
+          }
+        : null,
       interventionMathContext: source.interventionMathContext && typeof source.interventionMathContext === "object"
         ? {
             totalCount: Number(source.interventionMathContext.totalCount || 0),
@@ -164,6 +177,7 @@
         impossibleNumericTargetsMustBeAdjustedOrRejected: true,
         monitoringMustIncludeBaselineCheckpointAndImpact: true,
         aggregateScoresCannotNameSpecificSkillsWithoutEvidence: true,
+        interventionsCannotExceedObservedSampleScope: true,
         acknowledgeMissingData: true,
         outputLanguage: "العربية الواضحة المهنية",
       },

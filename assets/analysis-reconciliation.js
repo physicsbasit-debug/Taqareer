@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.1.3";
+  const VERSION = "1.1.4";
   const CONTRACT_VERSION = "6.6.0";
 
   const SCORE_TYPES = new Set(["student_results", "single_subject", "assessment_component", "level_distribution", "cross_subject"]);
@@ -626,6 +626,49 @@
     };
   }
 
+  function localMultiVisitScopeContext(localEvidence) {
+    const source = localEvidence?.scopeContext && typeof localEvidence.scopeContext === "object" ? localEvidence.scopeContext : null;
+    if (!source) return null;
+    const populationLabel = trimText(source.populationLabel, 360);
+    if (!populationLabel) return null;
+    return {
+      scopeType: trimText(source.scopeType, 100) || "sampled-multi-visit",
+      sampleOnly: source.sampleOnly !== false,
+      visitCount: Math.max(0, Math.trunc(Number(source.visitCount || 0))),
+      populationLabel,
+      subjects: clampItems(source.subjects, 12, 140),
+      departmentLabel: trimText(source.departmentLabel, 260),
+    };
+  }
+
+  function broadMultiVisitTarget(value) {
+    const text = normalize(value);
+    return /الهيئه التدريسيه|الهيئه التعليميه|جميع معلمي المدرسه|معلمو المدرسه|كافه المعلمين|جميع المعلمين|كل المعلمين/.test(text)
+      || (/(بالمدرسه|في المدرسه)/.test(text) && !/المشمولين بالزيارات|قسم|ماده|الصف/.test(text));
+  }
+
+  function clientGuardMultiVisitScope(item, context) {
+    const guard = item?.scopeGuard && typeof item.scopeGuard === "object" ? item.scopeGuard : null;
+    if (!guard?.applied) throw new Error("رفض محرك التحقق تدخلًا إشرافيًا لم يمر بحارس نطاق العينة الخادمي.");
+    if (Math.trunc(Number(guard.visitCount || 0)) !== context.visitCount) {
+      throw new Error("رفض محرك التحقق تدخلًا بُني على عدد زيارات لا يطابق السجلات المحلية.");
+    }
+    if (normalize(guard.populationLabel) !== normalize(context.populationLabel)) {
+      throw new Error("رفض محرك التحقق تدخلًا يستخدم نطاقًا مختلفًا عن عينة الزيارات المحلية.");
+    }
+    const finalTargetGroup = trimText(guard.finalTargetGroup || item?.targetGroup, 360);
+    if (!finalTargetGroup || broadMultiVisitTarget(finalTargetGroup)) {
+      throw new Error("رفض محرك التحقق تدخلًا يوسع الفئة المستهدفة خارج المعلمين المشمولين بالزيارات.");
+    }
+    if (guard.adjusted && normalize(finalTargetGroup) !== normalize(context.populationLabel)) {
+      throw new Error("رفض محرك التحقق تضييق نطاق غير مطابق للفئة المحلية المعتمدة.");
+    }
+    return {
+      targetGroup: finalTargetGroup,
+      scopeGuard: clone(guard),
+    };
+  }
+
   function composePrimary(localEvidence, primaryResult, options = {}) {
     const result = canonicalize(localEvidence || {});
     if (!primaryResult || typeof primaryResult !== "object") throw new Error("لم تصل نتيجة التحليل الذكي الأساسي.");
@@ -694,9 +737,14 @@
       .filter(item => item.name && item.reason);
 
     const numericScoreType = NUMERIC_SCORE_TYPES.has(String(result.typeId || ""));
+    const multiVisitType = String(result.typeId || "") === "supervision_multi_visit";
     const scoreInterventionContext = numericScoreType ? localScoreInterventionContext(localEvidence) : null;
+    const multiVisitScopeContext = multiVisitType ? localMultiVisitScopeContext(localEvidence) : null;
     if (numericScoreType && !scoreInterventionContext) {
       throw new Error("تعذر التحقق محليًا من فئات التدخل الرقمية.");
+    }
+    if (multiVisitType && !multiVisitScopeContext) {
+      throw new Error("تعذر التحقق محليًا من نطاق عينة الزيارات الإشرافية.");
     }
 
     result.improvementPlan = (Array.isArray(primaryResult.interventions) ? primaryResult.interventions : [])
@@ -715,6 +763,7 @@
           successIndicator: trimText(item?.successIndicator, 900),
           successMetric: clone(item?.successMetric || {}),
           numericGuard: clone(item?.numericGuard || null),
+          scopeGuard: clone(item?.scopeGuard || null),
           monitoringMethod: trimText(item?.monitoringMethod, 820),
           contingency: trimText(item?.contingency, 900),
           resources: clampItems(item?.resources, 6, 540),
@@ -728,6 +777,11 @@
           base.successIndicator = guarded.successIndicator;
           base.successMetric = guarded.successMetric;
           base.numericGuard = guarded.numericGuard;
+        }
+        if (multiVisitScopeContext) {
+          const scoped = clientGuardMultiVisitScope(item, multiVisitScopeContext);
+          base.targetGroup = scoped.targetGroup;
+          base.scopeGuard = scoped.scopeGuard;
         }
         return base;
       })

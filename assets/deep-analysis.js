@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.1.3";
+  const VERSION = "1.1.4";
 
   function masteryEngine() {
     const engine = window.TaqareerMasteryMetrics;
@@ -1456,6 +1456,37 @@
     return null;
   }
 
+  function buildMultiVisitScopeContext(rows, sourceMeta = {}) {
+    const metadata = sourceMeta?.metadata && typeof sourceMeta.metadata === "object" ? sourceMeta.metadata : {};
+    const subjects = unique((rows || []).map(row => String(row["المادة"] || "").trim())).filter(Boolean);
+    const grades = unique((rows || []).map(row => String(row["الصف"] || "").trim())).filter(Boolean);
+    const normalizedSubjects = subjects.map(normalize);
+    const scienceFamily = subjects.length > 0 && normalizedSubjects.every(subject => /الفيزياء|الكيمياء|الاحياء|العلوم/.test(subject));
+    let departmentLabel = "";
+    let populationLabel = "المعلمون المشمولون بالزيارات";
+    if (scienceFamily) {
+      departmentLabel = "قسم العلوم";
+      populationLabel = "معلمو قسم العلوم المشمولون بالزيارات";
+    } else if (subjects.length === 1) {
+      departmentLabel = `مادة ${subjects[0]}`;
+      populationLabel = `معلمو ${subjects[0]} المشمولون بالزيارات`;
+    } else if (subjects.length > 1) {
+      departmentLabel = `المواد: ${subjects.join("، ")}`;
+      populationLabel = `المعلمون المشمولون بالزيارات في ${departmentLabel}`;
+    }
+    return {
+      scopeType: "sampled-multi-visit",
+      sampleOnly: true,
+      visitCount: (rows || []).length,
+      school: String(metadata.school || ""),
+      gradeRange: String(metadata.grade || grades.join("، ")),
+      subjects,
+      departmentLabel,
+      populationLabel,
+      forbiddenBroaderPopulations: ["الهيئة التدريسية", "جميع معلمي المدرسة", "معلمو المدرسة", "كافة المعلمين", "جميع المعلمين"],
+    };
+  }
+
   function analyzeMultiVisitSupervision(context) {
     const result = createBase(context, "supervision_multi_visit", "تحليل زيارات إشرافية متعددة وربط المقياس المعكوس بالأدلة السردية داخل كل زيارة");
     const catalog = Array.isArray(context.sourceMeta?.indicatorCatalog) ? context.sourceMeta.indicatorCatalog : [];
@@ -1514,6 +1545,7 @@
     const goodCount = ratings.filter(value => value === 2).length;
     const supportCount = ratings.filter(value => value >= 3).length;
     const completeVisits = visitSummaries.filter(item => item.ratingCount === catalog.length).length;
+    result.scopeContext = buildMultiVisitScopeContext(rows, context.sourceMeta);
     result.visitSummaries = visitSummaries;
     result.indicatorStats = indicatorStats;
     result.numericNarrativeMismatches = mismatches;

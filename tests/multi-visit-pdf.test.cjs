@@ -111,6 +111,9 @@ test('multi-visit analyzer preserves reversed-scale arithmetic and flags only wi
   assert.equal(analysis.metrics.find(item => item.id === 'ratingCount').value, 26);
   assert.equal(analysis.metrics.find(item => item.id === 'excellentPct').value, 100);
   assert.ok(analysis.metrics.find(item => item.id === 'numericNarrativeMismatchCount').value >= 1);
+  assert.equal(analysis.scopeContext.departmentLabel, 'قسم العلوم');
+  assert.equal(analysis.scopeContext.populationLabel, 'معلمو قسم العلوم المشمولون بالزيارات');
+  assert.equal(analysis.scopeContext.visitCount, 2);
   assert.equal(analysis.diagnosticSections.length, 0);
   assert.equal(analysis.findings.length, 0);
 });
@@ -173,11 +176,53 @@ test('multi-visit report moves all four charts to print-safe analytical pages an
     sourceMeta: parsed.dataset.meta,
   });
   const sheets = html.split('<section class="report-sheet">').slice(1);
-  assert.equal(sandbox.window.TaqareerReports.VERSION, '1.1.3');
+  assert.equal(sandbox.window.TaqareerReports.VERSION, '1.1.4');
   assert.doesNotMatch(sheets[0], /supervision-level-distribution|supervision-indicator-performance/);
   assert.match(sheets.slice(1).join('\n'), /supervision-level-distribution/);
   assert.match(sheets.slice(1).join('\n'), /supervision-indicator-performance/);
   assert.match(html, /الصف \/ الفئة<\/span><strong>8-10<\/strong>/);
   assert.equal((html.match(/class="bar-row"/g) || []).length, 5 + 13 + 3 + 3);
   assert.match(html, /chart-card chart-wide chart-dense[^>]*data-chart-id="supervision-indicator-performance"/);
+});
+
+
+test('client scope guard rejects school-wide targets and accepts the server-narrowed multi-visit population', () => {
+  const sandbox = { window: {}, console, Intl, Date, Math, Set, Map, structuredClone, Array, Object, String, Number, RegExp, JSON };
+  vm.createContext(sandbox);
+  vm.runInContext(fs.readFileSync(path.join(root, 'assets', 'analysis-reconciliation.js'), 'utf8'), sandbox, { filename: 'analysis-reconciliation.js' });
+  const refs = ['metric:visitCount', 'metric:ratingCount', 'metric:excellentPct', 'metric:excellentGoodPct', 'metric:supportRatingPct', 'metric:numericNarrativeMismatchCount'];
+  const local = {
+    typeId: 'supervision_multi_visit', kind: 'supervision_multi_visit', metrics: [], charts: [], evidenceMap: {}, limitations: [],
+    scopeContext: { scopeType: 'sampled-multi-visit', sampleOnly: true, visitCount: 7, subjects: ['الفيزياء', 'الكيمياء', 'العلوم', 'الأحياء'], departmentLabel: 'قسم العلوم', populationLabel: 'معلمو قسم العلوم المشمولون بالزيارات' },
+  };
+  const primary = {
+    contractVersion: '6.6.0',
+    analysisProfile: { method: 'تحليل الزيارات', dataAdequacy: 'كافية وصفيًا', dimensions: ['الأداء', 'الاتساق'], decisionUses: ['المتابعة'] },
+    executive: { title: 'تحليل عينة الزيارات', summary: 'تحليل محصور في معلمي قسم العلوم المشمولين بسبع زيارات، ولا يمتد إلى بقية الهيئة التدريسية.', overallJudgement: 'تحسين موجه', confidence: 'مرتفعة', evidenceRefs: refs.slice(0, 2), limitations: [] },
+    diagnosticSections: [
+      { id: 'd1', title: 'الأداء', analysis: 'تظهر المؤشرات أداءً قويًا في غالبية الزيارات.', claimType: 'fact', evidenceRefs: [refs[2]], confidence: 'مرتفعة', implications: [], alternativeExplanations: [], limitations: [], dataRequests: [] },
+      { id: 'd2', title: 'الاتساق', analysis: 'تحتاج حالتان إلى مراجعة داخل الزيارة نفسها.', claimType: 'inference', evidenceRefs: [refs[5]], confidence: 'متوسطة', implications: [], alternativeExplanations: [], limitations: [], dataRequests: [] },
+    ],
+    findings: [
+      { id: 'f1', title: 'أداء قوي', statement: 'غالبية التقديرات متميزة أو جيدة.', claimType: 'fact', evidenceRefs: [refs[3]], confidence: 'مرتفعة', severity: 'low', educationalImpact: 'يدعم نقل الممارسات داخل القسم.', recommendedAction: 'توثيق الممارسات.', limitations: [] },
+      { id: 'f2', title: 'مراجعة الاتساق', statement: 'توجد حالتان تحتاجان مراجعة.', claimType: 'inference', evidenceRefs: [refs[5]], confidence: 'متوسطة', severity: 'medium', educationalImpact: 'يحسن دقة التوجيه.', recommendedAction: 'مراجعة السجلات.', limitations: [] },
+    ],
+    qualityTools: [],
+    interventions: [
+      { id: 'i1', priority: 'عالية', issue: 'الاتساق', targetGroup: 'معلمو قسم العلوم المشمولون بالزيارات', targetGroupIds: [], action: 'مراجعة الحالات.', implementationSteps: [], responsibleRole: 'المعلم الأول', timeframe: 'أسبوعان', successIndicator: 'مراجعة الحالات كاملة', successMetric: { mode: 'custom', targetValue: 0, targetSegmentId: '' }, monitoringMethod: 'محضر مراجعة', contingency: 'إعادة الزيارة', resources: [], evidenceRefs: [refs[5]], scopeGuard: { applied: true, adjusted: true, visitCount: 7, populationLabel: 'معلمو قسم العلوم المشمولون بالزيارات', finalTargetGroup: 'معلمو قسم العلوم المشمولون بالزيارات' } },
+      { id: 'i2', priority: 'متوسطة', issue: 'النمو المهني', targetGroup: 'معلمو مادة العلوم للصف الثامن', targetGroupIds: [], action: 'تبادل الممارسة.', implementationSteps: [], responsibleRole: 'المعلم الأول', timeframe: 'خلال الفصل', successIndicator: 'تنفيذ لقاء مهني', successMetric: { mode: 'custom', targetValue: 0, targetSegmentId: '' }, monitoringMethod: 'محضر اللقاء', contingency: 'دعم فردي', resources: [], evidenceRefs: [refs[0]], scopeGuard: { applied: true, adjusted: false, visitCount: 7, populationLabel: 'معلمو قسم العلوم المشمولون بالزيارات', finalTargetGroup: 'معلمو مادة العلوم للصف الثامن' } },
+    ],
+    monitoringPlan: [
+      { id: 'm1', stage: 'خط الأساس', timing: 'الآن', measure: 'توثيق المؤشرات', owner: 'المعلم الأول', evidenceRefs: [refs[0]] },
+      { id: 'm2', stage: 'متابعة مرحلية', timing: 'منتصف الفصل', measure: 'مراجعة التنفيذ', owner: 'الإدارة', evidenceRefs: [refs[4]] },
+      { id: 'm3', stage: 'قياس الأثر', timing: 'نهاية الفصل', measure: 'إعادة حساب المؤشرات', owner: 'المشرف', evidenceRefs: [refs[2]] },
+    ],
+    additionalCautions: [], missingDataRequests: [], suggestedNewType: { needed: false, nameAr: '', purpose: '' },
+  };
+  const analysis = sandbox.window.TaqareerReconciliation.composePrimary(local, primary, { availableEvidenceRefs: refs });
+  assert.equal(analysis.improvementPlan[0].targetGroup, 'معلمو قسم العلوم المشمولون بالزيارات');
+  const tampered = structuredClone(primary);
+  tampered.interventions[0].targetGroup = 'الهيئة التدريسية بمدرسة الباسط';
+  tampered.interventions[0].scopeGuard.finalTargetGroup = 'الهيئة التدريسية بمدرسة الباسط';
+  assert.throws(() => sandbox.window.TaqareerReconciliation.composePrimary(local, tampered, { availableEvidenceRefs: refs }), /يوسع الفئة المستهدفة/);
 });

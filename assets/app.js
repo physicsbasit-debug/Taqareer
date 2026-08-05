@@ -406,7 +406,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "1.1.3",
+      appVersion: "1.1.4",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -1005,6 +1005,7 @@
       metrics,
       charts,
       calculationLimitations: (analysis.limitations || []).slice(0, 12),
+      scopeContext: analysis.scopeContext && typeof analysis.scopeContext === "object" ? structuredClone(analysis.scopeContext) : null,
       interventionMathContext: Array.isArray(analysis.segments) && analysis.segments.length ? {
         totalCount: Number(analysis.n || 0),
         baselineMasteryCount: Number(analysis.masteryCount || 0),
@@ -1038,7 +1039,7 @@
     if (!window.TaqareerReconciliation?.composePrimary) throw new Error("محرك التحقق من التحليل الذكي غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "1.1.3",
+      appVersion: "1.1.4",
       pipeline: {
         mode: "ai-primary-analysis-v1",
         instruction: "المحرك المحلي يحسب المؤشرات والرسوم فقط. يبني الذكاء الاصطناعي التشخيص والاستنتاجات والتدخلات من الأدلة، ثم تتحقق البوابة من المراجع قبل عرض التقرير."
@@ -1592,7 +1593,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v1.1.3.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v1.1.4.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }

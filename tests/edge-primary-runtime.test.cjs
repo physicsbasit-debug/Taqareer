@@ -330,3 +330,74 @@ test('edge returns an Arabic retryable message when all Gemini models are tempor
   assert.doesNotMatch(body.error, /high demand|Spikes in demand|try again later/i);
   assert.equal(runtime.getCalls(), 3);
 });
+
+function multiVisitPayload() {
+  return {
+    locale: 'ar-OM',
+    recognizedType: { id: 'supervision_multi_visit', nameAr: 'زيارات إشرافية متعددة' },
+    availableEvidenceRefs: ['metric:visitCount', 'metric:ratingCount', 'metric:excellentPct', 'metric:excellentGoodPct', 'metric:supportRatingPct', 'metric:numericNarrativeMismatchCount'],
+    source: { meta: { metadata: { school: 'الباسط للبنين الصفوف (8-10)', grade: '8-10' } } },
+    data: {
+      structure: 'multi-visit-supervision',
+      visits: Array.from({ length: 7 }, (_, index) => ({ visitId: `زيارة ${index + 1}`, subject: ['الفيزياء', 'الكيمياء', 'العلوم', 'الأحياء'][index % 4], grade: ['الثامن', 'التاسع', 'العاشر'][index % 3] })),
+      visitCount: 7,
+      ratingCount: 91,
+    },
+    evidenceAnalysis: {
+      metrics: [
+        { id: 'visitCount', value: 7 }, { id: 'ratingCount', value: 91 }, { id: 'excellentPct', value: 63.7 },
+        { id: 'excellentGoodPct', value: 97.8 }, { id: 'supportRatingPct', value: 2.2 }, { id: 'numericNarrativeMismatchCount', value: 2 },
+      ],
+      charts: [],
+      evidenceCatalog: [],
+      scopeContext: {
+        scopeType: 'sampled-multi-visit', sampleOnly: true, visitCount: 7,
+        school: 'الباسط للبنين الصفوف (8-10)', gradeRange: '8-10',
+        subjects: ['الفيزياء', 'الكيمياء', 'العلوم', 'الأحياء'],
+        departmentLabel: 'قسم العلوم',
+        populationLabel: 'معلمو قسم العلوم المشمولون بالزيارات',
+        forbiddenBroaderPopulations: ['الهيئة التدريسية', 'جميع معلمي المدرسة', 'معلمو المدرسة'],
+      },
+    },
+  };
+}
+
+function multiVisitPrimaryResult() {
+  const result = primaryResult();
+  const refs = ['metric:visitCount', 'metric:ratingCount', 'metric:excellentPct', 'metric:excellentGoodPct', 'metric:supportRatingPct', 'metric:numericNarrativeMismatchCount'];
+  result.executive.evidenceRefs = refs.slice(0, 4);
+  result.analysisUnits = result.analysisUnits.map((item, index) => ({ ...item, evidenceRefs: [refs[index], refs[index + 2]] }));
+  result.interventions = [
+    {
+      ...intervention('عالية', 'اتساق التقدير والدليل', 'ملحق ومجموعة مادة العلوم للصف الثامن', [refs[0], refs[5]]),
+      targetGroupIds: [], successIndicator: 'مراجعة 100% من الحالات غير المتسقة', successMetric: { mode: 'custom', targetValue: 0, targetSegmentId: '' },
+    },
+    {
+      ...intervention('متوسطة', 'تطبيق السياسات والنمو المهني', 'الهيئة التدريسية بمدرسة الباسط', [refs[2], refs[4]]),
+      targetGroupIds: [], successIndicator: 'تحسن المؤشر في الزيارة اللاحقة', successMetric: { mode: 'custom', targetValue: 0, targetSegmentId: '' },
+    },
+  ];
+  result.methodChecks = [{ name: 'فحص الاتساق', reason: 'يربط التقدير بالدليل داخل الزيارة.', interpretation: 'تراجع الحالات غير المتسقة قبل الاعتماد.', requiredData: [], evidenceRefs: [refs[5]] }];
+  result.monitoringPlan = [
+    { stage: 'خط الأساس', timing: 'الأسبوع القادم', measure: 'توثيق الحالات والمؤشرات', owner: 'المعلم الأول', evidenceRefs: [refs[0]] },
+    { stage: 'متابعة مرحلية', timing: 'منتصف الفصل', measure: 'مراجعة عينة الزيارات', owner: 'الإدارة المدرسية', evidenceRefs: [refs[4]] },
+    { stage: 'قياس الأثر', timing: 'نهاية الفصل', measure: 'إعادة حساب المؤشرات', owner: 'المشرف التربوي', evidenceRefs: [refs[2]] },
+  ];
+  return result;
+}
+
+test('edge scope guard narrows a school-wide intervention to the observed science visits sample', async () => {
+  const runtime = await createRuntime([geminiRaw(multiVisitPrimaryResult())]);
+  const { status, body } = await invoke(runtime, multiVisitPayload());
+  assert.equal(status, 200);
+  assert.equal(body.ok, true);
+  assert.equal(body.result.interventions.length, 2);
+  assert.equal(body.result.interventions[0].scopeGuard.adjusted, false);
+  assert.equal(body.result.interventions[0].targetGroup, 'ملحق ومجموعة مادة العلوم للصف الثامن');
+  assert.equal(body.result.interventions[1].scopeGuard.adjusted, true);
+  assert.equal(body.result.interventions[1].targetGroup, 'معلمو قسم العلوم المشمولون بالزيارات');
+  assert.match(body.result.interventions[1].scopeGuard.reason, /ضُيّق نطاق التدخل/);
+  assert.equal(body.result.validation.scopeGuardedInterventions, 2);
+  assert.equal(body.result.validation.adjustedScopeTargets, 1);
+  assert.equal(body.serverTiming.adjustedScopeTargets, 1);
+});
