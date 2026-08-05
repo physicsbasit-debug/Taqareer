@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "0.9.7";
+  const VERSION = "1.0.0";
   const CONTRACT_VERSION = "3.0.0";
 
   const SCORE_TYPES = new Set(["student_results", "assessment_component", "cross_subject"]);
@@ -528,6 +528,173 @@
     return { ok: !errors.length, errors };
   }
 
+
+  function cleanPrimaryRefs(items, allowedEvidence, limit = 10) {
+    return uniqueStrings(items || []).filter(ref => allowedEvidence.has(String(ref))).slice(0, limit);
+  }
+
+  function requirePrimaryText(value, label) {
+    const text = trimText(value, 2400);
+    if (!text) throw new Error(`نتيجة التحليل الذكي تفتقد ${label}.`);
+    return text;
+  }
+
+  function composePrimary(localEvidence, primaryResult, options = {}) {
+    const result = canonicalize(localEvidence || {});
+    if (!primaryResult || typeof primaryResult !== "object") throw new Error("لم تصل نتيجة التحليل الذكي الأساسي.");
+    const allowedEvidence = new Set((options.availableEvidenceRefs || []).map(String));
+    const executive = primaryResult.executive && typeof primaryResult.executive === "object" ? primaryResult.executive : {};
+    const profile = primaryResult.analysisProfile && typeof primaryResult.analysisProfile === "object" ? primaryResult.analysisProfile : {};
+
+    result.executiveTitle = requirePrimaryText(executive.title, "العنوان التنفيذي");
+    result.executiveSummary = requirePrimaryText(executive.summary, "الملخص التنفيذي");
+    result.executiveJudgement = trimText(executive.overallJudgement, 600);
+    result.executiveConfidence = ["مرتفعة", "متوسطة", "منخفضة"].includes(executive.confidence) ? executive.confidence : "متوسطة";
+    result.executiveEvidenceRefs = cleanPrimaryRefs(executive.evidenceRefs, allowedEvidence, 10);
+    result.analysisProfile = {
+      method: trimText(profile.method, 900) || "تحليل تربوي مولد بالذكاء الاصطناعي من حزمة أدلة محققة",
+      dataAdequacy: trimText(profile.dataAdequacy, 700) || "كفاية البيانات غير محددة",
+      dimensions: clampItems(profile.dimensions, 10, 420),
+      decisionUse: clampItems(profile.decisionUses, 10, 420),
+    };
+
+    result.diagnosticSections = (Array.isArray(primaryResult.diagnosticSections) ? primaryResult.diagnosticSections : [])
+      .slice(0, 9)
+      .map((item, index) => ({
+        id: String(item?.id || `diagnostic.ai.${index + 1}`),
+        title: trimText(item?.title, 240),
+        analysis: trimText(item?.analysis, 2400),
+        claimType: ["fact", "inference", "hypothesis"].includes(item?.claimType) ? item.claimType : "inference",
+        evidenceRefs: cleanPrimaryRefs(item?.evidenceRefs, allowedEvidence, 10),
+        confidence: ["مرتفعة", "متوسطة", "منخفضة"].includes(item?.confidence) ? item.confidence : "متوسطة",
+        implications: clampItems(item?.implications, 5, 620),
+        alternativeExplanations: clampItems(item?.alternativeExplanations, 4, 620),
+        limitations: clampItems(item?.limitations, 5, 620),
+        dataRequests: clampItems(item?.dataRequests, 5, 620),
+        source: "gemini-primary",
+      }))
+      .filter(item => item.title && item.analysis && item.evidenceRefs.length);
+
+    result.findings = (Array.isArray(primaryResult.findings) ? primaryResult.findings : [])
+      .slice(0, 12)
+      .map((item, index) => ({
+        id: String(item?.id || `finding.ai.${index + 1}`),
+        title: trimText(item?.title, 240),
+        statement: trimText(item?.statement, 1100),
+        claimType: ["fact", "inference", "hypothesis"].includes(item?.claimType) ? item.claimType : "inference",
+        evidenceRefs: cleanPrimaryRefs(item?.evidenceRefs, allowedEvidence, 10),
+        confidence: ["مرتفعة", "متوسطة", "منخفضة"].includes(item?.confidence) ? item.confidence : "متوسطة",
+        severity: ["high", "medium", "low"].includes(item?.severity) ? item.severity : "medium",
+        educationalImpact: trimText(item?.educationalImpact, 1100),
+        recommendedAction: trimText(item?.recommendedAction, 1100),
+        limitations: clampItems(item?.limitations, 5, 620),
+        source: "gemini-primary",
+      }))
+      .filter(item => item.title && item.statement && item.evidenceRefs.length && item.educationalImpact && item.recommendedAction);
+
+    result.qualityTools = (Array.isArray(primaryResult.qualityTools) ? primaryResult.qualityTools : [])
+      .slice(0, 10)
+      .map((item, index) => ({
+        id: String(item?.id || `tool.ai.${index + 1}`),
+        name: trimText(item?.name, 240),
+        reason: trimText(item?.reason, 900),
+        conditionsMet: item?.conditionsMet !== false,
+        interpretation: trimText(item?.interpretation, 1100),
+        requiredData: clampItems(item?.requiredData, 6, 520),
+        evidenceRefs: cleanPrimaryRefs(item?.evidenceRefs, allowedEvidence, 10),
+        source: "gemini-primary",
+      }))
+      .filter(item => item.name && item.reason);
+
+    result.improvementPlan = (Array.isArray(primaryResult.interventions) ? primaryResult.interventions : [])
+      .slice(0, 8)
+      .map((item, index) => ({
+        id: String(item?.id || `intervention.ai.${index + 1}`),
+        priority: trimText(item?.priority, 160) || `أولوية ${index + 1}`,
+        issue: trimText(item?.issue, 360),
+        targetGroup: trimText(item?.targetGroup, 360),
+        action: trimText(item?.action, 1500),
+        implementationSteps: clampItems(item?.implementationSteps, 6, 700),
+        responsibleRole: trimText(item?.responsibleRole, 320),
+        timeframe: trimText(item?.timeframe, 260),
+        successIndicator: trimText(item?.successIndicator, 900),
+        monitoringMethod: trimText(item?.monitoringMethod, 820),
+        contingency: trimText(item?.contingency, 900),
+        resources: clampItems(item?.resources, 6, 540),
+        evidenceRefs: cleanPrimaryRefs(item?.evidenceRefs, allowedEvidence, 10),
+        source: "gemini-primary",
+      }))
+      .filter(item => item.issue && item.action && item.successIndicator && item.evidenceRefs.length);
+
+    result.monitoringPlan = (Array.isArray(primaryResult.monitoringPlan) ? primaryResult.monitoringPlan : [])
+      .slice(0, 8)
+      .map((item, index) => ({
+        id: String(item?.id || `monitoring.ai.${index + 1}`),
+        stage: trimText(item?.stage, 240),
+        timing: trimText(item?.timing, 240),
+        measure: trimText(item?.measure, 850),
+        owner: trimText(item?.owner, 320),
+        evidenceRefs: cleanPrimaryRefs(item?.evidenceRefs, allowedEvidence, 10),
+        source: "gemini-primary",
+      }))
+      .filter(item => item.stage && item.measure);
+
+    if (result.diagnosticSections.length < 2 || result.findings.length < 2 || result.improvementPlan.length < 1) {
+      throw new Error("رفض محرك التحقق تحليلًا لم يقدم تشخيصًا واستنتاجات وتدخلًا كافيًا مرتبطًا بالأدلة.");
+    }
+
+    result.limitations = uniqueStrings([
+      ...(localEvidence?.limitations || []),
+      ...(executive.limitations || []),
+      ...(primaryResult.additionalCautions || []),
+      ...(primaryResult.missingDataRequests || []).map(item => `بيانات إضافية مطلوبة: ${item}`),
+    ]);
+    result.cautions = uniqueStrings(primaryResult.additionalCautions || []);
+    result.dataRequests = uniqueStrings(primaryResult.missingDataRequests || []);
+    result.suggestedNewType = primaryResult.suggestedNewType || null;
+
+    const first = result.improvementPlan[0];
+    result.action = first ? {
+      title: first.action,
+      text: `${first.responsibleRole || "فريق العمل"} - ${first.timeframe || "وفق الخطة"}`,
+      priority: first.priority,
+      indicator: first.successIndicator,
+    } : null;
+
+    result._reconciliation = {
+      contractVersion: "6.0.0",
+      responseContractVersion: String(primaryResult.contractVersion || "unknown"),
+      family: familyOf(result),
+      aiPrimary: true,
+      aiApplied: true,
+      appliedDeepAnalyses: result.diagnosticSections.length,
+      appliedPatches: 0,
+      appliedEnhancements: result.diagnosticSections.length + result.findings.length + result.improvementPlan.length,
+      rejectedEnhancements: 0,
+      rejectionReasons: [],
+      addedFindings: result.findings.length,
+      addedInterventions: result.improvementPlan.length,
+      addedMonitoring: result.monitoringPlan.length,
+      addedTools: result.qualityTools.length,
+      lockedCounts: null,
+    };
+    return result;
+  }
+
+  function validatePrimaryResult(primaryResult, options = {}) {
+    try {
+      const probe = composePrimary({ metrics: [], charts: [], evidenceMap: {}, limitations: [] }, primaryResult, options);
+      return { ok: true, errors: [], counts: {
+        diagnostics: probe.diagnosticSections.length,
+        findings: probe.findings.length,
+        interventions: probe.improvementPlan.length,
+        monitoring: probe.monitoringPlan.length,
+      } };
+    } catch (error) {
+      return { ok: false, errors: [error?.message || "نتيجة غير صالحة"], counts: {} };
+    }
+  }
+
   window.TaqareerReconciliation = {
     VERSION,
     CONTRACT_VERSION,
@@ -535,6 +702,8 @@
     canonicalize,
     buildContract,
     reconcile,
+    composePrimary,
+    validatePrimaryResult,
     validateCounts,
     familyOf,
     similarity,

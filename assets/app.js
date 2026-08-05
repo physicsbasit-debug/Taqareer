@@ -130,12 +130,12 @@
       header.className = configured && enabled ? "version-badge ai-live" : "version-badge";
     }
     if (card) {
-      card.textContent = configured
-        ? `${text}. يبقى التحليل المحلي متاحًا كخطة رجوع.`
-        : "أدخل رابط وظيفة Supabase والمفتاح العام مرة واحدة، ثم يتولى التطبيق بقية العمل.";
+      card.textContent = configured && enabled
+        ? "المحلل الذكي الأساسي جاهز. الحسابات تُبنى محليًا، ثم ينشئ الذكاء الاصطناعي التشخيص والاستنتاجات والتدخلات من الأدلة."
+        : "يتطلب التحليل التربوي ربط وظيفة Supabase؛ لن يعرض التطبيق قوالب محلية بديلة على أنها تحليل عميق.";
     }
     const runButton = $("runAnalysisBtn");
-    if (runButton) runButton.textContent = configured && enabled ? "تنفيذ التحليل الذكي" : "تنفيذ التحليل المحلي";
+    if (runButton) runButton.textContent = "تنفيذ التحليل الذكي";
   }
 
   function openAiSettings() {
@@ -381,7 +381,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "0.9.7",
+      appVersion: "1.0.0",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -833,9 +833,9 @@
   }
 
   function tableAiLimit() {
-    if (state.type.id === "unknown") return 60;
-    if (["supervision_indicator", "student_work", "survey", "training_needs", "program_evaluation", "behavior_attendance", "level_distribution", "cross_subject"].includes(state.type.id)) return 70;
-    return 16;
+    if (state.type.id === "unknown") return 100;
+    if (["supervision_indicator", "student_work", "survey", "training_needs", "program_evaluation", "behavior_attendance", "level_distribution", "cross_subject"].includes(state.type.id)) return 120;
+    return 80;
   }
 
   function sanitizeRowsForAi(maskPersonalData = true) {
@@ -900,14 +900,11 @@
       version: analysis.version,
       kind: analysis.kind,
       typeId: analysis.typeId,
-      analysisProfile: analysis.analysisProfile,
-      executiveTitle: analysis.executiveTitle,
-      executiveSummary: analysis.executiveSummary,
       keyIndicators,
       metrics,
       charts,
-      limitations: (analysis.limitations || []).slice(0, 12),
-      evidenceCatalog: Object.entries(analysis.evidenceMap || {}).slice(0, 100).map(([ref, text]) => ({ ref, text }))
+      calculationLimitations: (analysis.limitations || []).slice(0, 12),
+      evidenceCatalog: Object.entries(analysis.evidenceMap || {}).slice(0, 140).map(([ref, text]) => ({ ref, text }))
     };
   }
 
@@ -924,14 +921,13 @@
     const dataset = sanitizeRowsForAi(maskPersonalData);
     const lines = narrativeLinesForAi(maskPersonalData);
     const deterministicAnalysis = compactDeterministicAnalysis(state.analysis);
-    const reconciliationContract = window.TaqareerReconciliation?.buildContract?.(state.analysis);
-    if (!reconciliationContract) throw new Error("محرك المصالحة التحليلية غير محمل.");
+    if (!window.TaqareerReconciliation?.composePrimary) throw new Error("محرك التحقق من التحليل الذكي غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "0.9.7",
+      appVersion: "1.0.0",
       pipeline: {
-        mode: "single-fast-ai-enhancement-v1",
-        instruction: "المحرك الحتمي ينتج التحليل الكامل فورًا. ينفذ Gemini طلبًا واحدًا اختياريًا ومركزًا لتحسين التفسير والتدخلات دون تغيير الحسابات أو إنشاء عناصر جديدة."
+        mode: "ai-primary-analysis-v1",
+        instruction: "المحرك المحلي يحسب المؤشرات والرسوم فقط. يبني الذكاء الاصطناعي التشخيص والاستنتاجات والتدخلات من الأدلة، ثم تتحقق البوابة من المراجع قبل عرض التقرير."
       },
       source: {
         name: state.sourceName,
@@ -958,8 +954,7 @@
       data: isNarrativeMode()
         ? { lines, originalLineCount: String(state.narrativeText || state.rawText || "").split(/\r?\n/).length, sentLineCount: lines.length }
         : dataset,
-      deterministicAnalysis,
-      reconciliationContract,
+      evidenceAnalysis: deterministicAnalysis,
       availableEvidenceRefs: buildEvidenceCatalog(isNarrativeMode() ? null : dataset, isNarrativeMode() ? lines : null, deterministicAnalysis),
       evidenceReferenceGuide: {
         rows: "row:N يشير إلى سجل من العينة السياقية فقط",
@@ -1068,21 +1063,11 @@
     }).join("، ");
   }
 
-  function applyAiDelta(delta, payload) {
-    state.aiResult = delta;
-    state.reconciledAnalysis = window.TaqareerReconciliation.reconcile(state.analysis, delta, {
-      availableEvidenceRefs: payload.availableEvidenceRefs || []
-    });
-    const countCheck = window.TaqareerReconciliation.validateCounts(state.analysis, state.reconciledAnalysis);
-    if (!countCheck.ok) throw new Error(`رفض محرك المصالحة نتيجة غيّرت بنية العقد: ${countCheck.errors.join("، ")}`);
-    state.aiUsed = Boolean(state.reconciledAnalysis?._reconciliation?.aiApplied);
-    return state.reconciledAnalysis;
-  }
 
   async function enrichAnalysisWithAi({ force = false, requestId = state.analysisRequestId } = {}) {
-    if (!aiReady()) return null;
-    if (!window.TaqareerReconciliation?.reconcile) throw new Error("محرك المصالحة التحليلية غير محمل.");
-    if (!window.TaqareerDeepOrchestrator?.run) throw new Error("محرك التحسين الذكي السريع غير محمل.");
+    if (!aiReady()) throw new Error("التحليل الذكي الأساسي غير مربوط أو غير مفعّل.");
+    if (!window.TaqareerReconciliation?.composePrimary) throw new Error("محرك التحقق من التحليل الذكي غير محمل.");
+    if (!window.TaqareerDeepOrchestrator?.run) throw new Error("منسق التحليل الذكي الأساسي غير محمل.");
     const maskPersonalData = $("maskPersonalDataInput")?.checked !== false;
     const payload = buildAiAnalysisPayload(maskPersonalData);
     state.aiWarning = "";
@@ -1096,25 +1081,22 @@
       onProgress: progress => {
         if (requestId !== state.analysisRequestId) return;
         state.aiSegments = { status: progress.status || "pending", cacheHit: Boolean(progress.cacheHit) };
-        if (state.aiPending) renderResults();
       }
     });
 
     if (requestId !== state.analysisRequestId) return null;
-    state.aiResult = outcome.delta;
-    state.reconciledAnalysis = window.TaqareerReconciliation.reconcile(state.analysis, outcome.delta, {
+    state.aiResult = outcome.result;
+    state.reconciledAnalysis = window.TaqareerReconciliation.composePrimary(state.analysis, outcome.result, {
       availableEvidenceRefs: payload.availableEvidenceRefs || []
     });
-    const countCheck = window.TaqareerReconciliation.validateCounts(state.analysis, state.reconciledAnalysis);
-    if (!countCheck.ok) throw new Error(`رفض محرك المصالحة نتيجة غيّرت بنية العقد: ${countCheck.errors.join("، ")}`);
-    state.aiUsed = Boolean(state.reconciledAnalysis?._reconciliation?.aiApplied);
+    state.aiUsed = true;
     state.performance.cacheHit = Boolean(outcome.cacheHit);
     state.performance.payloadChars = outcome.payloadChars;
     state.performance.segmentTimings = {};
     state.performance.aiModel = outcome.model || "Gemini";
     state.performance.aiUsage = outcome.usage || null;
-    state.performance.aiServerTiming = { fastSingle: true, ...(outcome.serverTiming || {}), cacheHit: Boolean(outcome.cacheHit) };
-    recordSpan({ name: "Gemini السريع", durationMs: outcome.durationMs, fastSingle: true });
+    state.performance.aiServerTiming = { aiPrimary: true, ...(outcome.serverTiming || {}), cacheHit: Boolean(outcome.cacheHit) };
+    recordSpan({ name: "التحليل الذكي الأساسي", durationMs: outcome.durationMs, aiPrimary: true });
     state.aiError = "";
     state.aiWarning = "";
     return state.reconciledAnalysis;
@@ -1128,13 +1110,17 @@
     state.aiWarning = "";
     state.aiUsed = false;
     state.aiPending = false;
-    state.aiSegments = { results: {}, failures: {}, statuses: {}, taskResults: {}, taskFailures: {}, taskStatuses: {}, taskPlan: [], failedTaskIds: [], recovery: null };
+    state.aiSegments = { status: "idle" };
     resetPerformance();
     const analysisRequestId = ++state.analysisRequestId;
     const runButton = $("runAnalysisBtn");
     runButton.disabled = true;
 
     try {
+      if (!aiReady()) {
+        setMessage("setupMessage", "التحليل التربوي في هذه النسخة يعتمد على الذكاء الاصطناعي بوصفه المحلل الأساسي. اربط وظيفة Supabase وفعّلها أولًا.", true);
+        return;
+      }
       const totalTimer = perfApi()?.startSpan?.("الزمن الكلي");
       const narrativeMode = isNarrativeMode();
       const narrativeText = narrativeMode ? $("narrativeTextReview").value.trim() : "";
@@ -1152,12 +1138,13 @@
         setMessage("setupMessage", "حد الإتقان يجب أن يكون بين 1 و100.", true);
         return;
       }
-      if (!window.TaqareerDeepAnalytics?.analyze) {
-        throw new Error("محرك التحليل العميق غير محمل. أعد تحميل الصفحة بعد تحديث الملفات.");
-      }
+      if (!window.TaqareerDeepAnalytics?.analyzeEvidence) throw new Error("محرك الحساب والأدلة غير محمل.");
 
-      const localTimer = perfApi()?.startSpan?.("التحليل المحلي والرسوم");
-      state.analysis = window.TaqareerDeepAnalytics.analyze({
+      runButton.textContent = "جارٍ بناء حزمة الأدلة…";
+      setMessage("setupMessage", "يجري الآن حساب المؤشرات وتجهيز الأدلة، ثم سيبني المحلل الذكي القراءة التربوية من الصفر.");
+      await yieldToUi();
+      const localTimer = perfApi()?.startSpan?.("الحسابات وحزمة الأدلة");
+      state.analysis = window.TaqareerDeepAnalytics.analyzeEvidence({
         typeId: state.type.id,
         headers: state.headers,
         rows: state.rows,
@@ -1170,41 +1157,30 @@
         quality: state.quality
       });
       recordSpan(localTimer ? perfApi().endSpan(localTimer) : null);
-      state.reconciledAnalysis = window.TaqareerReconciliation?.canonicalize?.(state.analysis) || state.analysis;
 
-      // أظهر النتائج الحتمية فورًا؛ لا نجعل Gemini بوابة تعطل كل شيء.
-      state.aiPending = aiReady();
+      state.aiPending = true;
+      runButton.textContent = "جارٍ بناء التحليل الذكي…";
+      setMessage("setupMessage", "يحلل الذكاء الاصطناعي العلاقات والأولويات والفرضيات والتدخلات، مع إلزام كل ادعاء بمراجع أدلة.");
+      await yieldToUi();
+      await enrichAnalysisWithAi({ requestId: analysisRequestId });
+      if (analysisRequestId !== state.analysisRequestId) return;
+
+      state.aiPending = false;
+      clearMessage("setupMessage");
       renderResults();
       showPanel(4);
-      await yieldToUi();
-
       if (totalTimer) recordSpan(perfApi().endSpan(totalTimer));
       renderPerformanceSummary();
-
-      if (aiReady()) {
-        void enrichAnalysisWithAi({ requestId: analysisRequestId }).catch(error => {
-          if (analysisRequestId !== state.analysisRequestId) return;
-          // التحسين الخارجي يعمل تلقائيًا وبصمت. أي تعثر لا يقطع تجربة المستخدم
-          // ولا يضيف زر إعادة أو رسالة تقنية إلى صفحة النتائج.
-          console.warn("taqareer-background-enhancement", error);
-          state.aiError = "";
-          state.aiWarning = "";
-          if (!state.aiUsed) {
-            state.aiResult = null;
-            state.reconciledAnalysis = window.TaqareerReconciliation?.canonicalize?.(state.analysis) || state.analysis;
-          }
-        }).finally(() => {
-          if (analysisRequestId !== state.analysisRequestId) return;
-          state.aiPending = false;
-          renderResults();
-          renderPerformanceSummary();
-          updateAiStatusUi();
-        });
-      }
     } catch (error) {
-      setMessage("setupMessage", error.message || "تعذر تنفيذ التحليل العميق.", true);
+      console.error("taqareer-ai-primary-analysis", error);
+      state.aiPending = false;
+      state.aiResult = null;
+      state.reconciledAnalysis = null;
+      state.aiUsed = false;
+      setMessage("setupMessage", `${error.message || "تعذر تنفيذ التحليل الذكي."} لم يعرض التطبيق قوالب محلية بديلة على أنها تحليل عميق.`, true);
     } finally {
       runButton.disabled = false;
+      runButton.textContent = "تنفيذ التحليل الذكي";
       updateAiStatusUi();
     }
   }
@@ -1304,18 +1280,18 @@
       return;
     }
     const spans = state.performance.spans || [];
-    const local = spans.find(item => item.name === "التحليل المحلي والرسوم");
+    const local = spans.find(item => item.name === "الحسابات وحزمة الأدلة");
     const gemini = [...spans].reverse().find(item => String(item.name || "").startsWith("Gemini"));
     const items = [];
-    if (local) items.push(`<span><strong>جاهزية التقرير</strong>${formatDuration(local.durationMs)}</span>`);
+    if (local) items.push(`<span><strong>الحسابات والأدلة</strong>${formatDuration(local.durationMs)}</span>`);
     if (state.performance.cacheHit) {
-      items.push(`<span><strong>التحسين الذكي</strong>مستعاد فورًا من الذاكرة</span>`);
+      items.push(`<span><strong>التحليل الذكي</strong>مستعاد من الذاكرة</span>`);
     } else if (gemini) {
-      items.push(`<span><strong>تحسين Gemini</strong>${formatDuration(gemini.durationMs)}</span>`);
+      items.push(`<span><strong>التحليل الذكي</strong>${formatDuration(gemini.durationMs)}</span>`);
     }
     const server = state.performance.aiServerTiming || {};
-    if (server.acceptedDeepAnalysisUnits !== undefined) {
-      items.push(`<span><strong>التحسينات المطبقة</strong>${server.acceptedDeepAnalysisUnits || 0} قراءات · ${server.acceptedPatches || 0} تحسينات</span>`);
+    if (server.acceptedDiagnosticSections !== undefined) {
+      items.push(`<span><strong>بنية التحليل</strong>${server.acceptedDiagnosticSections || 0} قراءات · ${server.acceptedFindings || 0} استنتاجات · ${server.acceptedInterventions || 0} تدخلات</span>`);
     }
     if (state.performance.payloadChars) items.push(`<span><strong>حمولة الذكاء</strong>${Math.max(1, Math.round(state.performance.payloadChars / 1024))} كيلوبايت</span>`);
     panel.innerHTML = items.join("");
@@ -1323,7 +1299,8 @@
   }
 
   function renderResults() {
-    const a = state.reconciledAnalysis || state.analysis;
+    const a = state.reconciledAnalysis;
+    if (!a) return;
     const delta = state.aiResult;
     const aiApplied = Boolean(a?._reconciliation?.aiApplied);
     const metrics = (a.metrics || []).slice(0, 8);
@@ -1356,7 +1333,7 @@
     $("diagnosticSectionsGrid").innerHTML = diagnosticSections.map(section => {
       const evidence = humanizeEvidenceRefs(section.evidenceRefs || []);
       const implications = Array.isArray(section.implications) ? section.implications : [];
-      const source = String(section.source || "deterministic").includes("gemini") ? "محرك متخصص + Gemini" : "محرك متخصص";
+      const source = "تحليل ذكاء اصطناعي موثق";
       const alternatives = Array.isArray(section.alternativeExplanations) ? section.alternativeExplanations : [];
       const requests = Array.isArray(section.dataRequests) ? section.dataRequests : [];
       return `<article class="diagnostic-section-card"><div class="diagnostic-section-meta"><span>${source}</span><span>ثقة ${escapeHtml(section.confidence || "متوسطة")}</span></div><h5>${escapeHtml(section.title || "قراءة تفسيرية")}</h5><p>${escapeHtml(section.analysis || "")}</p>${evidence && evidence !== "لم يحدد مرجع دليل واضح." ? `<div class="soft-note">الدليل: ${escapeHtml(evidence)}</div>` : ""}${implications.length ? `<h6>الآثار العملية</h6><ul>${implications.map(item=>`<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}${alternatives.length ? `<h6>تفسيرات بديلة محتملة</h6><ul>${alternatives.map(item=>`<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}${requests.length ? `<h6>بيانات مطلوبة للتحقق</h6><ul>${requests.map(item=>`<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}</article>`;
@@ -1364,7 +1341,7 @@
 
     // التحسين الخارجي جزء تلقائي من مسار التحليل ولا يظهر للمستخدم كمرحلة مستقلة.
     // تبقى واجهة النتائج هادئة: لا رسائل انتظار، لا أسماء مزودين، ولا أزرار إعادة.
-    $("analysisModeChip").textContent = "تحليل تربوي عميق";
+    $("analysisModeChip").textContent = "تحليل ذكاء اصطناعي أصيل";
     $("analysisModeChip").className = "success-chip";
     const notice = $("aiResultNotice");
     notice.innerHTML = "";
@@ -1377,7 +1354,7 @@
 
     const findings = (a.findings || []).slice(0, 18);
     $("findings").innerHTML = findings.map((f,i)=>{
-      const sourceLabel=String(f.source||"").includes("gemini")?"محرك متخصص + Gemini":"محرك متخصص";
+      const sourceLabel="تحليل ذكاء اصطناعي موثق";
       const severity=f.severity||"medium";
       const limitations=f.limitations||[];
       const limitationHtml=limitations.length?`<h5>الحدود</h5><p>${limitations.map(escapeHtml).join("، ")}</p>`:"";
@@ -1386,7 +1363,7 @@
       const evidence=f.evidence||humanizeEvidenceRefs(f.evidenceRefs||[]);
       const impact=f.educationalImpact||f.impact||"";
       const action=f.recommendedAction||f.action||"";
-      return `<details class="finding" ${i<2?'open':''}><summary><div class="finding-title"><strong>${escapeHtml(f.title)}</strong><small>${escapeHtml(impact)}</small></div><div class="finding-badges"><span class="source-pill ${String(f.source||"").includes("gemini")?'ai':'deterministic'}">${sourceLabel}</span><span class="confidence-pill severity-${severity}">ثقة ${escapeHtml(f.confidence)}</span></div></summary><div class="finding-body">${statementHtml}<h5>الدليل</h5><p>${escapeHtml(evidence)}</p><h5>الإجراء المرتبط</h5><p>${escapeHtml(action)}</p>${limitationHtml}</div></details>`;
+      return `<details class="finding" ${i<2?'open':''}><summary><div class="finding-title"><strong>${escapeHtml(f.title)}</strong><small>${escapeHtml(impact)}</small></div><div class="finding-badges"><span class="source-pill ai">${sourceLabel}</span><span class="confidence-pill severity-${severity}">ثقة ${escapeHtml(f.confidence)}</span></div></summary><div class="finding-body">${statementHtml}<h5>الدليل</h5><p>${escapeHtml(evidence)}</p><h5>الإجراء المرتبط</h5><p>${escapeHtml(action)}</p>${limitationHtml}</div></details>`;
     }).join("");
 
     const tools=(a.qualityTools||[]).filter(tool=>tool.conditionsMet!==false).slice(0,12);
@@ -1422,13 +1399,13 @@
   }
 
   function openOfficialReport() {
-    if (!state.analysis) {
-      alert("نفّذ التحليل أولًا قبل إنشاء التقرير الرسمي.");
+    if (!state.reconciledAnalysis?._reconciliation?.aiPrimary) {
+      alert("لا يوجد تحليل ذكاء اصطناعي مكتمل لإنشاء التقرير الرسمي.");
       return;
     }
     try {
       window.TaqareerReports.openReport({
-        analysis: state.reconciledAnalysis || state.analysis,
+        analysis: state.reconciledAnalysis,
         aiResult: null,
         aiDelta: state.aiResult,
         aiError: state.aiError,
@@ -1449,7 +1426,7 @@
   function exportAnalysis() {
     const payload = {
       app: "تقارير",
-      version: "0.9.7",
+      version: "1.0.0",
       generatedAt: new Date().toISOString(),
       source: state.sourceName,
       sourceMeta: state.sourceMeta,
@@ -1457,12 +1434,12 @@
       quality: state.quality,
       localAnalysis: state.analysis,
       aiDelta: state.aiResult,
-      analysis: state.reconciledAnalysis || state.analysis,
+      analysis: state.reconciledAnalysis,
       aiError: state.aiError || null
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v0.9.7.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v1.0.0.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }

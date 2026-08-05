@@ -91,6 +91,143 @@ const VISION_SCHEMA: JsonRecord = {
   required: ["documentType", "extractionMode", "title", "metadata", "datasets", "narrativeText", "warnings"],
 };
 
+
+const PRIMARY_ANALYSIS_SCHEMA: JsonRecord = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    contractVersion: { type: "string" },
+    analysisProfile: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        method: { type: "string" },
+        dataAdequacy: { type: "string" },
+        dimensions: { type: "array", items: { type: "string" } },
+        decisionUses: { type: "array", items: { type: "string" } },
+      },
+      required: ["method", "dataAdequacy", "dimensions", "decisionUses"],
+    },
+    executive: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        title: { type: "string" },
+        summary: { type: "string" },
+        overallJudgement: { type: "string" },
+        confidence: { type: "string", enum: ["مرتفعة", "متوسطة", "منخفضة"] },
+        evidenceRefs: { type: "array", items: { type: "string" } },
+        limitations: { type: "array", items: { type: "string" } },
+      },
+      required: ["title", "summary", "overallJudgement", "confidence", "evidenceRefs", "limitations"],
+    },
+    diagnosticSections: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          title: { type: "string" },
+          analysis: { type: "string" },
+          claimType: { type: "string", enum: ["fact", "inference", "hypothesis"] },
+          evidenceRefs: { type: "array", items: { type: "string" } },
+          confidence: { type: "string", enum: ["مرتفعة", "متوسطة", "منخفضة"] },
+          implications: { type: "array", items: { type: "string" } },
+          alternativeExplanations: { type: "array", items: { type: "string" } },
+          limitations: { type: "array", items: { type: "string" } },
+          dataRequests: { type: "array", items: { type: "string" } },
+        },
+        required: ["title", "analysis", "claimType", "evidenceRefs", "confidence", "implications", "alternativeExplanations", "limitations", "dataRequests"],
+      },
+    },
+    findings: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          title: { type: "string" },
+          statement: { type: "string" },
+          claimType: { type: "string", enum: ["fact", "inference", "hypothesis"] },
+          evidenceRefs: { type: "array", items: { type: "string" } },
+          confidence: { type: "string", enum: ["مرتفعة", "متوسطة", "منخفضة"] },
+          severity: { type: "string", enum: ["high", "medium", "low"] },
+          educationalImpact: { type: "string" },
+          recommendedAction: { type: "string" },
+          limitations: { type: "array", items: { type: "string" } },
+        },
+        required: ["title", "statement", "claimType", "evidenceRefs", "confidence", "severity", "educationalImpact", "recommendedAction", "limitations"],
+      },
+    },
+    qualityTools: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          name: { type: "string" },
+          reason: { type: "string" },
+          conditionsMet: { type: "boolean" },
+          interpretation: { type: "string" },
+          requiredData: { type: "array", items: { type: "string" } },
+          evidenceRefs: { type: "array", items: { type: "string" } },
+        },
+        required: ["name", "reason", "conditionsMet", "interpretation", "requiredData", "evidenceRefs"],
+      },
+    },
+    interventions: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          priority: { type: "string" },
+          issue: { type: "string" },
+          targetGroup: { type: "string" },
+          action: { type: "string" },
+          implementationSteps: { type: "array", items: { type: "string" } },
+          responsibleRole: { type: "string" },
+          timeframe: { type: "string" },
+          successIndicator: { type: "string" },
+          monitoringMethod: { type: "string" },
+          contingency: { type: "string" },
+          resources: { type: "array", items: { type: "string" } },
+          evidenceRefs: { type: "array", items: { type: "string" } },
+        },
+        required: ["priority", "issue", "targetGroup", "action", "implementationSteps", "responsibleRole", "timeframe", "successIndicator", "monitoringMethod", "contingency", "resources", "evidenceRefs"],
+      },
+    },
+    monitoringPlan: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          stage: { type: "string" },
+          timing: { type: "string" },
+          measure: { type: "string" },
+          owner: { type: "string" },
+          evidenceRefs: { type: "array", items: { type: "string" } },
+        },
+        required: ["stage", "timing", "measure", "owner", "evidenceRefs"],
+      },
+    },
+    additionalCautions: { type: "array", items: { type: "string" } },
+    missingDataRequests: { type: "array", items: { type: "string" } },
+    suggestedNewType: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        needed: { type: "boolean" },
+        nameAr: { type: "string" },
+        purpose: { type: "string" },
+      },
+      required: ["needed", "nameAr", "purpose"],
+    },
+  },
+  required: ["contractVersion", "analysisProfile", "executive", "diagnosticSections", "findings", "qualityTools", "interventions", "monitoringPlan", "additionalCautions", "missingDataRequests", "suggestedNewType"],
+};
+
 function allowedOrigins(): string[] {
   return (Deno.env.get("TAQAREER_ALLOWED_ORIGINS") || "*")
     .split(",")
@@ -422,6 +559,228 @@ async function enhanceFast(payload: JsonRecord): Promise<JsonRecord> {
   };
 }
 
+
+function primaryAnalysisInstructions(): string {
+  return `أنت كبير المحللين التربويين في تطبيق «تقارير». أنت مالك التحليل التربوي الأساسي، ولست محررًا لقوالب محلية.
+
+ستصلك حزمة أدلة تحتوي على بيانات سياقية منقحة، ومؤشرات ورسوم حُسبت برمجيًا من كامل البيانات. الأرقام المحلية هي مصدر الحقيقة الحسابية، لكن لا توجد استنتاجات محلية ملزمة لك. ابنِ التشخيص والاستنتاجات والتدخلات من الأدلة نفسها.
+
+قواعد إلزامية:
+1) اكتب تحليلًا مخصصًا لهذا الملف، ولا تستخدم عددًا ثابتًا من التشخيصات أو الاستنتاجات أو التدخلات. اختر العدد والعمق وفق قوة الأدلة وتعقيد الحالة.
+2) ميّز claimType بدقة: fact لحقيقة مباشرة، inference لاستنتاج تدعمه العلاقات، hypothesis لفرضية تحتاج تحققًا.
+3) كل حقيقة أو استنتاج أو تدخل يجب أن يستخدم evidenceRefs موجودة حرفيًا في availableEvidenceRefs. لا تخترع مرجعًا ولا رقمًا.
+4) لا تحول الارتباط إلى سبب. عند نقص الدليل استخدم فرضية، اذكر تفسيرًا بديلًا، واطلب البيانات اللازمة.
+5) اربط كل تدخل بمشكلة مثبتة، وحدد الفئة والمسؤول والزمن ومؤشر نجاح قابلًا للقياس وطريقة متابعة وبديلًا عند عدم التحسن.
+6) لا تكرر المؤشرات في نثر طويل؛ فسّر العلاقات والتعارضات والأولوية وما يترتب عليها للقرار.
+7) لا تستخدم أسماء الأشخاص، ولا تستنتج خصائص شخصية أو تشخيصات حساسة.
+8) اكتب بالعربية المهنية الواضحة المناسبة للمدارس في سلطنة عمان.
+9) إذا كان نوع النموذج غير معروف، اقترح نوعًا جديدًا دون ادعاء اليقين.
+10) أعد JSON فقط وفق المخطط.`;
+}
+
+function cleanString(value: unknown, limit = 1200): string {
+  const text = String(value ?? "").trim();
+  return text.length <= limit ? text : `${text.slice(0, Math.max(0, limit - 1)).trim()}…`;
+}
+
+function cleanStringArray(value: unknown, limit = 8, itemLimit = 500): string[] {
+  const output: string[] = [];
+  const seen = new Set<string>();
+  for (const item of Array.isArray(value) ? value : []) {
+    const text = cleanString(item, itemLimit);
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    output.push(text);
+    if (output.length >= limit) break;
+  }
+  return output;
+}
+
+function allowedRefsFromPayload(payload: JsonRecord): Set<string> {
+  return new Set((Array.isArray(payload.availableEvidenceRefs) ? payload.availableEvidenceRefs : []).map(String).filter(Boolean));
+}
+
+function cleanRefs(value: unknown, allowed: Set<string>, limit = 10): string[] {
+  return cleanStringArray(value, limit, 180).filter(ref => allowed.has(ref));
+}
+
+function validatePrimaryAnalysis(result: unknown, payload: JsonRecord): JsonRecord {
+  if (!result || typeof result !== "object") throw new Error("رجع المحلل الذكي نتيجة فارغة.");
+  const input = result as JsonRecord;
+  const allowed = allowedRefsFromPayload(payload);
+  const confidence = (value: unknown): string => ["مرتفعة", "متوسطة", "منخفضة"].includes(String(value)) ? String(value) : "متوسطة";
+  const claimType = (value: unknown): string => ["fact", "inference", "hypothesis"].includes(String(value)) ? String(value) : "inference";
+  const severity = (value: unknown): string => ["high", "medium", "low"].includes(String(value)) ? String(value) : "medium";
+  const executiveInput = input.executive && typeof input.executive === "object" ? input.executive as JsonRecord : {};
+  const executiveRefs = cleanRefs(executiveInput.evidenceRefs, allowed, 10);
+
+  const diagnosticSections = (Array.isArray(input.diagnosticSections) ? input.diagnosticSections as JsonRecord[] : [])
+    .slice(0, 9)
+    .map((item, index) => ({
+      id: `diagnostic.ai.${index + 1}`,
+      title: cleanString(item.title, 220),
+      analysis: cleanString(item.analysis, 2400),
+      claimType: claimType(item.claimType),
+      evidenceRefs: cleanRefs(item.evidenceRefs, allowed, 10),
+      confidence: confidence(item.confidence),
+      implications: cleanStringArray(item.implications, 5, 600),
+      alternativeExplanations: cleanStringArray(item.alternativeExplanations, 4, 600),
+      limitations: cleanStringArray(item.limitations, 5, 600),
+      dataRequests: cleanStringArray(item.dataRequests, 5, 600),
+      source: "gemini-primary",
+    }))
+    .filter(item => item.title && item.analysis && item.evidenceRefs.length);
+
+  const findings = (Array.isArray(input.findings) ? input.findings as JsonRecord[] : [])
+    .slice(0, 12)
+    .map((item, index) => ({
+      id: `finding.ai.${index + 1}`,
+      title: cleanString(item.title, 220),
+      statement: cleanString(item.statement, 1000),
+      claimType: claimType(item.claimType),
+      evidenceRefs: cleanRefs(item.evidenceRefs, allowed, 10),
+      confidence: confidence(item.confidence),
+      severity: severity(item.severity),
+      educationalImpact: cleanString(item.educationalImpact, 1000),
+      recommendedAction: cleanString(item.recommendedAction, 1000),
+      limitations: cleanStringArray(item.limitations, 5, 600),
+      source: "gemini-primary",
+    }))
+    .filter(item => item.title && item.statement && item.evidenceRefs.length && item.educationalImpact && item.recommendedAction);
+
+  const qualityTools = (Array.isArray(input.qualityTools) ? input.qualityTools as JsonRecord[] : [])
+    .slice(0, 10)
+    .map((item, index) => ({
+      id: `tool.ai.${index + 1}`,
+      name: cleanString(item.name, 220),
+      reason: cleanString(item.reason, 800),
+      conditionsMet: item.conditionsMet !== false,
+      interpretation: cleanString(item.interpretation, 1000),
+      requiredData: cleanStringArray(item.requiredData, 6, 500),
+      evidenceRefs: cleanRefs(item.evidenceRefs, allowed, 10),
+      source: "gemini-primary",
+    }))
+    .filter(item => item.name && item.reason);
+
+  const interventions = (Array.isArray(input.interventions) ? input.interventions as JsonRecord[] : [])
+    .slice(0, 8)
+    .map((item, index) => ({
+      id: `intervention.ai.${index + 1}`,
+      priority: cleanString(item.priority, 120) || `أولوية ${index + 1}`,
+      issue: cleanString(item.issue, 320),
+      targetGroup: cleanString(item.targetGroup, 320),
+      action: cleanString(item.action, 1400),
+      implementationSteps: cleanStringArray(item.implementationSteps, 6, 650),
+      responsibleRole: cleanString(item.responsibleRole, 280),
+      timeframe: cleanString(item.timeframe, 240),
+      successIndicator: cleanString(item.successIndicator, 850),
+      monitoringMethod: cleanString(item.monitoringMethod, 750),
+      contingency: cleanString(item.contingency, 850),
+      resources: cleanStringArray(item.resources, 6, 500),
+      evidenceRefs: cleanRefs(item.evidenceRefs, allowed, 10),
+      source: "gemini-primary",
+    }))
+    .filter(item => item.issue && item.action && item.successIndicator && item.evidenceRefs.length);
+
+  const monitoringPlan = (Array.isArray(input.monitoringPlan) ? input.monitoringPlan as JsonRecord[] : [])
+    .slice(0, 8)
+    .map((item, index) => ({
+      id: `monitoring.ai.${index + 1}`,
+      stage: cleanString(item.stage, 220),
+      timing: cleanString(item.timing, 220),
+      measure: cleanString(item.measure, 800),
+      owner: cleanString(item.owner, 280),
+      evidenceRefs: cleanRefs(item.evidenceRefs, allowed, 10),
+      source: "gemini-primary",
+    }))
+    .filter(item => item.stage && item.measure);
+
+  if (!cleanString(executiveInput.title, 240) || !cleanString(executiveInput.summary, 1800)) {
+    throw new Error("لم ينتج المحلل الذكي ملخصًا تنفيذيًا مكتملًا.");
+  }
+  if (diagnosticSections.length < 2 || findings.length < 2 || interventions.length < 1) {
+    throw new Error("التحليل الذكي لم يبلغ الحد الأدنى من التشخيص المرتبط بالأدلة.");
+  }
+
+  const profileInput = input.analysisProfile && typeof input.analysisProfile === "object" ? input.analysisProfile as JsonRecord : {};
+  const suggested = input.suggestedNewType && typeof input.suggestedNewType === "object" ? input.suggestedNewType as JsonRecord : {};
+  return {
+    contractVersion: "6.0.0",
+    analysisProfile: {
+      method: cleanString(profileInput.method, 900),
+      dataAdequacy: cleanString(profileInput.dataAdequacy, 700),
+      dimensions: cleanStringArray(profileInput.dimensions, 10, 350),
+      decisionUses: cleanStringArray(profileInput.decisionUses, 10, 350),
+    },
+    executive: {
+      title: cleanString(executiveInput.title, 240),
+      summary: cleanString(executiveInput.summary, 1800),
+      overallJudgement: cleanString(executiveInput.overallJudgement, 500),
+      confidence: confidence(executiveInput.confidence),
+      evidenceRefs: executiveRefs,
+      limitations: cleanStringArray(executiveInput.limitations, 6, 600),
+    },
+    diagnosticSections,
+    findings,
+    qualityTools,
+    interventions,
+    monitoringPlan,
+    additionalCautions: cleanStringArray(input.additionalCautions, 8, 650),
+    missingDataRequests: cleanStringArray(input.missingDataRequests, 8, 650),
+    suggestedNewType: {
+      needed: Boolean(suggested.needed),
+      nameAr: cleanString(suggested.nameAr, 220),
+      purpose: cleanString(suggested.purpose, 700),
+    },
+    validation: {
+      availableEvidenceCount: allowed.size,
+      acceptedDiagnosticSections: diagnosticSections.length,
+      acceptedFindings: findings.length,
+      acceptedInterventions: interventions.length,
+      acceptedMonitoringStages: monitoringPlan.length,
+    },
+  };
+}
+
+async function analyzePrimary(payload: JsonRecord): Promise<JsonRecord> {
+  const preferred = Deno.env.get("GEMINI_MODEL") || DEFAULT_MODEL;
+  const models = uniqueModelCandidates(preferred, GENERAL_MODEL_FALLBACKS);
+  const startedAt = performance.now();
+  const { raw, requestId, modelUsed, fallbackUsed } = await geminiRequestWithFallback(models, {
+    systemInstruction: { parts: [{ text: primaryAnalysisInstructions() }] },
+    contents: [{ role: "user", parts: [{ text: JSON.stringify(payload) }] }],
+    generationConfig: {
+      responseMimeType: "application/json",
+      responseJsonSchema: PRIMARY_ANALYSIS_SCHEMA,
+      maxOutputTokens: 7600,
+      candidateCount: 1,
+      temperature: 0.35,
+    },
+  }, 2);
+  const candidate = candidateResult(raw);
+  if (candidate.finishReason === "MAX_TOKENS") throw new Error("توقف التحليل الذكي قبل اكتمال عقد النتيجة.");
+  const result = validatePrimaryAnalysis(parseJsonObject(candidate.text), payload);
+  const validation = result.validation && typeof result.validation === "object" ? result.validation as JsonRecord : {};
+  return {
+    result,
+    model: String(raw.modelVersion || modelUsed),
+    usage: raw.usageMetadata || null,
+    requestId,
+    provider: "gemini",
+    serverTiming: {
+      aiPrimary: true,
+      geminiMs: Math.round(performance.now() - startedAt),
+      payloadChars: JSON.stringify(payload).length,
+      outputCharacters: candidate.text.length,
+      finishReason: candidate.finishReason,
+      fallbackUsed,
+      acceptedDiagnosticSections: validation.acceptedDiagnosticSections || 0,
+      acceptedFindings: validation.acceptedFindings || 0,
+      acceptedInterventions: validation.acceptedInterventions || 0,
+    },
+  };
+}
+
 function errorInfo(message: string): { status: number; errorCode: string; retryable: boolean } {
   if (/رمز الوصول غير صحيح|النطاق غير مسموح|حجم الطلب أكبر|العملية المطلوبة غير مدعومة/i.test(message)) return { status: 400, errorCode: "REQUEST_NOT_RETRYABLE", retryable: false };
   if (/api key|مفتاح.*غير صالح|GEMINI_API_KEY|model.*not found|النموذج.*غير/i.test(message)) return { status: 502, errorCode: "GEMINI_CONFIGURATION", retryable: false };
@@ -460,6 +819,7 @@ Deno.serve(async (req: Request) => {
     if (operation === "ping") ai = await pingGemini();
     else if (operation === "classify") ai = await classify(payload);
     else if (operation === "vision_extract") ai = await extractVisual(payload);
+    else if (operation === "analyze_primary") ai = await analyzePrimary(payload);
     else if (operation === "enhance_fast") ai = await enhanceFast(payload);
     else return jsonResponse({ ok: false, error: "العملية المطلوبة غير مدعومة." }, 400, origin);
     return jsonResponse({ ok: true, operation, aiKeyConfigured: Boolean(Deno.env.get("GEMINI_API_KEY")), ...ai }, 200, origin);

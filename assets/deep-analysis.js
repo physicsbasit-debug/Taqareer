@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "0.9.7";
+  const VERSION = "1.0.0";
 
   function masteryEngine() {
     const engine = window.TaqareerMasteryMetrics;
@@ -1425,5 +1425,28 @@
     return result;
   }
 
-  window.TaqareerDeepAnalytics = { VERSION, analyze, analyzers: Object.keys(analyzers), helpers: { normalize, parseNumber, quantile, pearson }, masteryContractVersion: masteryEngine().VERSION };
+  function analyzeEvidence(input) {
+    const full = analyze(input);
+    const evidence = structuredClone(full);
+    // لا يملك المحرك المحلي حق صياغة التشخيص أو الاستنتاج أو التدخل في مسار v1.0.0.
+    // نحتفظ بالحسابات والرسوم ومراجع الأدلة والحقول الرقمية التي تحتاجها الواجهة والمراجع.
+    evidence.executiveTitle = "";
+    evidence.executiveSummary = "";
+    evidence.diagnosticSections = [];
+    evidence.findings = [];
+    evidence.qualityTools = [];
+    evidence.improvementPlan = [];
+    evidence.monitoringPlan = [];
+    evidence.action = null;
+    evidence.analysisProfile = {
+      method: "محرك حساب وأدلة محلي",
+      dataAdequacy: full.analysisProfile?.dataAdequacy || full.analysisProfile?.dataSufficiency || "غير محددة",
+      dimensions: [],
+      decisionUse: [],
+    };
+    evidence._evidenceOnly = true;
+    return evidence;
+  }
+
+  window.TaqareerDeepAnalytics = { VERSION, analyze, analyzeEvidence, analyzers: Object.keys(analyzers), helpers: { normalize, parseNumber, quantile, pearson }, masteryContractVersion: masteryEngine().VERSION };
 })();

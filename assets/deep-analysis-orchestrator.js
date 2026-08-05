@@ -1,18 +1,18 @@
 (() => {
   "use strict";
 
-  // اسم الملف محفوظ للتوافق مع ترتيب التحميل القديم، لكن التنفيذ جديد بالكامل:
-  // طلب Gemini واحد، غير حاجب للواجهة، مع ذاكرة مؤقتة وفشل آمن.
-  const VERSION = "0.9.7";
-  const PROTOCOL_VERSION = "5.1.0";
-  const LABELS = Object.freeze({ enhancement: "التحسين التربوي الذكي" });
-  const TASK_LABELS = Object.freeze({ "enhancement.single": "التحسين التربوي الذكي" });
+  // Phase 2-A: الذكاء الاصطناعي هو مالك التحليل التربوي، بينما يبقى
+  // المحرك المحلي مسؤولًا عن الحسابات والرسوم وحزمة الأدلة فقط.
+  const VERSION = "1.0.0";
+  const PROTOCOL_VERSION = "6.0.0";
+  const LABELS = Object.freeze({ primary: "التحليل التربوي الذكي" });
+  const TASK_LABELS = Object.freeze({ "analysis.primary": "التحليل التربوي الذكي" });
 
   function clone(value) {
     return value === undefined ? undefined : structuredClone(value);
   }
 
-  function uniqueStrings(items, limit = 32) {
+  function uniqueStrings(items, limit = 160) {
     const seen = new Set();
     const output = [];
     for (const item of Array.isArray(items) ? items : []) {
@@ -25,193 +25,147 @@
     return output;
   }
 
-  function emptyDelta() {
-    return {
-      contractVersion: PROTOCOL_VERSION,
-      deepAnalysisUnits: [],
-      patches: [],
-      additionalCautions: [],
-      missingDataRequests: [],
-    };
-  }
-
   function compactMetrics(items) {
-    return (Array.isArray(items) ? items : []).slice(0, 20).map(item => ({
-      id: item?.id,
-      label: item?.label,
+    return (Array.isArray(items) ? items : []).slice(0, 42).map(item => ({
+      id: String(item?.id || ""),
+      label: String(item?.label || ""),
       value: item?.value,
-      note: item?.note,
-      evidenceRef: item?.evidenceRef || (item?.id ? `metric:${item.id}` : ""),
-    }));
+      note: String(item?.note || "").slice(0, 320),
+      format: item?.format,
+      evidenceRef: String(item?.evidenceRef || (item?.id ? `metric:${item.id}` : "")),
+    })).filter(item => item.id || item.label);
   }
 
   function compactCharts(items) {
-    return (Array.isArray(items) ? items : []).slice(0, 4).map(chart => ({
-      id: chart?.id,
-      type: chart?.type,
-      title: chart?.title,
-      description: chart?.description,
-      data: Array.isArray(chart?.data) ? chart.data.slice(0, 16) : chart?.data,
+    return (Array.isArray(items) ? items : []).slice(0, 10).map(chart => ({
+      id: String(chart?.id || ""),
+      type: String(chart?.type || ""),
+      title: String(chart?.title || "").slice(0, 220),
+      description: String(chart?.description || "").slice(0, 420),
+      data: Array.isArray(chart?.data) ? chart.data.slice(0, 40) : chart?.data,
       xKey: chart?.xKey,
       yKey: chart?.yKey,
-      series: Array.isArray(chart?.series) ? chart.series.slice(0, 8) : chart?.series,
+      valueSuffix: chart?.valueSuffix,
+      series: Array.isArray(chart?.series) ? chart.series.slice(0, 12) : chart?.series,
     }));
   }
 
-  function reduceTarget(item, fields) {
-    if (!item || typeof item !== "object") return null;
-    const output = {
-      id: String(item.id || ""),
-      title: String(item.title || item.name || item.issue || ""),
-      evidenceRefs: uniqueStrings(item.evidenceRefs || [], 6),
-      allowedFields: fields,
+  function compactEvidenceAnalysis(analysis) {
+    const source = analysis && typeof analysis === "object" ? analysis : {};
+    return {
+      version: source.version,
+      kind: source.kind,
+      typeId: source.typeId,
+      metrics: compactMetrics(source.metrics),
+      charts: compactCharts(source.charts),
+      evidenceCatalog: (Array.isArray(source.evidenceCatalog) ? source.evidenceCatalog : [])
+        .slice(0, 140)
+        .map(item => ({ ref: String(item?.ref || ""), label: String(item?.label || item?.text || "").slice(0, 420) }))
+        .filter(item => item.ref),
+      calculationLimitations: (Array.isArray(source.limitations) ? source.limitations : []).slice(0, 12).map(String),
+      calculationMetadata: {
+        validRecordCount: source.n ?? source.total ?? source.rowCount ?? null,
+        thresholdPct: source.thresholdPct ?? null,
+        maxScore: source.maxScore ?? null,
+      },
     };
-    if (item.statement) output.statement = String(item.statement).slice(0, 700);
-    if (item.educationalImpact) output.educationalImpact = String(item.educationalImpact).slice(0, 600);
-    if (item.recommendedAction) output.recommendedAction = String(item.recommendedAction).slice(0, 600);
-    if (item.action) output.action = String(item.action).slice(0, 700);
-    if (item.targetGroup) output.targetGroup = String(item.targetGroup).slice(0, 260);
-    if (item.successIndicator) output.successIndicator = String(item.successIndicator).slice(0, 420);
-    return output.id ? output : null;
   }
 
-  function compactContract(contract) {
-    const source = contract && typeof contract === "object" ? contract : {};
-    const patchTargets = source.patchTargets && typeof source.patchTargets === "object" ? source.patchTargets : {};
-    const diagnostics = (Array.isArray(source.deepAnalysisTargets) ? source.deepAnalysisTargets : [])
-      .slice(0, 4)
-      .map(item => ({
-        id: String(item?.id || ""),
-        title: String(item?.title || ""),
-        currentAnalysis: String(item?.currentAnalysis || item?.analysis || "").slice(0, 800),
-        evidenceRefs: uniqueStrings(item?.evidenceRefs || [], 6),
-      }))
-      .filter(item => item.id);
-    const findings = (Array.isArray(patchTargets.findings) ? patchTargets.findings : [])
-      .slice(0, 5)
-      .map(item => reduceTarget(item, ["educationalImpact", "recommendedAction", "limitations"]))
-      .filter(Boolean);
-    const interventions = (Array.isArray(patchTargets.interventions) ? patchTargets.interventions : [])
-      .slice(0, 4)
-      .map(item => reduceTarget(item, ["action", "successIndicator", "monitoringMethod", "contingency"]))
-      .filter(Boolean);
+  function compactData(data) {
+    const source = data && typeof data === "object" ? data : {};
+    if (Array.isArray(source.lines)) {
+      return {
+        mode: "narrative",
+        lines: source.lines.slice(0, 260).map(item => ({
+          ref: String(item?.ref || ""),
+          text: String(item?.text || "").slice(0, 1200),
+        })).filter(item => item.ref && item.text),
+        originalLineCount: Number(source.originalLineCount || source.lines.length || 0),
+        sentLineCount: Math.min(260, Number(source.sentLineCount || source.lines.length || 0)),
+      };
+    }
     return {
-      version: String(source.version || "3.0.0"),
-      mode: "single-fast-enhancement",
-      family: String(source.family || "adaptive"),
-      rules: {
-        localCalculationsAreAuthoritative: true,
-        targetIdsAreMandatory: true,
-        maxDeepAnalysisUnits: diagnostics.length,
-        maxPatches: Math.min(14, findings.length * 2 + interventions.length),
-      },
-      executive: source.executive ? {
-        id: String(source.executive.id || "executive"),
-        allowedFields: ["executiveSummary"],
-      } : null,
-      profile: null,
-      deepAnalysisTargets: diagnostics,
-      patchTargets: {
-        findings,
-        qualityTools: [],
-        interventions,
-        monitoring: [],
-      },
+      mode: "table",
+      headers: (Array.isArray(source.headers) ? source.headers : []).slice(0, 32).map(String),
+      sampleRows: (Array.isArray(source.sampleRows) ? source.sampleRows : []).slice(0, 120),
+      rowCount: Number(source.rowCount || 0),
+      sentRowCount: Math.min(120, Number(source.sentRowCount || source.sampleRows?.length || 0)),
+      maskedHeaders: (Array.isArray(source.maskedHeaders) ? source.maskedHeaders : []).slice(0, 20).map(String),
+      sampling: String(source.sampling || ""),
+      truncated: Boolean(source.truncated),
     };
   }
 
   function compactPayload(basePayload) {
     const source = clone(basePayload || {});
-    const deterministic = source.deterministicAnalysis && typeof source.deterministicAnalysis === "object"
-      ? source.deterministicAnalysis
-      : {};
-    const data = source.data && typeof source.data === "object" ? source.data : {};
-    const tableRows = Array.isArray(data.sampleRows) ? data.sampleRows.slice(0, 6) : [];
-    const narrativeLines = Array.isArray(data.lines) ? data.lines.slice(0, 100) : [];
-    const contract = compactContract(source.reconciliationContract || {});
-    const allowedEvidence = new Set();
-    for (const target of contract.deepAnalysisTargets) for (const ref of target.evidenceRefs || []) allowedEvidence.add(ref);
-    for (const group of [contract.patchTargets.findings, contract.patchTargets.interventions]) {
-      for (const target of group) for (const ref of target.evidenceRefs || []) allowedEvidence.add(ref);
-    }
-    for (const metric of compactMetrics(deterministic.metrics)) if (metric.evidenceRef) allowedEvidence.add(metric.evidenceRef);
+    const evidenceAnalysis = compactEvidenceAnalysis(source.evidenceAnalysis || source.deterministicAnalysis || {});
+    const availableEvidenceRefs = uniqueStrings([
+      ...(source.availableEvidenceRefs || []),
+      ...evidenceAnalysis.metrics.map(item => item.evidenceRef),
+      ...evidenceAnalysis.evidenceCatalog.map(item => item.ref),
+    ].filter(Boolean), 180);
 
     return {
       locale: source.locale || "ar-OM",
-      appVersion: "0.9.7",
+      appVersion: VERSION,
+      protocolVersion: PROTOCOL_VERSION,
       pipeline: {
-        mode: "single-fast-ai-enhancement-v1",
-        goal: "تحسين تربوي عميق تلقائي وصامت في طلب واحد دون تعطيل النتائج أو إنشاء عناصر جديدة.",
+        mode: "ai-primary-analysis-v1",
+        ownership: {
+          calculationsAndCharts: "local-evidence-engine",
+          diagnosisFindingsInterventions: "gemini-primary-analyst",
+          validationAndEvidenceGates: "server-and-client",
+        },
+        goal: "إنتاج تحليل تربوي أصيل ومخصص للسياق من الأدلة، لا تحسين قوالب محلية سابقة.",
       },
       source: source.source || {},
       recognizedType: source.recognizedType || {},
       quality: {
         completeness: source.quality?.completeness,
-        warnings: (source.quality?.warnings || []).slice(0, 6),
+        blockers: (source.quality?.blockers || []).slice(0, 10),
+        warnings: (source.quality?.warnings || []).slice(0, 12),
+        info: (source.quality?.info || []).slice(0, 8),
       },
       privacy: source.privacy || {},
-      data: narrativeLines.length
-        ? { lines: narrativeLines, sentLineCount: narrativeLines.length }
-        : { headers: (data.headers || []).slice(0, 12), sampleRows: tableRows, sentRowCount: tableRows.length },
-      deterministicAnalysis: {
-        kind: deterministic.kind,
-        typeId: deterministic.typeId,
-        analysisProfile: deterministic.analysisProfile,
-        executiveTitle: deterministic.executiveTitle,
-        executiveSummary: deterministic.executiveSummary,
-        metrics: compactMetrics(deterministic.metrics),
-        charts: compactCharts(deterministic.charts),
-        limitations: (deterministic.limitations || []).slice(0, 6),
-        evidenceCatalog: (deterministic.evidenceCatalog || []).slice(0, 40),
+      data: compactData(source.data || {}),
+      evidenceAnalysis,
+      availableEvidenceRefs,
+      evidenceReferenceGuide: source.evidenceReferenceGuide || {
+        rows: "row:N سجل سياقي مرسل",
+        lines: "line:N سطر من النص المصدر",
+        metrics: "metric:NAME مؤشر محسوب من كامل البيانات",
       },
-      reconciliationContract: contract,
-      availableEvidenceRefs: uniqueStrings([
-        ...(source.availableEvidenceRefs || []).filter(ref => allowedEvidence.has(String(ref))),
-        ...allowedEvidence,
-      ], 48),
+      analysisCharter: {
+        factsMustUseEvidenceRefs: true,
+        separateFactInferenceHypothesis: true,
+        doNotInventNumbersOrCauses: true,
+        doNotRepeatFixedTemplateCounts: true,
+        chooseDepthByEvidence: true,
+        everyInterventionMustAddressAFinding: true,
+        acknowledgeMissingData: true,
+        outputLanguage: "العربية الواضحة المهنية",
+      },
     };
   }
 
-  async function run({ basePayload, ai, performanceApi, force = false, onProgress = () => {} } = {}) {
-    if (!ai?.enhanceFastDetailed) throw new Error("عميل التحسين الذكي السريع غير محمل.");
+  async function run({ basePayload, ai, onProgress = () => {} } = {}) {
+    if (!ai?.analyzePrimaryDetailed) throw new Error("عميل التحليل الذكي الأساسي غير محمل.");
     const payload = compactPayload(basePayload);
     const payloadChars = JSON.stringify(payload).length;
-    const cacheKey = performanceApi?.makeKey
-      ? await performanceApi.makeKey("automatic-silent-enhancement-v2", payload)
-      : "";
-    const cached = !force && cacheKey && performanceApi?.cacheGet ? performanceApi.cacheGet(cacheKey) : null;
-    onProgress({ status: "pending", payloadChars, cacheHit: false });
-    if (cached?.result) {
-      onProgress({ status: "success", payloadChars, cacheHit: true, result: cached.result });
-      return {
-        protocolVersion: PROTOCOL_VERSION,
-        delta: cached.result,
-        result: cached.result,
-        cacheHit: true,
-        payloadChars,
-        durationMs: 0,
-        model: cached.model || "Gemini",
-        usage: cached.usage || null,
-        serverTiming: cached.serverTiming || { fastSingle: true, cacheHit: true },
-      };
-    }
+    onProgress({ status: "pending", stage: "analysis", payloadChars, cacheHit: false });
 
+    // لا نعيد استخدام تحليل تربوي قديم لمجرد تطابق الملف. كل تشغيل يطلب قراءة
+    // جديدة من المحلل الذكي، بينما تظل الأرقام نفسها ثابتة ومحكومة بالأدلة.
     const startedAt = globalThis.performance?.now?.() ?? Date.now();
-    const response = await ai.enhanceFastDetailed(payload);
+    const response = await ai.analyzePrimaryDetailed(payload);
     const durationMs = Number(response?.clientTiming?.durationMs)
       || Math.max(0, (globalThis.performance?.now?.() ?? Date.now()) - startedAt);
-    const result = response?.result && typeof response.result === "object" ? response.result : emptyDelta();
-    const record = {
-      result,
-      model: response?.model || "Gemini",
-      usage: response?.usage || null,
-      serverTiming: response?.serverTiming || null,
-    };
-    if (cacheKey && performanceApi?.cacheSet) performanceApi.cacheSet(cacheKey, record);
-    onProgress({ status: "success", payloadChars, cacheHit: false, result });
+    const result = response?.result && typeof response.result === "object" ? response.result : null;
+    if (!result) throw new Error("لم يرجع المحلل الذكي نتيجة قابلة للاستخدام.");
+
+    onProgress({ status: "success", stage: "analysis", payloadChars, cacheHit: false, result });
     return {
       protocolVersion: PROTOCOL_VERSION,
-      delta: result,
       result,
       cacheHit: false,
       payloadChars,
@@ -225,7 +179,7 @@
   globalThis.TaqareerDeepOrchestrator = {
     VERSION,
     PROTOCOL_VERSION,
-    SEGMENTS: Object.freeze(["enhancement"]),
+    SEGMENTS: Object.freeze(["primary"]),
     LABELS,
     TASK_LABELS,
     compactPayload,
