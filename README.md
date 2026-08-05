@@ -1,4 +1,6 @@
-# تقارير v1.1.4
+# تقارير v1.1.5
+
+> Phase 2-C Fix 5: فحص اتصال Edge حي، تطبيع CORS، ومنع تسريب أخطاء `Failed to fetch`.
 
 ## Phase 2-C Fix 4 — Multi-Visit Sample Scope Guard
 
@@ -13,7 +15,7 @@
 - تسجيل `scopeGuard.adjusted` وسبب التعديل لأغراض المراجعة.
 
 ### الإصدارات
-- التطبيق: `v1.1.4`
+- التطبيق: `v1.1.5`
 - عقد التحليل: `6.6.0`
 - Supabase Edge: `V0.14.3`
 

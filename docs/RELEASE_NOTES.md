@@ -1,3 +1,11 @@
+# v1.1.5 — Phase 2-C Fix 5
+
+- فحص اتصال Edge حي قبل التحليل.
+- عملية `health` لا تستدعي Gemini.
+- تطبيع روابط Supabase وCORS وروابط GitHub Pages ذات المسار.
+- تعريب أخطاء الشبكة ومنع تسريب `Failed to fetch`.
+- لا تغيير في عقد التحليل 6.6.0 أو محرك الزيارات المتعددة.
+
 # v1.1.4 — Phase 2-C Fix 4
 
 ## Multi-Visit Sample Scope Guard

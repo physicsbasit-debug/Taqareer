@@ -1,0 +1,17 @@
+تطبيق تقارير v1.1.5 — Phase 2-C Fix 5
+
+1) ارفع محتويات حزمة changed_files_only فوق مستودع Taqareer مع الاستبدال.
+2) انتظر نجاح GitHub Pages وتأكد من ظهور: نسخة تشغيلية v1.1.5.
+3) افتح Supabase > Edge Functions > analyze-educational-form.
+4) استبدل الكود كاملًا بمحتوى SUPABASE_FUNCTION_GEMINI_V0_14_4.txt ثم اضغط Deploy.
+5) لا يوجد SQL جديد ولا سر جديد.
+6) افتح التطبيق واضغط «إعداد الذكاء الاصطناعي» ثم «حفظ واختبار» مرة واحدة.
+7) يجب أن تعرض الشارة «ذكاء اصطناعي حي جاهز» فقط بعد نجاح فحص Edge.
+8) أعد تحليل الملف نفسه.
+
+ملاحظة CORS:
+إذا كان سر TAQAREER_ALLOWED_ORIGINS مستخدمًا، يمكن أن تكون قيمته:
+https://physicsbasit-debug.github.io/Taqareer/
+أو:
+https://physicsbasit-debug.github.io
+الإصدار الجديد يطبع القيمتين إلى الأصل نفسه تلقائيًا.

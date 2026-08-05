@@ -1,0 +1,29 @@
+تقارير v1.1.5 — Phase 2-C Fix 5
+
+الملفات الوظيفية المعدلة:
+- assets/ai-client.js
+- assets/app.js
+- supabase/functions/analyze-educational-form/index.ts
+- SUPABASE_FUNCTION_GEMINI_V0_14_4.txt
+- index.html
+- manifest.json
+- package.json
+
+ملفات الإصدار والتوافق المعدلة:
+- assets/analysis-reconciliation.js
+- assets/deep-analysis.js
+- assets/deep-analysis-orchestrator.js
+- assets/report-system.js
+- scripts/verify-static.cjs
+- tests/report-ai-primary.test.cjs
+- tests/multi-visit-pdf.test.cjs
+
+اختبارات جديدة:
+- tests/ai-network-transport.test.cjs
+- tests/edge-network-health.test.cjs
+
+وثائق جديدة:
+- README_PHASE_2_C_FIX5_NETWORK_TRANSPORT.md
+- APPLY_PHASE_2_C_FIX5_V1_1_5.txt
+- TEST_REPORT_PHASE_2_C_FIX5_V1_1_5.md
+- CHANGED_FILES_MANIFEST_PHASE_2_C_FIX5_V1_1_5.txt

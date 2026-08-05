@@ -105,6 +105,11 @@
   function friendlyAiError(error) {
     const code = String(error?.code || "");
     const message = String(error?.message || "");
+    if (code === "AI_OFFLINE") return "الجهاز غير متصل بالإنترنت حاليًا. لم يُرسل التحليل إلى الخادم. تحقق من الاتصال ثم أعد المحاولة.";
+    if (code === "AI_NETWORK_FETCH_FAILED" || /failed to fetch|networkerror|load failed|network request failed/i.test(message)) {
+      return "تعذر الوصول إلى وظيفة Supabase. فحص التطبيق الرابط قبل التحليل، لكن الاتصال انقطع أو حُجبت الاستجابة. افتح إعداد الذكاء الاصطناعي واضغط «حفظ واختبار»؛ لن يعتمد التطبيق نتيجة ناقصة.";
+    }
+    if (code === "AI_ENDPOINT_INVALID") return message || "رابط وظيفة Supabase غير صالح.";
     if (code === "GEMINI_TRANSIENT" || /high demand|spikes in demand|service unavailable|overload(?:ed)?|\b503\b/i.test(message)) {
       return "خدمة التحليل الذكي مزدحمة مؤقتًا. حاول التطبيق تلقائيًا إعادة الطلب واستخدام نموذج بديل، لكن الخدمة لم تستجب الآن. أعد المحاولة بعد قليل.";
     }
@@ -134,22 +139,47 @@
     const config = aiConfig();
     const configured = Boolean(window.TaqareerAI?.isConfigured?.());
     const enabled = Boolean(config.enabled);
+    const health = window.TaqareerAI?.getHealth?.() || { status: "unknown" };
     const header = $("aiHeaderStatus");
     const card = $("aiConnectionStatus");
     const mode = $("aiModeToggle");
     if (mode) mode.checked = enabled;
-    const text = configured ? (enabled ? "ذكاء اصطناعي حي جاهز" : "الذكاء الاصطناعي متوقف") : "الذكاء الاصطناعي غير مربوط";
+
+    let text = "الذكاء الاصطناعي غير مربوط";
+    let cardText = "يتطلب التحليل التربوي ربط وظيفة Supabase؛ لن يعرض التطبيق قوالب محلية بديلة على أنها تحليل عميق.";
+    let liveClass = false;
+    if (configured && !enabled) {
+      text = "الذكاء الاصطناعي متوقف";
+      cardText = "إعداد الاتصال محفوظ، لكن المحلل الذكي متوقف من مفتاح التشغيل.";
+    } else if (configured && enabled && health.status === "checking") {
+      text = "جارٍ فحص اتصال الذكاء";
+      cardText = "يفحص التطبيق وظيفة Supabase فعليًا قبل إعلان الجاهزية.";
+    } else if (configured && enabled && health.status === "live") {
+      text = "ذكاء اصطناعي حي جاهز";
+      liveClass = true;
+      cardText = `اتصال Supabase مؤكد${health.edgeVersion ? ` · Edge ${health.edgeVersion}` : ""}. الحسابات تُبنى محليًا ثم يبدأ التحليل الذكي من الأدلة.`;
+    } else if (configured && enabled && health.status === "failed") {
+      text = "تعذر اتصال الذكاء";
+      cardText = "إعداد الربط محفوظ، لكن فحص الاتصال الحي فشل. افتح إعداد الذكاء واضغط «حفظ واختبار» قبل إعادة التحليل.";
+    } else if (configured && enabled) {
+      text = "ربط الذكاء محفوظ";
+      cardText = "إعداد الربط محفوظ، وسيُفحص اتصال Supabase قبل بدء التحليل.";
+    }
+
     if (header) {
       header.textContent = text;
-      header.className = configured && enabled ? "version-badge ai-live" : "version-badge";
+      header.className = liveClass ? "version-badge ai-live" : "version-badge";
     }
-    if (card) {
-      card.textContent = configured && enabled
-        ? "المحلل الذكي الأساسي جاهز. الحسابات تُبنى محليًا، ثم ينشئ الذكاء الاصطناعي التشخيص والاستنتاجات والتدخلات من الأدلة."
-        : "يتطلب التحليل التربوي ربط وظيفة Supabase؛ لن يعرض التطبيق قوالب محلية بديلة على أنها تحليل عميق.";
-    }
+    if (card) card.textContent = cardText;
     const runButton = $("runAnalysisBtn");
     if (runButton) runButton.textContent = "تنفيذ التحليل الذكي";
+  }
+
+  async function verifyAiConnectionOnLoad() {
+    if (!aiReady() || !window.TaqareerAI?.health) return;
+    try { await window.TaqareerAI.health({ maxAgeMs: 120000 }); }
+    catch { /* تعرض حالة الاتصال في الشارة دون إزعاج المستخدم عند فتح الصفحة. */ }
+    finally { updateAiStatusUi(); }
   }
 
   function openAiSettings() {
@@ -174,13 +204,14 @@
     message.classList.remove("hidden", "error");
     message.textContent = "جارٍ اختبار الاتصال…";
     try {
-      const result = await window.TaqareerAI.ping();
+      const result = await window.TaqareerAI.ping({ force: true });
       if (result.aiKeyConfigured === false) {
         message.textContent = "تم الوصول إلى وظيفة Supabase، لكن سر GEMINI_API_KEY غير مضبوط بعد.";
         message.classList.add("error");
         return;
       }
-      message.textContent = `تم الاتصال بنجاح${result.model ? ` · النموذج ${result.model}` : ""}.`;
+      message.textContent = `تم الاتصال بنجاح${result.edgeVersion ? ` · Edge ${result.edgeVersion}` : ""}${result.model ? ` · النموذج ${result.model}` : ""}.`;
+      updateAiStatusUi();
       setTimeout(() => $("aiSettingsDialog").close(), 650);
     } catch (error) {
       message.textContent = friendlyAiError(error);
@@ -406,7 +437,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "1.1.4",
+      appVersion: "1.1.5",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -1039,7 +1070,7 @@
     if (!window.TaqareerReconciliation?.composePrimary) throw new Error("محرك التحقق من التحليل الذكي غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "1.1.4",
+      appVersion: "1.1.5",
       pipeline: {
         mode: "ai-primary-analysis-v1",
         instruction: "المحرك المحلي يحسب المؤشرات والرسوم فقط. يبني الذكاء الاصطناعي التشخيص والاستنتاجات والتدخلات من الأدلة، ثم تتحقق البوابة من المراجع قبل عرض التقرير."
@@ -1593,7 +1624,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v1.1.4.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v1.1.5.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
@@ -1662,10 +1693,13 @@
     $("aiModeToggle").addEventListener("change", e => {
       window.TaqareerAI.saveConfig({ enabled: e.target.checked });
       updateAiStatusUi();
+      if (e.target.checked) verifyAiConnectionOnLoad();
     });
+    window.addEventListener?.("taqareer-ai-health", updateAiStatusUi);
     $("changeTypeBtn").addEventListener("click",()=>{ $("typeSelect").value=state.type.id; $("typeDialog").showModal(); });
     $("applyTypeBtn").addEventListener("click", e => { e.preventDefault(); const chosen=formTypes.find(t=>t.id===$("typeSelect").value); if(chosen){state.type=chosen;state.confidence=100;state.recognitionStatus="اعتماد يدوي من المستخدم";state.quality=assessQuality(state.headers,state.rows,state.type,state.sourceMeta||{});renderReview();} $("typeDialog").close(); });
     updateAiStatusUi();
+    verifyAiConnectionOnLoad();
   }
   document.addEventListener("DOMContentLoaded", init);
 })();

@@ -1,8 +1,8 @@
 {
   "app": "تقارير",
-  "version": "1.1.4",
-  "phase": "Phase 2-C Fix 4 - Multi-Visit Sample Scope Guard",
-  "releaseName": "Evidence-Bounded Intervention Scope for Multi-Visit Reports",
+  "version": "1.1.5",
+  "phase": "Phase 2-C Fix 5 - Network Transport & CORS Health Guard",
+  "releaseName": "Network Transport & CORS Health Guard",
   "buildType": "static-github-pages-plus-supabase-edge-function",
   "supportedInputs": {
     "table": [
@@ -138,7 +138,7 @@
     "legacyAnalyzeThinkingBudget": 1024,
     "classificationThinkingBudget": 0,
     "reconciliationContractVersion": "6.6.0",
-    "edgeFunctionVersion": "0.14.3",
+    "edgeFunctionVersion": "0.14.4",
     "fastEnhancementModel": "gemini-3.5-flash-lite",
     "fastEnhancementThinkingBudget": 192,
     "fastEnhancementMaxOutputTokens": 2600,
@@ -149,7 +149,7 @@
     "primaryRescueModel": "gemini-3.5-flash-lite",
     "primaryRescueThinkingLevel": "minimal",
     "primaryRescueMaxOutputTokens": 6144,
-    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.1.4",
+    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.1.5",
     "primaryModelFallbackOrder": [
       "gemini-3.5-flash",
       "gemini-3.6-flash",
@@ -159,7 +159,14 @@
     "transientRetryBackoff": "exponential-with-jitter",
     "primaryServerDeadlineMs": 72000,
     "primaryModelAttemptTimeoutMs": 30000,
-    "primaryRescueAttemptTimeoutMs": 24000
+    "primaryRescueAttemptTimeoutMs": 24000,
+    "edgeHealthOperation": "health",
+    "edgeHealthRequiresGemini": false,
+    "edgeHealthCacheMs": 120000,
+    "networkHealthRetryAttempts": 2,
+    "networkTransportErrorCode": "AI_NETWORK_FETCH_FAILED",
+    "endpointAutoNormalization": true,
+    "corsAllowedOriginNormalization": "URL origin, including GitHub Pages URLs with repository paths"
   },
   "security": {
     "geminiKeyInBrowser": false,
@@ -173,7 +180,9 @@
     "numericInterventionTargetsValidatedServerSide": true,
     "numericInterventionTargetsRevalidatedClientSide": true,
     "multiVisitInterventionScopeValidatedServerSide": true,
-    "multiVisitInterventionScopeRevalidatedClientSide": true
+    "multiVisitInterventionScopeRevalidatedClientSide": true,
+    "corsPreflightReadableErrors": true,
+    "liveStatusRequiresHealthCheck": true
   },
   "acceptanceCoverage": {
     "analysisFamilies": 11,
@@ -208,7 +217,7 @@
     "databaseChanges": false,
     "newSecretsRequired": false,
     "currentFrontendOperation": "analyze_primary",
-    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.1.4",
+    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.1.5",
     "classificationAndVision": "retained"
   },
   "notYetEnabled": [
