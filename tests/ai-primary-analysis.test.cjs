@@ -25,7 +25,7 @@ function loadBrowserScript(relativePath, extra = {}) {
 function primaryFixture() {
   const refs = ['metric:mean', 'metric:masteryPct', 'metric:sd'];
   return {
-    contractVersion: '6.2.0',
+    contractVersion: '6.3.0',
     analysisProfile: {
       method: 'تحليل علاقات الأداء والأولوية من الأدلة الرقمية',
       dataAdequacy: 'كافية للقراءة الوصفية، وغير كافية لإثبات السبب',
@@ -51,14 +51,15 @@ function primaryFixture() {
       { id: 'f3', title: 'فرضية متطلبات سابقة', statement: 'قد ترتبط الفجوة بمتطلبات سابقة.', claimType: 'hypothesis', evidenceRefs: ['metric:mean'], confidence: 'منخفضة', severity: 'medium', educationalImpact: 'قد يحد النقص السابق من التعلم الجديد.', recommendedAction: 'اختبار تشخيصي للمتطلبات.', limitations: ['السبب غير مثبت'] },
       { id: 'f4', title: 'أولوية القياس', statement: 'يلزم خط أساس تفصيلي.', claimType: 'inference', evidenceRefs: ['metric:masteryPct'], confidence: 'متوسطة', severity: 'low', educationalImpact: 'يحسن دقة القرار.', recommendedAction: 'قياس قبلي قصير.', limitations: [] },
     ],
-    qualityTools: [],
+    qualityTools: [{ id: 'q1', name: 'فحص التشتت', reason: 'يكشف أثر تفاوت الدرجات على قرار التمايز.', interpretation: 'ارتفاع التشتت يستدعي تدخلات مختلفة الشدة بدل مسار واحد.', requiredData: [], evidenceRefs: ['metric:sd'] }],
     interventions: [
       { id: 'i1', priority: 'عالية', issue: 'فجوة الإتقان', targetGroup: 'الطلبة دون الحد', action: 'تدخل متدرج مبني على تشخيص قصير.', implementationSteps: ['تشخيص', 'تجميع مرن', 'إعادة قياس'], responsibleRole: 'معلم المادة', timeframe: 'أسبوعان', successIndicator: 'ارتفاع نسبة الإتقان في القياس اللاحق', monitoringMethod: 'مقارنة قبلي وبعدي', contingency: 'تدخل فردي للحالات غير المتحسنة', resources: ['مهام قصيرة'], evidenceRefs: ['metric:masteryPct'] },
       { id: 'i2', priority: 'متوسطة', issue: 'التفاوت', targetGroup: 'الفئات المتباينة', action: 'تنويع مستوى المهام.', implementationSteps: ['تصنيف الفئات', 'مهام متدرجة'], responsibleRole: 'معلم المادة', timeframe: 'ثلاثة أسابيع', successIndicator: 'انخفاض التفاوت مع تحسن المتوسط', monitoringMethod: 'متابعة التوزيع', contingency: 'مراجعة صعوبة الأدوات', resources: [], evidenceRefs: ['metric:sd'] },
     ],
     monitoringPlan: [
       { id: 'm1', stage: 'خط الأساس', timing: 'الآن', measure: 'توثيق الإتقان والتفاوت', owner: 'معلم المادة', evidenceRefs: ['metric:masteryPct', 'metric:sd'] },
-      { id: 'm2', stage: 'إعادة القياس', timing: 'بعد أسبوعين', measure: 'مقارنة المؤشرات', owner: 'فريق المادة', evidenceRefs: ['metric:masteryPct'] },
+      { id: 'm2', stage: 'متابعة مرحلية', timing: 'بعد أسبوع', measure: 'مراجعة استجابة الفئات للتدخل', owner: 'فريق المادة', evidenceRefs: ['metric:masteryPct', 'metric:sd'] },
+      { id: 'm3', stage: 'قياس الأثر', timing: 'بعد ثلاثة أسابيع', measure: 'مقارنة الإتقان والتفاوت بخط الأساس', owner: 'فريق المادة', evidenceRefs: ['metric:masteryPct', 'metric:sd'] },
     ],
     additionalCautions: ['لا يثبت الوصف سبب الفجوة'],
     missingDataRequests: ['نتائج المفردات'],
@@ -86,7 +87,7 @@ test('AI primary composition replaces local prose templates and accepts variable
   assert.equal(result.diagnosticSections.length, 3);
   assert.equal(result.findings.length, 4);
   assert.equal(result.improvementPlan.length, 2);
-  assert.equal(result.monitoringPlan.length, 2);
+  assert.equal(result.monitoringPlan.length, 3);
   assert.equal(result.diagnosticSections[0].source, 'gemini-primary');
   assert.doesNotMatch(JSON.stringify(result), /قالب محلي|استنتاج محلي محفوظ|نفذ القالب/);
   assert.equal(result.metrics[1].value, 42);
@@ -99,7 +100,17 @@ test('AI primary composition rejects an analysis without enough evidence-backed 
   bad.findings = [{ ...bad.findings[0], evidenceRefs: ['metric:not-allowed'] }];
   assert.throws(() => window.TaqareerReconciliation.composePrimary({ typeId: 'single_subject', metrics: [], charts: [], evidenceMap: {} }, bad, {
     availableEvidenceRefs: ['metric:mean'],
-  }), /تشخيصًا واستنتاجات وتدخلًا كافيًا/);
+  }), /وحدات قرار وتدخلين متمايزين وثلاث مراحل متابعة/);
+});
+
+test('client rejects a primary result with one intervention or fewer than three monitoring stages', () => {
+  const window = loadBrowserScript('assets/analysis-reconciliation.js');
+  const bad = primaryFixture();
+  bad.interventions = bad.interventions.slice(0, 1);
+  bad.monitoringPlan = bad.monitoringPlan.slice(0, 2);
+  assert.throws(() => window.TaqareerReconciliation.composePrimary({ typeId: 'single_subject', metrics: [], charts: [], evidenceMap: {} }, bad, {
+    availableEvidenceRefs: ['metric:mean', 'metric:masteryPct', 'metric:sd'],
+  }), /تدخلين متمايزين وثلاث مراحل متابعة/);
 });
 
 test('primary orchestrator sends evidence, not local interpretive prose', () => {
@@ -185,10 +196,10 @@ test('edge function exposes the analyze_primary operation and evidence-first con
   const source = fs.readFileSync(path.join(root, 'supabase/functions/analyze-educational-form/index.ts'), 'utf8');
   assert.match(source, /operation === "analyze_primary"/);
   assert.match(source, /primaryAnalysisInstructions/);
-  assert.match(source, /كل وحدة وتدخل يجب أن يستخدم evidenceRefs/);
-  assert.match(source, /contractVersion: "6\.2\.0"/);
+  assert.match(source, /كل وحدة وتدخل وفحص ومرحلة متابعة تستخدم evidenceRefs/);
+  assert.match(source, /contractVersion: "6\.3\.0"/);
   assert.match(source, /analysisUnits/);
-  assert.match(source, /compactDecisionContract: true/);
+  assert.match(source, /nonDuplicativeDecisionContract: true/);
   assert.match(source, /thinkingConfig: \{ thinkingLevel \}/);
   assert.match(source, /primaryRescueInstructions/);
 });

@@ -1,0 +1,201 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const ts = require('typescript');
+
+const root = path.resolve(__dirname, '..');
+const edgePath = path.join(root, 'supabase/functions/analyze-educational-form/index.ts');
+
+function payload() {
+  return {
+    locale: 'ar-OM',
+    recognizedType: { id: 'assessment_component', nameAr: 'درجات مكوّن تقويمي' },
+    availableEvidenceRefs: [
+      'metric:masteryPct', 'metric:deepGapCount', 'metric:nearMasteryCount',
+      'metric:sd', 'metric:cv', 'metric:skewness', 'metric:mean', 'metric:median',
+    ],
+    evidenceAnalysis: { metrics: [], charts: [], evidenceCatalog: [] },
+    data: { mode: 'table', rowCount: 268, sentRowCount: 24, sampleRows: [] },
+  };
+}
+
+function unit(index, title, analysis, decision, refs, severity = 'high') {
+  return {
+    title,
+    diagnosticAnalysis: analysis,
+    decisionFinding: decision,
+    claimType: index === 3 ? 'inference' : 'fact',
+    evidenceRefs: refs,
+    confidence: index === 3 ? 'متوسطة' : 'مرتفعة',
+    severity,
+    educationalImpact: `يؤثر المحور ${index} مباشرة في ترتيب الفئات وشدة الاستجابة التعليمية المطلوبة.`,
+    recommendedAction: `اعتماد إجراء متمايز للمحور ${index} مع قياس قصير يختبر التحسن قبل التوسع.`,
+    alternativeExplanations: index === 2 ? ['قد يتأثر التشتت باختلاف صعوبة الاختبار أو ظروف التطبيق.'] : [],
+    limitations: ['لا تتوفر نتائج على مستوى مفردات الاختبار.'],
+    dataRequests: ['تحليل مفردات أو اختبار تشخيصي لتحديد المهارات عند الحاجة.'],
+  };
+}
+
+function intervention(priority, issue, targetGroup, refs) {
+  return {
+    priority,
+    issue,
+    targetGroup,
+    action: `تنفيذ مسار تعليمي مخصص لـ${targetGroup} يبدأ بقياس تشخيصي قصير ثم أنشطة متدرجة.` ,
+    implementationSteps: ['تحديد خط الأساس', 'تنفيذ أنشطة متدرجة', 'إعادة قياس قصيرة'],
+    responsibleRole: 'معلم المادة وفريقها',
+    timeframe: 'ثلاثة أسابيع',
+    successIndicator: 'تحسن الفئة المستهدفة بمقدار قابل للقياس مقارنة بخط الأساس',
+    monitoringMethod: 'قياس أسبوعي مختصر ومقارنة توزيع الفئات',
+    contingency: 'تعديل شدة التدخل أو إحالة الحالات غير المستجيبة إلى دعم فردي',
+    resources: ['مهام تشخيصية قصيرة'],
+    evidenceRefs: refs,
+  };
+}
+
+function monitoring() {
+  return [
+    { stage: 'خط الأساس', timing: 'قبل التنفيذ', measure: 'توثيق الإتقان والتشتت وحجم كل فئة مستهدفة', owner: 'معلم المادة', evidenceRefs: ['metric:masteryPct', 'metric:sd'] },
+    { stage: 'متابعة مرحلية', timing: 'نهاية الأسبوع الثاني', measure: 'مقارنة انتقال الطلبة بين فئات التدخل ورصد الاستجابة', owner: 'فريق المادة', evidenceRefs: ['metric:nearMasteryCount', 'metric:deepGapCount'] },
+    { stage: 'قياس الأثر', timing: 'نهاية الأسبوع الثالث', measure: 'إعادة حساب الإتقان والتشتت ومقارنتهما بخط الأساس', owner: 'معلم المادة وفريق التقويم', evidenceRefs: ['metric:masteryPct', 'metric:sd'] },
+  ];
+}
+
+function primaryResult() {
+  return {
+    contractVersion: '6.3.0',
+    analysisProfile: {
+      method: 'تحليل علاقات الإتقان والتوزيع وفرص التدخل من الأدلة الرقمية.',
+      dataAdequacy: 'كافية لاتخاذ قرار وصفي متمايز وغير كافية لتسمية مهارة بعينها.',
+      dimensions: ['الإتقان', 'التفاوت', 'قابلية التدخل'],
+      decisionUses: ['ترتيب الأولويات', 'تصميم تدخلات متمايزة', 'متابعة الأثر'],
+    },
+    executive: {
+      title: 'فجوة واسعة مع فرصة تدخل متمايز',
+      summary: 'تجمع البيانات بين انخفاض واضح في الإتقان وتشتت مرتفع، مع وجود فئة قريبة يمكن رفعها سريعًا وفئة فجوة عميقة تحتاج مسارًا مكثفًا. القرار الأنسب هو فصل التدخلات ومتابعة انتقال الفئات بدل تطبيق برنامج موحد.',
+      overallJudgement: 'تدخل عاجل متمايز مع قياس مرحلي',
+      confidence: 'مرتفعة',
+      evidenceRefs: ['metric:masteryPct', 'metric:deepGapCount', 'metric:nearMasteryCount', 'metric:sd'],
+      limitations: ['لا تحدد الدرجات الكلية المفاهيم أو المهارات المتسببة في الفجوة.'],
+    },
+    analysisUnits: [
+      unit(1, 'مستوى الإتقان', 'تظهر نسبة الإتقان المنخفضة مع العدد الكبير في الفجوة العميقة أن المشكلة واسعة وليست حالات فردية متفرقة، لكن الدرجات الكلية لا تكشف المفهوم المتسبب فيها.', 'الأولوية الأولى هي خفض حجم الفجوة العميقة قبل توسيع الإثراء العام.', ['metric:masteryPct', 'metric:deepGapCount']),
+      unit(2, 'التشتت وشكل التوزيع', 'ارتفاع الانحراف ومعامل الاختلاف مع تقارب المتوسط والوسيط يوضح أن الصف غير متجانس وأن المتوسط العام يخفي احتياجات مختلفة بين مجموعات الطلبة.', 'لا يصلح تدخل موحد للصف؛ يجب تقسيم الاستجابة حسب شدة الفجوة.', ['metric:sd', 'metric:cv', 'metric:mean', 'metric:median'], 'medium'),
+      unit(3, 'فرصة الرفع السريع', 'وجود فئة قريبة من حد الإتقان يوفر فرصة لتحسن سريع بتدخل قصير، بالتوازي مع مسار أطول للفجوة العميقة حتى لا تستهلك مجموعة واحدة جميع الموارد.', 'اعتماد مسارين متزامنين يحقق أثرًا سريعًا دون إهمال الحالات الأعمق.', ['metric:nearMasteryCount', 'metric:deepGapCount'], 'medium'),
+    ],
+    interventions: [
+      intervention('عاجلة جدًا', 'الفجوة العميقة', 'الطلبة في الفجوة العميقة', ['metric:deepGapCount', 'metric:masteryPct']),
+      intervention('عالية', 'الاقتراب من الإتقان', 'الطلبة القريبون من حد الإتقان', ['metric:nearMasteryCount', 'metric:masteryPct']),
+    ],
+    methodChecks: [
+      { name: 'فحص التشتت النسبي', reason: 'يحدد ما إذا كان المتوسط يمثل الصف أو يخفي مجموعات مختلفة.', interpretation: 'ارتفاع التشتت يدعم تقسيم التدخل بدل تعميم إجراء واحد.', requiredData: [], evidenceRefs: ['metric:sd', 'metric:cv'] },
+    ],
+    monitoringPlan: monitoring(),
+    additionalCautions: ['لا يجوز تفسير الدرجات الكلية بوصفها دليلًا على مهارة محددة.'],
+    missingDataRequests: ['تحليل مفردات الاختبار لتحديد مواضع الضعف بدقة.'],
+    suggestedNewType: { needed: false, nameAr: '', purpose: '' },
+  };
+}
+
+function rescueResult() {
+  const result = primaryResult();
+  result.analysisUnits = result.analysisUnits.slice(0, 2);
+  result.interventions = result.interventions.slice(0, 2);
+  result.methodChecks = [];
+  result.executive.summary = 'تؤكد الأدلة انخفاض الإتقان مع تفاوت مرتفع، لذا يلزم فصل التدخل المكثف للفجوة العميقة عن الدعم القصير للفئة القريبة، ثم قياس انتقال الفئات عبر ثلاث محطات متابعة.';
+  return result;
+}
+
+function geminiRaw(result, finishReason = 'STOP') {
+  return {
+    modelVersion: 'gemini-test',
+    candidates: [{ content: { parts: [{ text: JSON.stringify(result) }] }, finishReason }],
+    usageMetadata: { thoughtsTokenCount: 120, candidatesTokenCount: 980 },
+  };
+}
+
+async function createRuntime(responses) {
+  const source = fs.readFileSync(edgePath, 'utf8');
+  const transpiled = ts.transpileModule(source, {
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None },
+    fileName: edgePath,
+    reportDiagnostics: true,
+  });
+  const errors = (transpiled.diagnostics || []).filter(item => item.category === ts.DiagnosticCategory.Error);
+  assert.equal(errors.length, 0, errors.map(item => ts.flattenDiagnosticMessageText(item.messageText, '\n')).join('\n'));
+
+  let handler = null;
+  let calls = 0;
+  const context = vm.createContext({
+    console,
+    Request,
+    Response,
+    Headers,
+    TextEncoder,
+    TextDecoder,
+    URL,
+    performance,
+    crypto: globalThis.crypto,
+    structuredClone,
+    setTimeout,
+    clearTimeout,
+    fetch: async () => {
+      const raw = responses[Math.min(calls, responses.length - 1)];
+      calls += 1;
+      return new Response(JSON.stringify(raw), { status: 200, headers: { 'content-type': 'application/json', 'x-request-id': `req-${calls}` } });
+    },
+    Deno: {
+      env: { get: key => key === 'GEMINI_API_KEY' ? 'test-key' : '' },
+      serve: fn => { handler = fn; },
+    },
+  });
+  vm.runInContext(transpiled.outputText, context, { filename: 'edge-runtime.js' });
+  assert.equal(typeof handler, 'function');
+  return { handler, getCalls: () => calls };
+}
+
+async function invoke(runtime) {
+  const request = new Request('https://edge.test/analyze', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', origin: 'https://example.test' },
+    body: JSON.stringify({ operation: 'analyze_primary', payload: payload() }),
+  });
+  const response = await runtime.handler(request);
+  return { status: response.status, body: await response.json() };
+}
+
+test('edge primary runtime accepts balanced non-duplicative result in one request', async () => {
+  const runtime = await createRuntime([geminiRaw(primaryResult())]);
+  const { status, body } = await invoke(runtime);
+  assert.equal(status, 200);
+  assert.equal(body.ok, true);
+  assert.equal(runtime.getCalls(), 1);
+  assert.equal(body.result.contractVersion, '6.3.0');
+  assert.equal(body.result.diagnosticSections.length, 3);
+  assert.equal(body.result.findings.length, 3);
+  assert.equal(body.result.interventions.length, 2);
+  assert.equal(body.result.monitoringPlan.length, 3);
+  assert.equal(body.result.qualityTools.length, 1);
+  assert.notEqual(body.result.diagnosticSections[0].analysis, body.result.findings[0].statement);
+  assert.equal(body.serverTiming.rescueUsed, false);
+  assert.equal(body.serverTiming.distinctTargetGroups, 2);
+});
+
+test('edge runtime rescues an incomplete first response without returning to local templates', async () => {
+  const runtime = await createRuntime([
+    geminiRaw({}, 'MAX_TOKENS'),
+    geminiRaw(rescueResult(), 'STOP'),
+  ]);
+  const { status, body } = await invoke(runtime);
+  assert.equal(status, 200);
+  assert.equal(body.ok, true);
+  assert.equal(runtime.getCalls(), 2);
+  assert.equal(body.serverTiming.rescueUsed, true);
+  assert.equal(body.result.diagnosticSections.length, 2);
+  assert.equal(body.result.interventions.length, 2);
+  assert.equal(body.result.monitoringPlan.length, 3);
+  assert.equal(body.result.qualityTools.length, 0);
+  assert.equal(body.result.validation.validationMode, 'rescue');
+});

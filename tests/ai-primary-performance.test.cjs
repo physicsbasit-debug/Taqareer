@@ -30,22 +30,32 @@ test('frontend sends compact evidence for scores and shows elapsed progress', ()
   assert.match(orchestrator, /chart\.data\.slice\(0, 18\)/);
 });
 
-test('primary prompt uses compact decision units instead of duplicated report sections', () => {
+test('primary prompt separates diagnosis from decision and requires balanced coverage', () => {
   const edge = read('supabase/functions/analyze-educational-form/index.ts');
-  assert.match(edge, /أخرج 2-3 analysisUnits فقط/);
-  assert.match(edge, /كل وحدة تدمج التشخيص والاستنتاج والأثر والإجراء/);
-  assert.match(edge, /أخرج 1-2 interventions فقط/);
+  assert.match(edge, /أخرج 3 analysisUnits مختلفة/);
+  assert.match(edge, /diagnosticAnalysis يشرح العلاقة/);
+  assert.match(edge, /decisionFinding يصوغ القرار/);
+  assert.match(edge, /أخرج 2-3 interventions لفئات أو قضايا مختلفة/);
+  assert.match(edge, /monitoringPlan من 3 مراحل بالضبط/);
+  assert.match(edge, /إذا كانت البيانات درجات كلية فقط، لا تسمِّ مهارة أو مفهومًا بعينه/);
   assert.match(edge, /const diagnosticSections = units\.map/);
-  assert.match(edge, /const findings = units\.map/);
-  assert.match(edge, /const monitoringPlan = interventions\.map/);
+  assert.match(edge, /analysis: item\.diagnosticAnalysis/);
+  assert.match(edge, /statement: item\.decisionFinding/);
+  assert.match(edge, /const monitoringPlan = \(Array\.isArray\(input\.monitoringPlan\)/);
 });
 
 
-test('schema constrains output cardinality and thinking is explicitly controlled', () => {
+test('schema constrains balanced output and thinking remains explicitly controlled', () => {
   const edge = read('supabase/functions/analyze-educational-form/index.ts');
   assert.match(edge, /analysisUnits: \{[\s\S]*?minItems: 2,[\s\S]*?maxItems: 3,/);
-  assert.match(edge, /interventions: \{[\s\S]*?minItems: 1,[\s\S]*?maxItems: 2,/);
-  assert.match(edge, /methodChecks: \{[\s\S]*?maxItems: 1,/);
+  assert.match(edge, /interventions: \{[\s\S]*?minItems: 2,[\s\S]*?maxItems: 3,/);
+  assert.match(edge, /methodChecks: \{[\s\S]*?maxItems: 2,/);
+  assert.match(edge, /monitoringPlan: \{[\s\S]*?minItems: 3,[\s\S]*?maxItems: 3,/);
+  assert.match(edge, /mode === "primary" && richEvidence \? 3 : 2/);
+  assert.match(edge, /interventions\.length < 2/);
+  assert.match(edge, /monitoringPlan\.length < 3/);
+  assert.match(edge, /textOverlapRatio/);
+  assert.match(edge, /targetGroups\.size < 2/);
   assert.match(edge, /firstThoughtTokens/);
   assert.match(edge, /finalCandidateTokens/);
 });

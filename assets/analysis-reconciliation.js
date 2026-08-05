@@ -1,8 +1,8 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.0.0";
-  const CONTRACT_VERSION = "3.0.0";
+  const VERSION = "1.0.4";
+  const CONTRACT_VERSION = "6.3.0";
 
   const SCORE_TYPES = new Set(["student_results", "assessment_component", "cross_subject"]);
   const LOCKED_SCORE_COUNTS = Object.freeze({ diagnosticSections: 4, findings: 5, interventions: 4, monitoring: 4 });
@@ -639,8 +639,8 @@
       }))
       .filter(item => item.stage && item.measure);
 
-    if (result.diagnosticSections.length < 2 || result.findings.length < 2 || result.improvementPlan.length < 1) {
-      throw new Error("رفض محرك التحقق تحليلًا لم يقدم تشخيصًا واستنتاجات وتدخلًا كافيًا مرتبطًا بالأدلة.");
+    if (result.diagnosticSections.length < 2 || result.findings.length < 2 || result.improvementPlan.length < 2 || result.monitoringPlan.length < 3) {
+      throw new Error("رفض محرك التحقق تحليلًا لم يقدم وحدات قرار وتدخلين متمايزين وثلاث مراحل متابعة مرتبطة بالأدلة.");
     }
 
     result.limitations = uniqueStrings([
@@ -662,7 +662,7 @@
     } : null;
 
     result._reconciliation = {
-      contractVersion: "6.2.0",
+      contractVersion: "6.3.0",
       responseContractVersion: String(primaryResult.contractVersion || "unknown"),
       family: familyOf(result),
       aiPrimary: true,

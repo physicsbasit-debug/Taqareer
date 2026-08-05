@@ -1,0 +1,23 @@
+Phase 2-B v1.0.4 changed files
+
+index.html
+manifest.json
+package.json
+README.md
+README_PHASE_2_B_BALANCED_DEPTH.md
+APPLY_PHASE_2_B_V1_0_4.txt
+TEST_REPORT_PHASE_2_B_V1_0_4.md
+SUPABASE_FUNCTION_GEMINI_V0_13_4.txt
+CHANGED_FILES_MANIFEST_PHASE_2_B_V1_0_4.txt
+assets/app.js
+assets/analysis-reconciliation.js
+assets/deep-analysis-orchestrator.js
+assets/report-system.js
+docs/RELEASE_NOTES.md
+scripts/verify-static.cjs
+supabase/functions/analyze-educational-form/index.ts
+supabase/functions/analyze-educational-form/README.md
+tests/ai-primary-analysis.test.cjs
+tests/ai-primary-performance.test.cjs
+tests/edge-primary-runtime.test.cjs
+tests/report-ai-primary.test.cjs

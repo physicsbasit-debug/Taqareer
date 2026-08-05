@@ -21,7 +21,7 @@ test('official report renders only an AI-primary reconciled analysis', () => {
     limitations: [],
   };
   const primary = {
-    contractVersion: '6.0.0',
+    contractVersion: '6.3.0',
     analysisProfile: { method: 'تحليل اتجاهات مدعوم بالأدلة', dataAdequacy: 'كافية وصفيًا', dimensions: ['الاتجاه', 'الفجوة'], decisionUses: ['ترتيب الأولويات'] },
     executive: { title: 'رضا متوسط يخفي أولوية محددة', summary: 'تشير النتيجة إلى اتجاه إيجابي غير حاسم، ويجب التركيز على البنود الأقل قبل إطلاق حكم عام.', overallJudgement: 'تحسين موجه', confidence: 'متوسطة', evidenceRefs: ['metric:positivePct'], limitations: [] },
     diagnosticSections: [
@@ -32,18 +32,26 @@ test('official report renders only an AI-primary reconciled analysis', () => {
       { id: 'f1', title: 'اتجاه غير حاسم', statement: 'الرضا الإيجابي متوسط.', claimType: 'fact', evidenceRefs: ['metric:positivePct'], confidence: 'مرتفعة', severity: 'medium', educationalImpact: 'لا يدعم تعميم النجاح.', recommendedAction: 'تحليل البنود الأدنى.', limitations: [] },
       { id: 'f2', title: 'حاجة إلى تفصيل', statement: 'المؤشر المجمل لا يكشف موضع الفجوة.', claimType: 'inference', evidenceRefs: ['metric:positivePct'], confidence: 'متوسطة', severity: 'medium', educationalImpact: 'قد يشتت التدخل.', recommendedAction: 'ربط التدخل ببنود محددة.', limitations: [] },
     ],
-    qualityTools: [],
+    qualityTools: [{ id: 'q1', name: 'فحص تجانس الاتجاه', reason: 'النتيجة المجمعة قد تخفي تباين البنود.', interpretation: 'يجب فحص البنود قبل تعميم الحكم.', requiredData: ['نتائج البنود'], evidenceRefs: ['metric:positivePct'] }],
     interventions: [
       { id: 'i1', priority: 'عالية', issue: 'غياب تحديد البنود ذات الأولوية', targetGroup: 'فريق البرنامج', action: 'تحليل البنود واختيار أعلى فجوتين.', implementationSteps: ['ترتيب البنود', 'اختيار فجوتين', 'تنفيذ تحسين'], responsibleRole: 'فريق البرنامج', timeframe: 'أربعة أسابيع', successIndicator: 'ارتفاع الإيجابية في البنود المستهدفة', monitoringMethod: 'إعادة القياس', contingency: 'مقابلات نوعية', resources: [], evidenceRefs: ['metric:positivePct'] },
+      { id: 'i2', priority: 'متوسطة', issue: 'ضعف تفسير المؤشر المجمل', targetGroup: 'فريق التقويم', action: 'إضافة تحليل بنود وملاحظات نوعية قبل الحكم النهائي.', implementationSteps: ['جمع نتائج البنود', 'مراجعة التعليقات'], responsibleRole: 'فريق التقويم', timeframe: 'أسبوعان', successIndicator: 'تحديد بندين ذوي أولوية بدليل واضح', monitoringMethod: 'محضر مراجعة الأدلة', contingency: 'تنفيذ مقابلات مركزة', resources: [], evidenceRefs: ['metric:positivePct'] },
     ],
-    monitoringPlan: [{ id: 'm1', stage: 'إعادة القياس', timing: 'بعد أربعة أسابيع', measure: 'مقارنة البنود المستهدفة', owner: 'فريق البرنامج', evidenceRefs: ['metric:positivePct'] }],
+    monitoringPlan: [
+      { id: 'm1', stage: 'خط الأساس', timing: 'قبل التنفيذ', measure: 'توثيق المؤشر والبنود المتاحة', owner: 'فريق البرنامج', evidenceRefs: ['metric:positivePct'] },
+      { id: 'm2', stage: 'متابعة مرحلية', timing: 'بعد أسبوعين', measure: 'مراجعة تنفيذ التحسين وجمع البنود', owner: 'فريق التقويم', evidenceRefs: ['metric:positivePct'] },
+      { id: 'm3', stage: 'قياس الأثر', timing: 'بعد أربعة أسابيع', measure: 'مقارنة البنود المستهدفة بخط الأساس', owner: 'فريق البرنامج', evidenceRefs: ['metric:positivePct'] },
+    ],
     additionalCautions: [], missingDataRequests: ['نتائج البنود'], suggestedNewType: { needed: false, nameAr: '', purpose: '' },
   };
   const analysis = sandbox.window.TaqareerReconciliation.composePrimary(local, primary, { availableEvidenceRefs: ['metric:positivePct'] });
   const context = { analysis, type: { name: 'استبانة اتجاهات أو رضا' }, sourceName: 'survey.csv', sourceMeta: {}, quality: { completeness: 100 }, recognitionStatus: 'معتمد' };
   const html = sandbox.window.TaqareerReports.buildReportHtml(context, { autoPrint: false });
-  assert.equal(sandbox.window.TaqareerReports.VERSION, '1.0.1');
+  assert.equal(sandbox.window.TaqareerReports.VERSION, '1.0.4');
   assert.match(html, /تحليل ذكاء اصطناعي موثق/);
   assert.match(html, /رضا متوسط يخفي أولوية محددة/);
+  assert.match(html, /تقارير v1\.0\.4/);
+  assert.match(html, /خط الأساس/);
+  assert.match(html, /فحص تجانس الاتجاه/);
   assert.doesNotMatch(html, /تحليل متخصص حتمي/);
 });
