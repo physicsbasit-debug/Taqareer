@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.1.1";
+  const VERSION = "1.1.2";
 
   function masteryEngine() {
     const engine = window.TaqareerMasteryMetrics;

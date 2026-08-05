@@ -47,10 +47,10 @@ test('official report renders only an AI-primary reconciled analysis', () => {
   const analysis = sandbox.window.TaqareerReconciliation.composePrimary(local, primary, { availableEvidenceRefs: ['metric:positivePct'] });
   const context = { analysis, type: { name: 'استبانة اتجاهات أو رضا' }, sourceName: 'survey.csv', sourceMeta: { metadata: { school: 'الباسط للبنين الصفوف (8-10)', subject: 'اللغة العربية', grade: '8-10', academicYear: '2025/2026' } }, quality: { completeness: 100 }, recognitionStatus: 'معتمد' };
   const html = sandbox.window.TaqareerReports.buildReportHtml(context, { autoPrint: false });
-  assert.equal(sandbox.window.TaqareerReports.VERSION, '1.1.1');
+  assert.equal(sandbox.window.TaqareerReports.VERSION, '1.1.2');
   assert.match(html, /تحليل ذكاء اصطناعي موثق/);
   assert.match(html, /رضا متوسط يخفي أولوية محددة/);
-  assert.match(html, /تقارير v1\.1\.1/);
+  assert.match(html, /تقارير v1\.1\.2/);
   assert.match(html, /خط الأساس/);
   assert.match(html, /فحص تجانس الاتجاه/);
   assert.match(html, /الباسط للبنين الصفوف \(8-10\)/);

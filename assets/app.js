@@ -102,6 +102,19 @@
   }
   function clearMessage(id) { $(id).classList.add("hidden"); }
 
+  function friendlyAiError(error) {
+    const code = String(error?.code || "");
+    const message = String(error?.message || "");
+    if (code === "GEMINI_TRANSIENT" || /high demand|spikes in demand|service unavailable|overload(?:ed)?|\b503\b/i.test(message)) {
+      return "خدمة التحليل الذكي مزدحمة مؤقتًا. حاول التطبيق تلقائيًا إعادة الطلب واستخدام نموذج بديل، لكن الخدمة لم تستجب الآن. أعد المحاولة بعد قليل.";
+    }
+    if (code === "GEMINI_RATE_LIMIT" || /RESOURCE_EXHAUSTED|rate limit|quota|\b429\b/i.test(message)) {
+      return "تم بلوغ حد طلبات الذكاء الاصطناعي مؤقتًا. انتظر قليلًا ثم أعد المحاولة.";
+    }
+    if (code === "AI_PRIMARY_TIMEOUT") return message || "انتهت مهلة التحليل الذكي قبل اكتمال النتيجة.";
+    return message || "تعذر تنفيذ التحليل الذكي.";
+  }
+
   function perfApi() { return window.TaqareerPerformance || null; }
   function resetPerformance() { state.performance = { spans: [], cacheHit: false, payloadChars: 0, aiUsage: null, aiModel: "", aiServerTiming: null, segmentTimings: {} }; }
   function recordSpan(span) { if (span) state.performance.spans.push(span); return span; }
@@ -170,7 +183,7 @@
       message.textContent = `تم الاتصال بنجاح${result.model ? ` · النموذج ${result.model}` : ""}.`;
       setTimeout(() => $("aiSettingsDialog").close(), 650);
     } catch (error) {
-      message.textContent = error.message || "تعذر الاتصال بوظيفة الذكاء الاصطناعي.";
+      message.textContent = friendlyAiError(error);
       message.classList.add("error");
     }
   }
@@ -393,7 +406,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "1.1.1",
+      appVersion: "1.1.2",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -1025,7 +1038,7 @@
     if (!window.TaqareerReconciliation?.composePrimary) throw new Error("محرك التحقق من التحليل الذكي غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "1.1.1",
+      appVersion: "1.1.2",
       pipeline: {
         mode: "ai-primary-analysis-v1",
         instruction: "المحرك المحلي يحسب المؤشرات والرسوم فقط. يبني الذكاء الاصطناعي التشخيص والاستنتاجات والتدخلات من الأدلة، ثم تتحقق البوابة من المراجع قبل عرض التقرير."
@@ -1316,7 +1329,7 @@
       state.aiResult = null;
       state.reconciledAnalysis = null;
       state.aiUsed = false;
-      setMessage("setupMessage", `${error.message || "تعذر تنفيذ التحليل الذكي."} لم يعرض التطبيق قوالب محلية بديلة على أنها تحليل عميق.`, true);
+      setMessage("setupMessage", `${friendlyAiError(error)} لم يعرض التطبيق قوالب محلية بديلة على أنها تحليل عميق.`, true);
     } finally {
       if (stopPrimaryTicker) stopPrimaryTicker();
       runButton.disabled = false;
@@ -1579,7 +1592,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v1.1.1.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v1.1.2.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }

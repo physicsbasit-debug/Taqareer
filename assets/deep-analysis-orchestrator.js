@@ -3,7 +3,7 @@
 
   // Phase 2-A: الذكاء الاصطناعي هو مالك التحليل التربوي، بينما يبقى
   // المحرك المحلي مسؤولًا عن الحسابات والرسوم وحزمة الأدلة فقط.
-  const VERSION = "1.1.1";
+  const VERSION = "1.1.2";
   const PROTOCOL_VERSION = "6.6.0";
   const LABELS = Object.freeze({ primary: "التحليل التربوي الذكي" });
   const TASK_LABELS = Object.freeze({ "analysis.primary": "التحليل التربوي الذكي" });

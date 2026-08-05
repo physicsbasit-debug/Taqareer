@@ -150,6 +150,7 @@ async function createRuntime(responses) {
 
   let handler = null;
   let calls = 0;
+  const urls = [];
   const context = vm.createContext({
     console,
     Request,
@@ -161,12 +162,15 @@ async function createRuntime(responses) {
     performance,
     crypto: globalThis.crypto,
     structuredClone,
-    setTimeout,
+    setTimeout: fn => { fn(); return 0; },
     clearTimeout,
-    fetch: async () => {
-      const raw = responses[Math.min(calls, responses.length - 1)];
+    fetch: async url => {
+      urls.push(String(url));
+      const item = responses[Math.min(calls, responses.length - 1)];
       calls += 1;
-      return new Response(JSON.stringify(raw), { status: 200, headers: { 'content-type': 'application/json', 'x-request-id': `req-${calls}` } });
+      const status = item && typeof item === 'object' && Number.isInteger(item.__status) ? item.__status : 200;
+      const raw = item && typeof item === 'object' && Object.prototype.hasOwnProperty.call(item, '__body') ? item.__body : item;
+      return new Response(JSON.stringify(raw), { status, headers: { 'content-type': 'application/json', 'x-request-id': `req-${calls}` } });
     },
     Deno: {
       env: { get: key => key === 'GEMINI_API_KEY' ? 'test-key' : '' },
@@ -175,7 +179,11 @@ async function createRuntime(responses) {
   });
   vm.runInContext(transpiled.outputText, context, { filename: 'edge-runtime.js' });
   assert.equal(typeof handler, 'function');
-  return { handler, getCalls: () => calls };
+  return { handler, getCalls: () => calls, getUrls: () => urls.slice() };
+}
+
+function httpError(status, message) {
+  return { __status: status, __body: { error: { message } } };
 }
 
 async function invoke(runtime, customPayload = payload()) {
@@ -268,4 +276,33 @@ test('edge runtime rescues an incomplete first response without returning to loc
   assert.equal(body.result.monitoringPlan.length, 3);
   assert.equal(body.result.qualityTools.length, 0);
   assert.equal(body.result.validation.validationMode, 'rescue');
+});
+
+
+test('edge retries a busy model then switches automatically to a fallback model', async () => {
+  const busy = httpError(503, 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.');
+  const runtime = await createRuntime([busy, busy, geminiRaw(primaryResult())]);
+  const { status, body } = await invoke(runtime);
+  assert.equal(status, 200);
+  assert.equal(body.ok, true);
+  assert.equal(runtime.getCalls(), 3);
+  const urls = runtime.getUrls();
+  assert.match(urls[0], /gemini-3\.5-flash:generateContent/);
+  assert.match(urls[1], /gemini-3\.5-flash:generateContent/);
+  assert.match(urls[2], /gemini-3\.6-flash:generateContent/);
+  assert.equal(body.serverTiming.fallbackUsed, true);
+  assert.equal(body.serverTiming.fallbackReason, 'transient_capacity');
+});
+
+test('edge returns an Arabic retryable message when all Gemini models are temporarily busy', async () => {
+  const busy = httpError(503, 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.');
+  const runtime = await createRuntime([busy, busy, busy, busy, busy, busy]);
+  const { status, body } = await invoke(runtime);
+  assert.equal(status, 503);
+  assert.equal(body.ok, false);
+  assert.equal(body.errorCode, 'GEMINI_TRANSIENT');
+  assert.equal(body.retryable, true);
+  assert.match(body.error, /مزدحمة مؤقتًا/);
+  assert.doesNotMatch(body.error, /high demand|Spikes in demand|try again later/i);
+  assert.equal(runtime.getCalls(), 6);
 });

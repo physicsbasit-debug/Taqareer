@@ -1,8 +1,8 @@
 {
   "app": "تقارير",
-  "version": "1.1.1",
-  "phase": "Phase 2-C Fix 1 - Multi-Visit Report Layout & Grade Metadata",
-  "releaseName": "Complete Multi-Visit Charts & Unified Grade Metadata",
+  "version": "1.1.2",
+  "phase": "Phase 2-C Fix 2 - Transient Gemini Fallback & Arabic Errors",
+  "releaseName": "Transient Gemini Capacity Fallback & Arabic Error Shield",
   "buildType": "static-github-pages-plus-supabase-edge-function",
   "supportedInputs": {
     "table": [
@@ -114,7 +114,11 @@
     "multi-visit-personal-data-masking",
     "structured-pdf-metadata-extraction",
     "multi-visit-grade-range-metadata",
-    "multi-visit-print-safe-chart-pagination"
+    "multi-visit-print-safe-chart-pagination",
+    "transient-gemini-capacity-fallback",
+    "exponential-backoff-with-jitter",
+    "arabic-ai-error-sanitization",
+    "retryable-transient-error-contract"
   ],
   "runtime": {
     "frontend": "GitHub Pages static site",
@@ -126,7 +130,7 @@
     "legacyAnalyzeThinkingBudget": 1024,
     "classificationThinkingBudget": 0,
     "reconciliationContractVersion": "6.6.0",
-    "edgeFunctionVersion": "0.14.0",
+    "edgeFunctionVersion": "0.14.1",
     "fastEnhancementModel": "gemini-3.5-flash-lite",
     "fastEnhancementThinkingBudget": 192,
     "fastEnhancementMaxOutputTokens": 2600,
@@ -137,7 +141,14 @@
     "primaryRescueModel": "gemini-3.5-flash-lite",
     "primaryRescueThinkingLevel": "minimal",
     "primaryRescueMaxOutputTokens": 6144,
-    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.1.1"
+    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.1.2",
+    "primaryModelFallbackOrder": [
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-3.5-flash-lite"
+    ],
+    "transientRetryAttemptsPerModel": 2,
+    "transientRetryBackoff": "exponential-with-jitter"
   },
   "security": {
     "geminiKeyInBrowser": false,
@@ -165,7 +176,8 @@
     "numericInterventionGuard": "score interventions use structured group IDs and server-owned arithmetic; impossible targets are reduced to feasible limits and revalidated in the browser",
     "docxMetadata": "school, subject, grade, academic year, report date, region and school code are extracted from Word headers/footers when present",
     "aggregateNarrativeContext": "opposing statements in aggregated reports are treated as contextual variation unless the same teacher, visit and time are evidenced",
-    "multiVisitSupervisionPdf": "extract visits, 13 reversed-scale indicators, narratives and metadata; compare only within explicit visit context"
+    "multiVisitSupervisionPdf": "extract visits, 13 reversed-scale indicators, narratives and metadata; compare only within explicit visit context",
+    "transientGeminiFallback": "503/429/408/5xx retry with backoff, then automatic model switch; raw provider errors are not shown to users"
   },
   "performance": {
     "scoreContextRows": 24,
@@ -173,16 +185,16 @@
     "newTypeContextRows": 60,
     "narrativeContextLines": 120,
     "resultsPresentation": "results appear only after the primary AI analysis passes evidence validation",
-    "networkRequestsPerAnalysis": "1 normally; 2 only when the first output is incomplete or invalid",
+    "networkRequestsPerAnalysis": "1 normally; automatic retries/model fallback on transient capacity errors; one rescue request only for invalid/incomplete output",
     "clientTimeoutMs": 45000,
     "payloadAcceptanceLimitChars": 90000,
-    "latencyStrategy": "Gemini 3.5 Flash with low thinking, 8192 output headroom, concise non-duplicative fields, and one minimal-thinking rescue that still preserves two interventions and three monitoring stages"
+    "latencyStrategy": "Gemini 3.5 Flash with low thinking; transient errors retry with exponential backoff and switch to Gemini 3.6 Flash then 3.5 Flash-Lite; invalid output uses one minimal-thinking rescue"
   },
   "backwardCompatibility": {
     "databaseChanges": false,
     "newSecretsRequired": false,
     "currentFrontendOperation": "analyze_primary",
-    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.1.1",
+    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.1.2",
     "classificationAndVision": "retained"
   },
   "notYetEnabled": [
