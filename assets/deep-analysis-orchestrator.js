@@ -3,7 +3,7 @@
 
   // Phase 2-A: الذكاء الاصطناعي هو مالك التحليل التربوي، بينما يبقى
   // المحرك المحلي مسؤولًا عن الحسابات والرسوم وحزمة الأدلة فقط.
-  const VERSION = "1.0.0";
+  const VERSION = "1.0.1";
   const PROTOCOL_VERSION = "6.0.0";
   const LABELS = Object.freeze({ primary: "التحليل التربوي الذكي" });
   const TASK_LABELS = Object.freeze({ "analysis.primary": "التحليل التربوي الذكي" });
@@ -26,7 +26,7 @@
   }
 
   function compactMetrics(items) {
-    return (Array.isArray(items) ? items : []).slice(0, 42).map(item => ({
+    return (Array.isArray(items) ? items : []).slice(0, 24).map(item => ({
       id: String(item?.id || ""),
       label: String(item?.label || ""),
       value: item?.value,
@@ -37,12 +37,12 @@
   }
 
   function compactCharts(items) {
-    return (Array.isArray(items) ? items : []).slice(0, 10).map(chart => ({
+    return (Array.isArray(items) ? items : []).slice(0, 6).map(chart => ({
       id: String(chart?.id || ""),
       type: String(chart?.type || ""),
       title: String(chart?.title || "").slice(0, 220),
       description: String(chart?.description || "").slice(0, 420),
-      data: Array.isArray(chart?.data) ? chart.data.slice(0, 40) : chart?.data,
+      data: Array.isArray(chart?.data) ? chart.data.slice(0, 18) : chart?.data,
       xKey: chart?.xKey,
       yKey: chart?.yKey,
       valueSuffix: chart?.valueSuffix,
@@ -59,7 +59,7 @@
       metrics: compactMetrics(source.metrics),
       charts: compactCharts(source.charts),
       evidenceCatalog: (Array.isArray(source.evidenceCatalog) ? source.evidenceCatalog : [])
-        .slice(0, 140)
+        .slice(0, 80)
         .map(item => ({ ref: String(item?.ref || ""), label: String(item?.label || item?.text || "").slice(0, 420) }))
         .filter(item => item.ref),
       calculationLimitations: (Array.isArray(source.limitations) ? source.limitations : []).slice(0, 12).map(String),
@@ -76,20 +76,20 @@
     if (Array.isArray(source.lines)) {
       return {
         mode: "narrative",
-        lines: source.lines.slice(0, 260).map(item => ({
+        lines: source.lines.slice(0, 120).map(item => ({
           ref: String(item?.ref || ""),
           text: String(item?.text || "").slice(0, 1200),
         })).filter(item => item.ref && item.text),
         originalLineCount: Number(source.originalLineCount || source.lines.length || 0),
-        sentLineCount: Math.min(260, Number(source.sentLineCount || source.lines.length || 0)),
+        sentLineCount: Math.min(120, Number(source.sentLineCount || source.lines.length || 0)),
       };
     }
     return {
       mode: "table",
-      headers: (Array.isArray(source.headers) ? source.headers : []).slice(0, 32).map(String),
-      sampleRows: (Array.isArray(source.sampleRows) ? source.sampleRows : []).slice(0, 120),
+      headers: (Array.isArray(source.headers) ? source.headers : []).slice(0, 20).map(String),
+      sampleRows: (Array.isArray(source.sampleRows) ? source.sampleRows : []).slice(0, 60),
       rowCount: Number(source.rowCount || 0),
-      sentRowCount: Math.min(120, Number(source.sentRowCount || source.sampleRows?.length || 0)),
+      sentRowCount: Math.min(60, Number(source.sentRowCount || source.sampleRows?.length || 0)),
       maskedHeaders: (Array.isArray(source.maskedHeaders) ? source.maskedHeaders : []).slice(0, 20).map(String),
       sampling: String(source.sampling || ""),
       truncated: Boolean(source.truncated),

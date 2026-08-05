@@ -381,7 +381,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "1.0.0",
+      appVersion: "1.0.1",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -833,13 +833,16 @@
   }
 
   function tableAiLimit() {
-    if (state.type.id === "unknown") return 100;
-    if (["supervision_indicator", "student_work", "survey", "training_needs", "program_evaluation", "behavior_attendance", "level_distribution", "cross_subject"].includes(state.type.id)) return 120;
-    return 80;
+    // ملفات الدرجات تُفهم أساسًا من المؤشرات والرسوم المحسوبة من كامل البيانات؛
+    // إرسال عشرات السجلات المتشابهة يبطئ النموذج دون إضافة معنى تحليلي حقيقي.
+    if (["single_subject", "assessment_component"].includes(state.type.id)) return 24;
+    if (state.type.id === "unknown") return 60;
+    if (["supervision_indicator", "student_work", "survey", "training_needs", "program_evaluation", "behavior_attendance", "level_distribution", "cross_subject"].includes(state.type.id)) return 60;
+    return 40;
   }
 
   function sanitizeRowsForAi(maskPersonalData = true) {
-    const headers = state.headers.slice(0, 28);
+    const headers = state.headers.slice(0, 20);
     const sensitive = new Set(headers.filter(isSensitiveHeader));
     const limit = tableAiLimit();
     const sourceRows = state.rows.length <= limit
@@ -849,7 +852,7 @@
       const originalIndex = state.rows.indexOf(row);
       const clean = { _evidenceRef: `row:${Math.max(0, originalIndex) + 1}` };
       headers.forEach(header => {
-        let value = String(row[header] ?? "").slice(0, 280);
+        let value = String(row[header] ?? "").slice(0, 180);
         if (maskPersonalData && sensitive.has(header)) value = header.includes("اسم") ? `سجل ${Math.max(0, originalIndex) + 1}` : "[محجوب]";
         clean[header] = value;
       });
@@ -867,14 +870,14 @@
   }
 
   function narrativeLinesForAi(maskPersonalData = true) {
-    const source = String(state.narrativeText || state.rawText || "").slice(0, 30000);
+    const source = String(state.narrativeText || state.rawText || "").slice(0, 18000);
     const allLines = source.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
-    const limit = 260;
+    const limit = 120;
     const chosen = allLines.length <= limit
       ? allLines.map((text, index) => ({ text, index }))
       : [
-          ...allLines.slice(0, 180).map((text, index) => ({ text, index })),
-          ...allLines.slice(-80).map((text, offset) => ({ text, index: allLines.length - 80 + offset }))
+          ...allLines.slice(0, 80).map((text, index) => ({ text, index })),
+          ...allLines.slice(-40).map((text, offset) => ({ text, index: allLines.length - 40 + offset }))
         ];
     return chosen.map(item => ({
       ref: `line:${item.index + 1}`,
@@ -886,15 +889,15 @@
 
   function compactDeterministicAnalysis(analysis) {
     if (!analysis) return null;
-    const metrics = (analysis.metrics || []).slice(0, 28).map(item => ({
+    const metrics = (analysis.metrics || []).slice(0, 24).map(item => ({
       id: item.id, label: item.label, value: item.value, note: item.note, format: item.format,
       evidenceRef: item.evidenceRef || `metric:${item.id}`
     }));
     const keyIndicators = Object.fromEntries(metrics.map(item => [item.id, item.value]));
-    const charts = (analysis.charts || []).slice(0, 8).map(item => ({
+    const charts = (analysis.charts || []).slice(0, 6).map(item => ({
       id: item.id, type: item.type, title: item.title, description: item.description,
       xKey: item.xKey, yKey: item.yKey, valueSuffix: item.valueSuffix,
-      data: Array.isArray(item.data) ? item.data.slice(0, 24) : item.data
+      data: Array.isArray(item.data) ? item.data.slice(0, 18) : item.data
     }));
     return {
       version: analysis.version,
@@ -904,7 +907,7 @@
       metrics,
       charts,
       calculationLimitations: (analysis.limitations || []).slice(0, 12),
-      evidenceCatalog: Object.entries(analysis.evidenceMap || {}).slice(0, 140).map(([ref, text]) => ({ ref, text }))
+      evidenceCatalog: Object.entries(analysis.evidenceMap || {}).slice(0, 80).map(([ref, text]) => ({ ref, text }))
     };
   }
 
@@ -924,7 +927,7 @@
     if (!window.TaqareerReconciliation?.composePrimary) throw new Error("محرك التحقق من التحليل الذكي غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "1.0.0",
+      appVersion: "1.0.1",
       pipeline: {
         mode: "ai-primary-analysis-v1",
         instruction: "المحرك المحلي يحسب المؤشرات والرسوم فقط. يبني الذكاء الاصطناعي التشخيص والاستنتاجات والتدخلات من الأدلة، ثم تتحقق البوابة من المراجع قبل عرض التقرير."
@@ -1064,6 +1067,37 @@
   }
 
 
+  function evidenceProgressSummary() {
+    const metrics = Array.isArray(state.analysis?.metrics) ? state.analysis.metrics : [];
+    const read = id => metrics.find(item => item?.id === id);
+    const pieces = [];
+    const n = read("n");
+    const mastery = read("masteryPct");
+    const mean = read("mean");
+    if (n?.value !== undefined) pieces.push(`${n.label || "السجلات"}: ${formatMetricValue(n)}`);
+    if (mastery?.value !== undefined) pieces.push(`${mastery.label || "الإتقان"}: ${formatMetricValue(mastery)}`);
+    else if (mean?.value !== undefined) pieces.push(`${mean.label || "المتوسط"}: ${formatMetricValue(mean)}`);
+    return pieces.slice(0, 2).join(" · ");
+  }
+
+  function startPrimaryAnalysisTicker(runButton) {
+    const startedAt = Date.now();
+    const evidenceSummary = evidenceProgressSummary();
+    const update = () => {
+      const seconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+      runButton.textContent = `جارٍ بناء التحليل الذكي… ${seconds}ث`;
+      const stage = seconds < 7
+        ? "يبني المحلل الذكي القراءة التشخيصية من الأدلة."
+        : seconds < 16
+          ? "يربط الاستنتاجات بالأدلة ويرتب الأولويات."
+          : "يكمل التدخلات ويتحقق من سلامة النتيجة.";
+      setMessage("setupMessage", `${evidenceSummary ? `اكتملت الحسابات: ${evidenceSummary}. ` : "اكتملت الحسابات. "}${stage}`);
+    };
+    update();
+    const timer = setInterval(update, 1000);
+    return () => clearInterval(timer);
+  }
+
   async function enrichAnalysisWithAi({ force = false, requestId = state.analysisRequestId } = {}) {
     if (!aiReady()) throw new Error("التحليل الذكي الأساسي غير مربوط أو غير مفعّل.");
     if (!window.TaqareerReconciliation?.composePrimary) throw new Error("محرك التحقق من التحليل الذكي غير محمل.");
@@ -1114,6 +1148,7 @@
     resetPerformance();
     const analysisRequestId = ++state.analysisRequestId;
     const runButton = $("runAnalysisBtn");
+    let stopPrimaryTicker = null;
     runButton.disabled = true;
 
     try {
@@ -1159,8 +1194,7 @@
       recordSpan(localTimer ? perfApi().endSpan(localTimer) : null);
 
       state.aiPending = true;
-      runButton.textContent = "جارٍ بناء التحليل الذكي…";
-      setMessage("setupMessage", "يحلل الذكاء الاصطناعي العلاقات والأولويات والفرضيات والتدخلات، مع إلزام كل ادعاء بمراجع أدلة.");
+      stopPrimaryTicker = startPrimaryAnalysisTicker(runButton);
       await yieldToUi();
       await enrichAnalysisWithAi({ requestId: analysisRequestId });
       if (analysisRequestId !== state.analysisRequestId) return;
@@ -1179,6 +1213,7 @@
       state.aiUsed = false;
       setMessage("setupMessage", `${error.message || "تعذر تنفيذ التحليل الذكي."} لم يعرض التطبيق قوالب محلية بديلة على أنها تحليل عميق.`, true);
     } finally {
+      if (stopPrimaryTicker) stopPrimaryTicker();
       runButton.disabled = false;
       runButton.textContent = "تنفيذ التحليل الذكي";
       updateAiStatusUi();
@@ -1426,7 +1461,7 @@
   function exportAnalysis() {
     const payload = {
       app: "تقارير",
-      version: "1.0.0",
+      version: "1.0.1",
       generatedAt: new Date().toISOString(),
       source: state.sourceName,
       sourceMeta: state.sourceMeta,
@@ -1439,7 +1474,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v1.0.0.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v1.0.1.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }

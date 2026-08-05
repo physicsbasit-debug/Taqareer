@@ -1,4 +1,4 @@
-# تعليمات رفع تقارير v1.0.0
+# تعليمات رفع تقارير v1.0.1
 
 ## الخيار الموصى به
 
@@ -10,6 +10,10 @@
 
 ## Supabase
 
-بعد رفع الواجهة، استبدل كود وظيفة `analyze-educational-form` بمحتوى `SUPABASE_FUNCTION_GEMINI_V0_13_0.txt` ثم أعد النشر.
+بعد رفع الواجهة، استبدل كود وظيفة `analyze-educational-form` بمحتوى `SUPABASE_FUNCTION_GEMINI_V0_13_1.txt` ثم أعد النشر.
 
 لا يلزم SQL ولا سر جديد.
+
+## الملفات المخفية
+
+المسار الحقيقي `.github/workflows/deploy.yml` وملف `.nojekyll` موجودان. توجد نسخة مرئية احتياطية داخل `GITHUB_WORKFLOW_VISIBLE` و`NOJEKYLL_VISIBLE.txt` للاستخدام عند الرفع من الهاتف فقط.

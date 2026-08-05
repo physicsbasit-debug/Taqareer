@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.0.0";
+  const VERSION = "1.0.1";
 
   function escapeHtml(value) {
     return String(value ?? "").replace(/[&<>'"]/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" }[char]));
@@ -80,7 +80,7 @@
     const limitations=uniqueBy(analysis.limitations||[],item=>normalize(item));
     const diagnosticSections=(analysis.diagnosticSections||[]).slice(0,12).map(item=>({
       ...item,
-      source:String(item.source||"").includes("gemini")?"محرك متخصص + Gemini":"محرك متخصص"
+      source:String(item.source||"").includes("gemini")?"Gemini محلل أساسي + محرك أدلة":"محرك أدلة"
     }));
     const localProfile=analysis.analysisProfile||{};
     const profile={

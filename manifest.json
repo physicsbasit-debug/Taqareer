@@ -1,6 +1,6 @@
 {
   "app": "تقارير",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "phase": "Phase 2-A - AI-Native Analytical Core",
   "releaseName": "AI-Native Analytical Core",
   "buildType": "static-github-pages-plus-supabase-edge-function",
@@ -94,19 +94,19 @@
     "frontend": "GitHub Pages static site",
     "aiGateway": "Supabase Edge Function",
     "aiProvider": "Google Gemini API",
-    "defaultModel": "gemini-3.6-flash",
+    "defaultModel": "gemini-3.5-flash",
     "classifierModel": "gemini-3.5-flash-lite",
     "enrichmentOperation": "analyze_primary",
     "legacyAnalyzeThinkingBudget": 1024,
     "classificationThinkingBudget": 0,
     "reconciliationContractVersion": "6.0.0",
-    "edgeFunctionVersion": "0.13.0",
+    "edgeFunctionVersion": "0.13.1",
     "fastEnhancementModel": "gemini-3.5-flash-lite",
     "fastEnhancementThinkingBudget": 192,
     "fastEnhancementMaxOutputTokens": 2600,
     "fastEnhancementClientTimeoutMs": 16000,
-    "primaryAnalysisMaxOutputTokens": 7600,
-    "primaryAnalysisClientTimeoutMs": 45000
+    "primaryAnalysisMaxOutputTokens": 4300,
+    "primaryAnalysisClientTimeoutMs": 32000
   },
   "security": {
     "geminiKeyInBrowser": false,
@@ -129,20 +129,21 @@
     "cacheBehavior": "primary educational analysis is not reused; every run requests a fresh evidence-grounded reading"
   },
   "performance": {
-    "scoreContextRows": 80,
-    "specializedTableContextRows": 120,
-    "newTypeContextRows": 100,
-    "narrativeContextLines": 260,
+    "scoreContextRows": 24,
+    "specializedTableContextRows": 60,
+    "newTypeContextRows": 60,
+    "narrativeContextLines": 120,
     "resultsPresentation": "results appear only after the primary AI analysis passes evidence validation",
     "networkRequestsPerAnalysis": 1,
-    "clientTimeoutMs": 45000,
-    "payloadAcceptanceLimitChars": 180000
+    "clientTimeoutMs": 32000,
+    "payloadAcceptanceLimitChars": 90000,
+    "latencyStrategy": "fast primary model, compact evidence payload, concise variable-depth contract, one network attempt, visible elapsed progress"
   },
   "backwardCompatibility": {
     "databaseChanges": false,
     "newSecretsRequired": false,
     "currentFrontendOperation": "analyze_primary",
-    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.0.0",
+    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.0.1",
     "classificationAndVision": "retained"
   },
   "notYetEnabled": [
