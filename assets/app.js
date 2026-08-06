@@ -82,7 +82,8 @@
     aiSegments: { results: {}, failures: {}, statuses: {}, taskResults: {}, taskFailures: {}, taskStatuses: {}, taskPlan: [], failedTaskIds: [], recovery: null },
     performance: { spans: [], cacheHit: false, payloadChars: 0, aiUsage: null, aiModel: "", aiServerTiming: null, segmentTimings: {} },
     localRecognition: null, aiRecognition: null, semanticProfile: null, recognitionStatus: "محلي", recognitionRequestId: 0, analysisRequestId: 0,
-    sampleMaxScore: null, pendingSource: null, sourceMeta: null, pendingManualFileName: "", pendingVisualPreview: null
+    sampleMaxScore: null, pendingSource: null, sourceMeta: null, pendingManualFileName: "", pendingVisualPreview: null,
+    multiSubjectOptions: { mode: "all", subject: "", includeSubjectTopTen: true, includeSchoolRanking: true }
   };
 
   const $ = (id) => document.getElementById(id);
@@ -468,7 +469,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "1.2.1",
+      appVersion: "1.2.2",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -926,12 +927,57 @@
     return state.sourceMeta?.mode === "narrative" || state.type.id === "supervision_narrative";
   }
 
+  function multiSubjectGradeNumber(value) {
+    const text = normalize(value).replace(/الصف/g, "").trim();
+    const direct = parseInt(text, 10);
+    if (Number.isFinite(direct)) return direct;
+    const map = { "الخامس":5, "السادس":6, "السابع":7, "الثامن":8, "التاسع":9, "العاشر":10, "الحادي عشر":11, "الحادي عشر":11, "الثاني عشر":12 };
+    return map[text] || 0;
+  }
+
+  function currentMultiSubjectOptions() {
+    if (state.type.id !== "multi_subject_results") return null;
+    const mode = $("multiSubjectScopeSelect")?.value === "subject" ? "subject" : "all";
+    const subject = mode === "subject" ? String($("multiSubjectSubjectSelect")?.value || "") : "";
+    return {
+      mode,
+      subject,
+      includeSubjectTopTen: $("includeSubjectTopTenInput")?.checked !== false,
+      includeSchoolRanking: mode === "all" && $("includeSchoolRankingInput")?.checked !== false,
+    };
+  }
+
+  function renderMultiSubjectWorkspace() {
+    const card = $("multiSubjectWorkspaceCard");
+    const active = state.type.id === "multi_subject_results";
+    card.classList.toggle("hidden", !active);
+    if (!active) return;
+    const subjects = Array.isArray(state.semanticProfile?.columnRoles?.subjects) ? state.semanticProfile.columnRoles.subjects.map(item => item.subject).filter(Boolean) : [];
+    const scope = $("multiSubjectScopeSelect");
+    const subjectSelect = $("multiSubjectSubjectSelect");
+    const previous = subjectSelect.value || state.multiSubjectOptions?.subject || "";
+    subjectSelect.innerHTML = subjects.map(subject => `<option value="${escapeAttr(subject)}">${escapeHtml(subject)}</option>`).join("");
+    if (previous && subjects.includes(previous)) subjectSelect.value = previous;
+    const mode = scope.value === "subject" ? "subject" : "all";
+    $("multiSubjectSubjectLabel").classList.toggle("hidden", mode !== "subject");
+    $("includeSchoolRankingLabel").classList.toggle("hidden", mode !== "all");
+    const grade = multiSubjectGradeNumber(state.sourceMeta?.metadata?.grade || state.semanticProfile?.metadata?.grade || "");
+    const formula = grade >= 10 ? "60% من متوسط المواد الأساسية + 40% من متوسط جميع المواد" : "70% من متوسط المواد الأساسية + 30% من متوسط جميع المواد";
+    $("multiSubjectFormulaNote").textContent = mode === "subject"
+      ? `سيحلل التطبيق مادة «${subjectSelect.value || "المادة المختارة"}» كاملة، ويحسب أوائلها محليًا مع إظهار جميع المتعادلين في المركز العاشر.`
+      : grade >= 5 && grade <= 12
+        ? `الترتيب العام للصف ${grade}: ${formula}. لا كسر للتعادل، ومن تنقصه مادة أساسية يظهر «غير مكتمل للترتيب».`
+        : "يتطلب ترتيب المدرسة تحديد صف من 5 إلى 12 داخل بيانات الملف؛ سيبقى تحليل المواد متاحًا دون ترتيب عام حتى يُحسم الصف.";
+    state.multiSubjectOptions = currentMultiSubjectOptions() || state.multiSubjectOptions;
+  }
+
   function renderSetup() {
     const narrativeMode = isNarrativeMode();
     const multiVisitMode = state.type.id === "supervision_multi_visit";
     const requiresScoreSettings = state.semanticProfile?.requiresScoreSettings ?? ["single_subject", "assessment_component", "cross_subject"].includes(state.type.id);
     $("measurementCard").classList.toggle("hidden", narrativeMode || multiVisitMode || !requiresScoreSettings);
     $("narrativeSetupCard").classList.toggle("hidden", !narrativeMode);
+    renderMultiSubjectWorkspace();
     if (narrativeMode) {
       $("narrativeTextReview").value = state.narrativeText || state.rows.map(row => row["النص"] ?? Object.values(row).join(" ")).join("\n");
     }
@@ -952,7 +998,19 @@
       single_subject: ["تحليل وصفي متقدم: الربيعات والمئينات والالتواء والتشتت", "تحليل الإتقان وحساسية المعيار وفئات التدخل", "اكتشاف القيم المتطرفة وبناء خط أساس", "أدوات جودة وخطة علاج وإثراء وإعادة قياس"],
       assessment_component: ["تحليل عميق لمكوّن التقويم وتوزيع الدرجات", "فئات القرب من الإتقان والتعثر الشديد", "مراجعة القيم المتطرفة واتساق الحكم", "خطة تدخل متعددة المستويات قابلة للمقارنة لاحقًا"],
       level_distribution: ["تحليل المستويات العليا والدنيا ومركز التوزيع", "مقارنة الصفوف أو الشعب وترتيب الأولوية", "مصفوفة فجوة وانتقال المستويات", "خطة تدخل جماعي وفردي وإثرائي"],
-      multi_subject_results: ["تحليل شامل لدرجات ومستويات الطلبة عبر جميع المواد", "مقارنة المواد وترتيب أولويات الدعم والإثراء", "فصل التعثر متعدد المواد عن التعثر التخصصي", "فحص اتساق الدرجة والمستوى والعلاقات الوصفية بين المواد"],
+      multi_subject_results: state.multiSubjectOptions?.mode === "subject"
+        ? [
+            `تحليل مادة ${state.multiSubjectOptions.subject || "محددة"}: المتوسط والتشتت وتوزيع أ-هـ`,
+            "استخراج العشرة الأوائل محليًا مع تطبيق المراكز المكررة",
+            "تحديد مواطن القوة والضعف والفئات العلاجية والإثرائية",
+            "خطة متابعة للمادة دون تعميم نتائجها على بقية المواد",
+          ]
+        : [
+            "تحليل شامل لدرجات ومستويات الطلبة عبر جميع المواد",
+            "مقارنة المواد وترتيب أولويات الدعم والإثراء",
+            "استخراج أوائل كل مادة وترتيب الدفعة بالمعادلة المعتمدة",
+            "فصل التعثر متعدد المواد عن التخصصي مع تصنيفات متبادلة",
+          ],
       cross_subject: ["ترتيب المواد ونسب الإتقان والتفاوت", "تمييز التعثر الشامل من التعثر التخصصي", "تحليل العلاقات الوصفية بين المواد", "خريطة تدخل مشتركة ومتابعة متعددة التخصصات"],
       supervision_indicator: ["تجميع المؤشرات في مجالات إشرافية", "رادار الأداء وتحليل الفجوة وباريتو الأولويات", "مصفوفة أولوية الأثر والجهد", "خطة نمو مهني ودورة PDCA وإعادة ملاحظة"],
       supervision_multi_visit: ["فصل الزيارات والمعلمين والمواد إلى سجلات مستقلة", "تحليل المقياس المعكوس 1 متميز إلى 5 يحتاج إلى تدخل", "ربط التقدير الرقمي بالدليل السردي داخل كل زيارة", "مقارنة المؤشرات والزيارات وبناء تدخلات جماعية وفردية دون خلط السجلات"],
@@ -1159,7 +1217,7 @@
     if (!window.TaqareerReconciliation?.composePrimary) throw new Error("محرك التحقق من التحليل الذكي غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "1.2.1",
+      appVersion: "1.2.2",
       pipeline: {
         mode: "ai-primary-analysis-v1",
         instruction: "المحرك المحلي يحسب المؤشرات والرسوم فقط. يبني الذكاء الاصطناعي التشخيص والاستنتاجات والتدخلات من الأدلة، ثم تتحقق البوابة من المراجع قبل عرض التقرير."
@@ -1431,7 +1489,8 @@
         levelColumn,
         maxScore,
         thresholdPct,
-        quality: state.quality
+        quality: state.quality,
+        analysisOptions: currentMultiSubjectOptions()
       });
       recordSpan(localTimer ? perfApi().endSpan(localTimer) : null);
 
@@ -1575,6 +1634,40 @@
     panel.classList.toggle("hidden", !items.length);
   }
 
+  function rankingTableHtml(title, rows, columns, note = "") {
+    if (!Array.isArray(rows) || !rows.length) return "";
+    return `<article class="ranking-table-card"><header><h5>${escapeHtml(title)}</h5>${note ? `<span>${escapeHtml(note)}</span>` : ""}</header><div class="ranking-table-wrap"><table class="ranking-table"><thead><tr>${columns.map(column => `<th>${escapeHtml(column.label)}</th>`).join("")}</tr></thead><tbody>${rows.map(row => `<tr>${columns.map(column => `<td class="${column.key === "rankLabel" ? "rank-cell" : ""}">${escapeHtml(row[column.key] ?? "—")}</td>`).join("")}</tr>`).join("")}</tbody></table></div></article>`;
+  }
+
+  function renderRankingResults(analysis) {
+    const section = $("rankingResultsSection");
+    const target = $("rankingResultsContent");
+    const tables = analysis?.privateTables;
+    if (!tables || analysis?.typeId !== "multi_subject_results") {
+      section.classList.add("hidden"); target.innerHTML = ""; return;
+    }
+    const summary = tables.summary || {};
+    const parts = [`<div class="ranking-summary-grid">${[
+      ["نطاق التحليل", summary.scopeLabel || "—"],
+      ["الطلبة", summary.studentCount ?? "—"],
+      ["المواد", summary.subjectCount ?? "—"],
+      ["المكتملون للترتيب", summary.rankingEligibleCount ?? "—"],
+    ].map(([label,value]) => `<article class="ranking-summary-card"><small>${escapeHtml(label)}</small><strong>${escapeHtml(value)}</strong></article>`).join("")}</div>`];
+    if (tables.schoolTopTen?.length) parts.push(rankingTableHtml("العشرة الأوائل على مستوى المدرسة / الدفعة", tables.schoolTopTen, [
+      { key:"rankLabel", label:"المركز" }, { key:"name", label:"اسم الطالب" }, { key:"coreMeanDisplay", label:"متوسط الأساسية" }, { key:"allMeanDisplay", label:"متوسط جميع المواد" }, { key:"rankingScoreDisplay", label:"درجة الترتيب" }
+    ], tables.rankingFormulaLabel || ""));
+    if (tables.incompleteRankingCount) parts.push(`<div class="soft-note">استُبعد ${escapeHtml(tables.incompleteRankingCount)} سجلًا من ترتيب الدفعة لعدم اكتمال مادة أساسية. لم يُحسب لهم متوسط ناقص.</div>`);
+    const subjectLists = tables.subjectTopTen || {};
+    Object.entries(subjectLists).forEach(([subject, rows]) => {
+      const table = rankingTableHtml(`الأوائل في ${subject}`, rows, [
+        { key:"rankLabel", label:"المركز" }, { key:"name", label:"اسم الطالب" }, { key:"scoreDisplay", label:"الدرجة" }, { key:"level", label:"المستوى" }
+      ]);
+      if (table) parts.push(`<details class="ranking-subject-details" ${Object.keys(subjectLists).length === 1 ? "open" : ""}><summary>${escapeHtml(subject)} · ${rows.length} سجلًا ضمن المراكز العشرة</summary>${table}</details>`);
+    });
+    target.innerHTML = parts.join("");
+    section.classList.remove("hidden");
+  }
+
   function renderResults() {
     const a = state.reconciledAnalysis;
     if (!a) return;
@@ -1592,6 +1685,7 @@
     const extraCharts = charts.slice(1);
     $("deepChartsSection").classList.toggle("hidden", !extraCharts.length);
     $("deepChartsGrid").innerHTML = extraCharts.map(chart=>`<article class="deep-chart-card ${chart.type==='heatmap'||chart.type==='table'?'wide':''}"><h5>${escapeHtml(chart.title)}</h5><p>${escapeHtml(chart.description||"")}</p>${renderChartContent(chart)}</article>`).join("");
+    renderRankingResults(a);
 
     const profile = a.analysisProfile || {};
     const profileDimensions = profile.dimensions || [];
@@ -1703,7 +1797,7 @@
   function exportAnalysis() {
     const payload = {
       app: "تقارير",
-      version: "1.2.1",
+      version: "1.2.2",
       generatedAt: new Date().toISOString(),
       source: state.sourceName,
       sourceMeta: state.sourceMeta,
@@ -1716,7 +1810,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v1.2.1.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v1.2.2.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
@@ -1732,9 +1826,13 @@
       performance: { spans: [], cacheHit: false, payloadChars: 0, aiUsage: null, aiModel: "", aiServerTiming: null, segmentTimings: {} },
       localRecognition: null, aiRecognition: null, semanticProfile: null, recognitionStatus: "محلي", recognitionRequestId: state.recognitionRequestId + 1,
       analysisRequestId: state.analysisRequestId + 1,
-      sampleMaxScore: null, pendingSource: null, sourceMeta: null, pendingManualFileName: "", pendingVisualPreview: null
+      sampleMaxScore: null, pendingSource: null, sourceMeta: null, pendingManualFileName: "", pendingVisualPreview: null,
+      multiSubjectOptions: { mode: "all", subject: "", includeSubjectTopTen: true, includeSchoolRanking: true }
     });
     $("fileInput").value = ""; $("pasteInput").value = ""; $("manualTextInput").value = "";
+    if ($("multiSubjectScopeSelect")) $("multiSubjectScopeSelect").value = "all";
+    if ($("includeSubjectTopTenInput")) $("includeSubjectTopTenInput").checked = true;
+    if ($("includeSchoolRankingInput")) $("includeSchoolRankingInput").checked = true;
     $("analysisTimingPanel")?.classList.add("hidden");
     clearMessage("inputMessage"); clearMessage("setupMessage"); showPanel(1);
   }
@@ -1764,6 +1862,10 @@
 
     $("backToInputBtn").addEventListener("click",()=>showPanel(1));
     $("toSetupBtn").addEventListener("click",()=>{renderSetup();showPanel(3);});
+    $("multiSubjectScopeSelect").addEventListener("change", renderMultiSubjectWorkspace);
+    $("multiSubjectSubjectSelect").addEventListener("change", renderMultiSubjectWorkspace);
+    $("includeSubjectTopTenInput").addEventListener("change", renderMultiSubjectWorkspace);
+    $("includeSchoolRankingInput").addEventListener("change", renderMultiSubjectWorkspace);
     $("backToReviewBtn").addEventListener("click",()=>showPanel(2));
     $("runAnalysisBtn").addEventListener("click",runAnalysis);
     $("restartBtn").addEventListener("click",reset); $("resetTopBtn").addEventListener("click",reset); $("exportBtn").addEventListener("click",exportAnalysis); $("officialReportBtn").addEventListener("click",openOfficialReport);

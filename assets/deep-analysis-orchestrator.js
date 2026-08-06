@@ -3,7 +3,7 @@
 
   // Phase 2-A: الذكاء الاصطناعي هو مالك التحليل التربوي، بينما يبقى
   // المحرك المحلي مسؤولًا عن الحسابات والرسوم وحزمة الأدلة فقط.
-  const VERSION = "1.2.1";
+  const VERSION = "1.2.2";
   const PROTOCOL_VERSION = "6.6.0";
   const LABELS = Object.freeze({ primary: "التحليل التربوي الذكي" });
   const TASK_LABELS = Object.freeze({ "analysis.primary": "التحليل التربوي الذكي" });
@@ -78,6 +78,12 @@
             subjects: (Array.isArray(source.scopeContext.subjects) ? source.scopeContext.subjects : []).slice(0, 12).map(item => String(item).slice(0, 120)),
             departmentLabel: String(source.scopeContext.departmentLabel || "").slice(0, 220),
             populationLabel: String(source.scopeContext.populationLabel || "").slice(0, 260),
+            analysisMode: String(source.scopeContext.analysisMode || ""),
+            selectedSubject: String(source.scopeContext.selectedSubject || "").slice(0, 160),
+            grade: String(source.scopeContext.grade || "").slice(0, 80),
+            period: String(source.scopeContext.period || "").slice(0, 120),
+            academicYear: String(source.scopeContext.academicYear || "").slice(0, 80),
+            rankingPolicy: source.scopeContext.rankingPolicy && typeof source.scopeContext.rankingPolicy === "object" ? clone(source.scopeContext.rankingPolicy) : null,
             forbiddenBroaderPopulations: (Array.isArray(source.scopeContext.forbiddenBroaderPopulations) ? source.scopeContext.forbiddenBroaderPopulations : []).slice(0, 8).map(item => String(item).slice(0, 180)),
           }
         : null,

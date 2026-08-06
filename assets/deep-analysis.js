@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.2.1";
+  const VERSION = "1.2.2";
 
   function masteryEngine() {
     const engine = window.TaqareerMasteryMetrics;
@@ -612,8 +612,52 @@
     return "هـ";
   }
 
+  const MULTI_SUBJECT_CORE_5_8 = ["اللغة العربية", "التربية الاسلامية", "الدراسات الاجتماعية", "الرياضيات", "اللغة الانجليزية", "العلوم"];
+  const MULTI_SUBJECT_CORE_9_12 = ["اللغة العربية", "التربية الاسلامية", "الدراسات الاجتماعية", "الرياضيات", "اللغة الانجليزية", "الفيزياء", "الكيمياء", "الاحياء"];
+
+  function canonicalSubjectKey(value) {
+    const text = normalize(value).replace(/\bماده\b/g, "").replace(/\s+/g, " ").trim();
+    if (/لغه.*عربي/.test(text)) return "اللغة العربية";
+    if (/تربيه.*اسلام/.test(text)) return "التربية الاسلامية";
+    if (/دراسات.*اجتماع/.test(text)) return "الدراسات الاجتماعية";
+    if (/رياضيات/.test(text)) return "الرياضيات";
+    if (/لغه.*انجلي|english/.test(text)) return "اللغة الانجليزية";
+    if (/^علوم$|العلوم/.test(text)) return "العلوم";
+    if (/فيزياء/.test(text)) return "الفيزياء";
+    if (/كيمياء/.test(text)) return "الكيمياء";
+    if (/احياء/.test(text)) return "الاحياء";
+    return text;
+  }
+
+  function multiSubjectGradeNumber(value) {
+    const text = normalize(value).replace(/الصف/g, "").trim();
+    const direct = Number.parseInt(text, 10);
+    if (Number.isFinite(direct)) return direct;
+    const map = { "الخامس":5, "السادس":6, "السابع":7, "الثامن":8, "التاسع":9, "العاشر":10, "الحادي عشر":11, "الثاني عشر":12 };
+    return map[text] || 0;
+  }
+
+  function arabicRankLabel(rank, repeated = false) {
+    const labels = { 1:"الأول", 2:"الثاني", 3:"الثالث", 4:"الرابع", 5:"الخامس", 6:"السادس", 7:"السابع", 8:"الثامن", 9:"التاسع", 10:"العاشر" };
+    return `${labels[rank] || `المركز ${rank}`}${repeated ? " مكرر" : ""}`;
+  }
+
+  function standardCompetitionRanking(items, scoreKey, maxRank = 10) {
+    const sortedItems = [...items].filter(item => Number.isFinite(Number(item?.[scoreKey]))).sort((a, b) => Number(b[scoreKey]) - Number(a[scoreKey]) || String(a.name || "").localeCompare(String(b.name || ""), "ar"));
+    let previous = null, rank = 0;
+    const ranked = sortedItems.map((item, index) => {
+      const score = Number(item[scoreKey]);
+      if (previous === null || Math.abs(score - previous) > 1e-9) rank = index + 1;
+      previous = score;
+      return { ...item, rank };
+    }).filter(item => item.rank <= maxRank);
+    const counts = new Map();
+    ranked.forEach(item => counts.set(item.rank, (counts.get(item.rank) || 0) + 1));
+    return ranked.map(item => ({ ...item, rankLabel: arabicRankLabel(item.rank, (counts.get(item.rank) || 0) > 1) }));
+  }
+
   function analyzeMultiSubjectResults(context) {
-    const result = createBase(context, "multi_subject_results", "تحليل نتائج الطلبة الفردية عبر عدة مواد مع مقارنة المواد وتصنيف أنماط الاحتياج");
+    const result = createBase(context, "multi_subject_results", "تحليل نتائج الطلبة الفردية عبر عدة مواد مع مساحة تحليل مرنة وترتيب محلي موثوق");
     const roles = context.analysisProfile?.columnRoles || {};
     const subjectRoles = Array.isArray(roles.subjects) ? roles.subjects.filter(item => item?.subject && item?.scoreHeader) : [];
     if (subjectRoles.length < 2) throw new Error("لم يكتشف التطبيق أزواج الدرجة والمستوى لعدد كافٍ من المواد.");
@@ -623,7 +667,16 @@
     const rows = rowIndexes.map(index => ({ row: context.rows[index], index })).filter(item => item.row);
     if (!rows.length) throw new Error("لا توجد سجلات طلاب صالحة للتحليل متعدد المواد.");
 
+    const options = context.analysisOptions && typeof context.analysisOptions === "object" ? context.analysisOptions : {};
+    const analysisMode = options.mode === "subject" ? "subject" : "all";
+    const selectedSubjectName = analysisMode === "subject" ? String(options.subject || "").trim() : "";
+    const includeSubjectTopTen = options.includeSubjectTopTen !== false;
+    const includeSchoolRanking = analysisMode === "all" && options.includeSchoolRanking !== false;
     const levelOrder = ["أ", "ب", "ج", "د", "هـ"];
+    const nameHeader = roles.studentName;
+    const serialHeader = roles.serial;
+    const studentName = (item, fallbackIndex) => String(item.row?.[nameHeader] || item.row?.[serialHeader] || `طالب ${fallbackIndex + 1}`).trim();
+
     const subjectStats = subjectRoles.map((subject, subjectIndex) => {
       const values = [];
       const distribution = Object.fromEntries(levelOrder.map(level => [level, 0]));
@@ -639,12 +692,14 @@
         }
       }
       const n = values.length;
+      const denominator = Math.max(n, sum(Object.values(distribution)));
       const highCount = distribution["أ"] + distribution["ب"];
       const middleCount = distribution["ج"];
       const lowCount = distribution["د"] + distribution["هـ"];
       return {
         ref: `subject:${subjectIndex + 1}`,
         subject: subject.subject,
+        canonicalSubject: canonicalSubjectKey(subject.subject),
         scoreHeader: subject.scoreHeader,
         levelHeader: subject.levelHeader || "",
         n,
@@ -654,13 +709,13 @@
         min: n ? Math.min(...values) : null,
         max: n ? Math.max(...values) : null,
         highCount,
-        highPct: round(pct(highCount, Math.max(n, sum(Object.values(distribution)))), 1),
+        highPct: round(pct(highCount, denominator), 1),
         middleCount,
-        middlePct: round(pct(middleCount, Math.max(n, sum(Object.values(distribution)))), 1),
+        middlePct: round(pct(middleCount, denominator), 1),
         lowCount,
-        lowPct: round(pct(lowCount, Math.max(n, sum(Object.values(distribution)))), 1),
+        lowPct: round(pct(lowCount, denominator), 1),
         failCount: distribution["هـ"],
-        failPct: round(pct(distribution["هـ"], Math.max(n, sum(Object.values(distribution)))), 1),
+        failPct: round(pct(distribution["هـ"], denominator), 1),
         levelDistribution: distribution,
         scoreLevelConsistencyPct: round(pct(consistencyMatches, consistencyTotal), 1),
         consistencyMismatchCount: Math.max(0, consistencyTotal - consistencyMatches),
@@ -673,26 +728,22 @@
       const subjectValues = subjectRoles.map(subject => {
         const score = parseNumber(item.row?.[subject.scoreHeader]);
         const level = canonicalLevelValue(item.row?.[subject.levelHeader]) || levelFromScore(score);
-        return { subject: subject.subject, score, level };
+        return { subject: subject.subject, canonicalSubject: canonicalSubjectKey(subject.subject), score, level };
       }).filter(entry => Number.isFinite(entry.score));
       if (subjectValues.length < Math.max(2, Math.ceil(subjectRoles.length * .5))) return null;
       const highCount = subjectValues.filter(entry => ["أ", "ب"].includes(entry.level)).length;
       const middleCount = subjectValues.filter(entry => entry.level === "ج").length;
       const lowCount = subjectValues.filter(entry => ["د", "هـ"].includes(entry.level)).length;
       const failCount = subjectValues.filter(entry => entry.level === "هـ").length;
-      const sorted = [...subjectValues].sort((a, b) => b.score - a.score);
+      const sortedValues = [...subjectValues].sort((a, b) => b.score - a.score);
       return {
         ref: `row:${item.index + 1}`,
         rowIndex: item.index,
         validSubjectCount: subjectValues.length,
         mean: round(mean(subjectValues.map(entry => entry.score)), 2),
         sd: round(sd(subjectValues.map(entry => entry.score)), 2),
-        highCount,
-        middleCount,
-        lowCount,
-        failCount,
-        strongest: sorted[0],
-        weakest: sorted.at(-1),
+        highCount, middleCount, lowCount, failCount,
+        strongest: sortedValues[0], weakest: sortedValues.at(-1),
         enrollmentStatus: String(item.row?.[roles.enrollmentStatus] || "").trim(),
         recordGroup: String(item.row?.[roles.recordGroup] || "").trim(),
       };
@@ -702,9 +753,133 @@
     const highThreshold = Math.ceil(subjectStats.length * .8);
     const broadRisk = studentProfiles.filter(profile => profile.lowCount >= lowThreshold).length;
     const focusedRisk = studentProfiles.filter(profile => profile.lowCount > 0 && profile.lowCount < lowThreshold).length;
+    const noLow = studentProfiles.filter(profile => profile.lowCount === 0).length;
     const stableHigh = studentProfiles.filter(profile => profile.highCount >= highThreshold && profile.lowCount === 0).length;
     const anyFail = studentProfiles.filter(profile => profile.failCount > 0).length;
-    const noLow = studentProfiles.filter(profile => profile.lowCount === 0).length;
+
+    const subjectTopTen = {};
+    if (includeSubjectTopTen) {
+      for (const subject of subjectRoles) {
+        const candidates = rows.map((item, index) => {
+          const score = parseNumber(item.row?.[subject.scoreHeader]);
+          if (!Number.isFinite(score)) return null;
+          return { name: studentName(item, index), score, scoreDisplay: round(score, 2), level: canonicalLevelValue(item.row?.[subject.levelHeader]) || levelFromScore(score) };
+        }).filter(Boolean);
+        subjectTopTen[subject.subject] = standardCompetitionRanking(candidates, "score", 10);
+      }
+    }
+
+    const gradeText = context.sourceMeta?.metadata?.grade || context.analysisProfile?.metadata?.grade || "";
+    const gradeNumber = multiSubjectGradeNumber(gradeText);
+    const gradePolicyResolved = gradeNumber >= 5 && gradeNumber <= 12;
+    const requiredCoreNames = gradePolicyResolved ? (gradeNumber >= 9 ? MULTI_SUBJECT_CORE_9_12 : MULTI_SUBJECT_CORE_5_8) : [];
+    const roleByCanonical = new Map(subjectRoles.map(role => [canonicalSubjectKey(role.subject), role]));
+    const availableCoreRoles = requiredCoreNames.map(name => roleByCanonical.get(canonicalSubjectKey(name))).filter(Boolean);
+    const missingCoreColumns = gradePolicyResolved
+      ? requiredCoreNames.filter(name => !roleByCanonical.has(canonicalSubjectKey(name)))
+      : ["تعذر تحديد الصف من 5 إلى 12"];
+    const coreWeight = gradeNumber >= 10 ? .6 : .7;
+    const allWeight = 1 - coreWeight;
+    const rankingCandidates = [];
+    const incompleteRanking = [];
+    if (includeSchoolRanking && gradePolicyResolved && !missingCoreColumns.length) {
+      rows.forEach((item, index) => {
+        const missingCoreSubjects = [];
+        const coreScores = availableCoreRoles.map(role => {
+          const score = parseNumber(item.row?.[role.scoreHeader]);
+          if (!Number.isFinite(score)) missingCoreSubjects.push(role.subject);
+          return score;
+        }).filter(Number.isFinite);
+        if (missingCoreSubjects.length || coreScores.length !== requiredCoreNames.length) {
+          incompleteRanking.push({ name: studentName(item, index), missingCoreSubjects });
+          return;
+        }
+        const allScores = subjectRoles.map(role => parseNumber(item.row?.[role.scoreHeader])).filter(Number.isFinite);
+        const coreMean = mean(coreScores);
+        const allMean = mean(allScores);
+        const rankingScore = coreMean * coreWeight + allMean * allWeight;
+        rankingCandidates.push({
+          name: studentName(item, index), coreMean, allMean, rankingScore,
+          coreMeanDisplay: round(coreMean, 2), allMeanDisplay: round(allMean, 2), rankingScoreDisplay: round(rankingScore, 2),
+        });
+      });
+    }
+    const schoolTopTen = includeSchoolRanking && gradePolicyResolved && !missingCoreColumns.length ? standardCompetitionRanking(rankingCandidates, "rankingScore", 10) : [];
+
+    const statusMap = new Map();
+    for (const item of rows) {
+      const label = String(item.row?.[roles.enrollmentStatus] || "غير محدد").trim() || "غير محدد";
+      statusMap.set(label, (statusMap.get(label) || 0) + 1);
+    }
+    const statusDistribution = [...statusMap.entries()].map(([label, count]) => ({ label, count, pct: round(pct(count, rows.length), 1) })).sort((a, b) => b.count - a.count);
+
+    result.privateTables = {
+      summary: {
+        scopeLabel: analysisMode === "subject" ? `مادة ${selectedSubjectName}` : "جميع المواد",
+        studentCount: rows.length,
+        subjectCount: subjectStats.length,
+        rankingEligibleCount: includeSchoolRanking && analysisMode === "all" ? rankingCandidates.length : null,
+      },
+      subjectTopTen: analysisMode === "subject" ? (subjectTopTen[selectedSubjectName] ? { [selectedSubjectName]: subjectTopTen[selectedSubjectName] } : {}) : subjectTopTen,
+      schoolTopTen,
+      incompleteRankingCount: incompleteRanking.length,
+      incompleteRanking,
+      rankingFormulaLabel: gradeNumber >= 10
+        ? "60% متوسط المواد الأساسية + 40% متوسط جميع المواد"
+        : "70% متوسط المواد الأساسية + 30% متوسط جميع المواد",
+      coreSubjects: requiredCoreNames,
+      missingCoreColumns,
+    };
+
+    if (analysisMode === "subject") {
+      const selected = subjectStats.find(item => item.subject === selectedSubjectName || canonicalSubjectKey(item.subject) === canonicalSubjectKey(selectedSubjectName));
+      if (!selected) throw new Error("لم تُعثر على المادة المختارة داخل كشف النتائج.");
+      const selectedRole = subjectRoles.find(item => canonicalSubjectKey(item.subject) === selected.canonicalSubject);
+      const selectedScores = rows.map(item => parseNumber(item.row?.[selectedRole.scoreHeader])).filter(Number.isFinite);
+      const bins = [
+        { label:"90-100", min:90, max:101 }, { label:"80-89", min:80, max:90 }, { label:"65-79", min:65, max:80 }, { label:"50-64", min:50, max:65 }, { label:"أقل من 50", min:-Infinity, max:50 },
+      ].map(bin => ({ label:bin.label, count:selectedScores.filter(score => score >= bin.min && score < bin.max).length }));
+      result.scopeContext = {
+        kind:"multi_subject_student_results", analysisMode:"subject", selectedSubject:selected.subject,
+        studentCount:rows.length, subjectCount:subjectStats.length, grade:gradeText,
+        period:context.sourceMeta?.metadata?.period || context.analysisProfile?.metadata?.period || "",
+        academicYear:context.sourceMeta?.metadata?.academicYear || context.analysisProfile?.metadata?.academicYear || "",
+        subjects:originalSubjectOrder, targetGroup:`طلبة ${gradeText || "الصف"} في مادة ${selected.subject}`,
+        limitation:"التحليل الحالي خاص بالمادة المختارة ولا يعمم على بقية المواد إلا عند تشغيل التحليل الشامل.",
+      };
+      result.subjects = [selected];
+      result.studentProfiles = [];
+      result.statusDistribution = statusDistribution;
+      result.metrics = [
+        metric("studentCount", "عدد الطلبة", selected.n, "درجة صالحة في المادة"),
+        metric("selectedSubjectMean", "متوسط المادة", selected.mean, selected.subject),
+        metric("selectedSubjectMedian", "وسيط المادة", selected.median, selected.subject),
+        metric("selectedSubjectSd", "الانحراف المعياري", selected.sd, "تشتت الدرجات"),
+        metric("selectedSubjectHighPct", "نسبة أ وب", selected.highPct, `${selected.highCount} طالبًا`, "percentage"),
+        metric("selectedSubjectLowPct", "نسبة د وهـ", selected.lowPct, `${selected.lowCount} طالبًا`, "percentage"),
+        metric("selectedSubjectFailCount", "طلبة المستوى هـ", selected.failCount, "أولوية للمراجعة"),
+        metric("selectedSubjectMismatchCount", "اختلافات الدرجة والمستوى", selected.consistencyMismatchCount, `من ${selected.n} سجلًا`),
+        metric("selectedSubjectTopScore", "أعلى درجة", selected.max, selected.subject),
+        metric("selectedSubjectBottomScore", "أدنى درجة", selected.min, selected.subject),
+      ];
+      result.charts = [
+        chart("selected-subject-levels", "bar", `توزيع مستويات ${selected.subject}`, "توزيع أ-هـ للمادة المختارة.", levelOrder.map(level => ({ level, count:selected.levelDistribution[level] })), { xKey:"level", yKey:"count" }),
+        chart("selected-subject-score-bands", "bar", `شرائح درجات ${selected.subject}`, "تقسيم الدرجات إلى شرائح متوافقة مع حدود المستويات.", bins, { xKey:"label", yKey:"count" }),
+        chart("multi-subject-status", "bar", "حالة القيد أو النتيجة", "توزيع الحالات كما وردت في الكشف دون تفسير سببي.", statusDistribution, { xKey:"label", yKey:"count" }),
+      ];
+      result.limitations = [
+        "التحليل خاص بالمادة المختارة، ولا يفسر أسباب الضعف دون بيانات مفردات أو مهارات.",
+        "الأسماء محفوظة محليًا في جدول الأوائل ولا تُرسل إلى الذكاء الاصطناعي.",
+        "الترتيب داخل المادة يعتمد الدرجة الرقمية، ويعرض جميع المتعادلين عند المركز العاشر.",
+      ];
+      result.analysisProfile.dataSufficiency = selected.n >= 30 ? "مرتفعة للتحليل الوصفي للمادة" : "متوسطة";
+      result.analysisProfile.dimensions = ["توزيع درجات المادة", "مستويات أ-هـ", "الفئات العلاجية والإثرائية", "اتساق الدرجة والمستوى"];
+      result.analysisProfile.decisionUse = ["تحديد مواطن القوة والضعف", "اختيار الفئات ذات الأولوية", "بناء خطة علاج وإثراء للمادة", "متابعة انتقال المستويات"];
+      result.evidenceMap = evidenceMapFromMetrics(result.metrics);
+      result.evidenceMap[selected.ref] = `${selected.subject}: متوسط ${selected.mean}، أ+ب ${selected.highPct}%، د+هـ ${selected.lowPct}%، عدد ${selected.n}`;
+      return result;
+    }
+
     const allScores = [];
     const overallLevels = Object.fromEntries(levelOrder.map(level => [level, 0]));
     for (const subject of subjectRoles) {
@@ -715,32 +890,8 @@
         if (level && Object.hasOwn(overallLevels, level)) overallLevels[level] += 1;
       }
     }
-    const overallConsistencyTotal = subjectStats.reduce((sumValue, item) => sumValue + item.n, 0);
-    const overallMismatchCount = subjectStats.reduce((sumValue, item) => sumValue + Number(item.consistencyMismatchCount || 0), 0);
-    const statusHeader = roles.enrollmentStatus;
-    const statusMap = new Map();
-    for (const item of rows) {
-      const label = String(item.row?.[statusHeader] || "غير محدد").trim() || "غير محدد";
-      statusMap.set(label, (statusMap.get(label) || 0) + 1);
-    }
-    const statusDistribution = [...statusMap.entries()].map(([label, count]) => ({ label, count, pct: round(pct(count, rows.length), 1) })).sort((a, b) => b.count - a.count);
-
-    const correlations = [];
-    for (let left = 0; left < subjectRoles.length; left++) {
-      for (let right = left + 1; right < subjectRoles.length; right++) {
-        const xs = rows.map(item => parseNumber(item.row?.[subjectRoles[left].scoreHeader]));
-        const ys = rows.map(item => parseNumber(item.row?.[subjectRoles[right].scoreHeader]));
-        const correlation = pearson(xs, ys);
-        if (Number.isFinite(correlation)) correlations.push({
-          subjectA: subjectRoles[left].subject,
-          subjectB: subjectRoles[right].subject,
-          correlation: round(correlation, 2),
-          strength: Math.abs(correlation) >= .7 ? "قوية" : Math.abs(correlation) >= .4 ? "متوسطة" : "ضعيفة",
-        });
-      }
-    }
-    correlations.sort((a, b) => Math.abs(b.correlation) - Math.abs(a.correlation));
-
+    const overallConsistencyTotal = subjectStats.reduce((total, item) => total + item.n, 0);
+    const overallMismatchCount = subjectStats.reduce((total, item) => total + Number(item.consistencyMismatchCount || 0), 0);
     const bestSubject = subjectStats[0];
     const weakestSubject = [...subjectStats].sort((a, b) => a.mean - b.mean)[0];
     const highestLowSubject = [...subjectStats].sort((a, b) => b.lowPct - a.lowPct)[0];
@@ -749,17 +900,27 @@
     const overallLowCount = overallLevels["د"] + overallLevels["هـ"];
     const scoreCount = allScores.length;
 
+    const correlations = [];
+    for (let left = 0; left < subjectRoles.length; left++) {
+      for (let right = left + 1; right < subjectRoles.length; right++) {
+        const xs = rows.map(item => parseNumber(item.row?.[subjectRoles[left].scoreHeader]));
+        const ys = rows.map(item => parseNumber(item.row?.[subjectRoles[right].scoreHeader]));
+        const correlation = pearson(xs, ys);
+        if (Number.isFinite(correlation)) correlations.push({ subjectA:subjectRoles[left].subject, subjectB:subjectRoles[right].subject, correlation:round(correlation, 2), strength:Math.abs(correlation) >= .7 ? "قوية" : Math.abs(correlation) >= .4 ? "متوسطة" : "ضعيفة" });
+      }
+    }
+    correlations.sort((a, b) => Math.abs(b.correlation) - Math.abs(a.correlation));
+
     result.scopeContext = {
-      kind: "multi_subject_student_results",
-      studentCount: rows.length,
-      subjectCount: subjectStats.length,
-      grade: context.sourceMeta?.metadata?.grade || context.analysisProfile?.metadata?.grade || "",
-      period: context.sourceMeta?.metadata?.period || context.analysisProfile?.metadata?.period || "",
-      academicYear: context.sourceMeta?.metadata?.academicYear || context.analysisProfile?.metadata?.academicYear || "",
-      group: context.sourceMeta?.metadata?.group || context.analysisProfile?.metadata?.group || "",
-      subjects: originalSubjectOrder,
-      targetGroup: `الطلبة الواردة سجلاتهم في كشف النتائج متعدد المواد${context.analysisProfile?.metadata?.grade ? ` للصف ${context.analysisProfile.metadata.grade}` : ""}`,
-      limitation: "النتائج تخص السجلات الواردة في الكشف ولا تمثل صفوفًا أو مدارس أخرى خارج الملف.",
+      kind:"multi_subject_student_results", analysisMode:"all", selectedSubject:"", studentCount:rows.length,
+      subjectCount:subjectStats.length, grade:gradeText,
+      period:context.sourceMeta?.metadata?.period || context.analysisProfile?.metadata?.period || "",
+      academicYear:context.sourceMeta?.metadata?.academicYear || context.analysisProfile?.metadata?.academicYear || "",
+      group:context.sourceMeta?.metadata?.group || context.analysisProfile?.metadata?.group || "",
+      subjects:originalSubjectOrder,
+      targetGroup:`الطلبة الواردة سجلاتهم في كشف النتائج متعدد المواد${gradeText ? ` للصف ${gradeText}` : ""}`,
+      rankingPolicy:{ gradeNumber, resolved:gradePolicyResolved, coreWeight, allWeight, requiredCoreSubjects:requiredCoreNames, missingCoreColumns, eligibleCount:rankingCandidates.length, incompleteCount:incompleteRanking.length },
+      limitation:"النتائج تخص السجلات الواردة في الكشف ولا تمثل صفوفًا أو مدارس أخرى خارج الملف.",
     };
     result.subjects = subjectStats;
     result.studentProfiles = studentProfiles;
@@ -774,62 +935,37 @@
       metric("overallLowPct", "نسبة المستويين د وهـ", round(pct(overallLowCount, scoreCount), 1), `${overallLowCount} تقديرًا`, "percentage"),
       metric("broadRiskCount", "حالات انخفاض متعدد المواد", broadRisk, `د أو هـ في ${lowThreshold} مواد فأكثر`),
       metric("focusedRiskCount", "حالات انخفاض تخصصي", focusedRisk, "د أو هـ في عدد محدود من المواد"),
-      metric("stableHighCount", "أداء مرتفع متزن", stableHigh, `أ أو ب في ${highThreshold} مواد فأكثر دون د أو هـ`),
+      metric("studentsWithoutLowLevels", "دون د أو هـ", noLow, "التصنيف الأساسي الثالث"),
+      metric("stableHighCount", "أداء مرتفع متزن", stableHigh, `مؤشر ثانوي داخل فئة دون د أو هـ`),
       metric("studentsWithFailLevel", "طلبة لديهم مستوى هـ في مادة واحدة على الأقل", anyFail, "مؤشر أولوية للمراجعة"),
-      metric("studentsWithoutLowLevels", "طلبة دون د أو هـ", noLow, "ملفات أكثر استقرارًا"),
       metric("scoreLevelMismatchCount", "اختلافات الدرجة والمستوى", overallMismatchCount, `من ${overallConsistencyTotal} زوجًا قابلًا للتحقق`),
+      metric("rankingEligibleCount", "المكتملون للترتيب العام", rankingCandidates.length, missingCoreColumns.length ? `تعذر الترتيب: مواد أساسية غير موجودة (${missingCoreColumns.join("، ")})` : `${incompleteRanking.length} غير مكتمل`),
       metric("strongestSubjectMean", "أعلى متوسط مادة", bestSubject.mean, bestSubject.subject),
       metric("weakestSubjectMean", "أدنى متوسط مادة", weakestSubject.mean, weakestSubject.subject),
       metric("highestLowSubjectPct", "أعلى تركّز للمستويات الدنيا", highestLowSubject.lowPct, highestLowSubject.subject, "percentage"),
     ];
     result.charts = [
-      chart("multi-subject-means", "bar", "متوسطات المواد", "مقارنة الدرجات الرقمية عبر المواد؛ الأعلى أفضل.", subjectStats.map(item => ({ subject: item.subject, mean: item.mean })), { xKey: "subject", yKey: "mean" }),
-      chart("multi-subject-low-levels", "bar", "المستويات الدنيا حسب المادة", "نسبة د وهـ في كل مادة لتحديد أولويات الدعم.", subjectStats.map(item => ({ subject: item.subject, lowPct: item.lowPct })), { xKey: "subject", yKey: "lowPct", valueSuffix: "%" }),
-      chart("multi-subject-overall-levels", "bar", "التوزيع العام للمستويات", "تجميع مستويات جميع المواد دون خلطها بدرجات فردية جديدة.", levelOrder.map(level => ({ level, count: overallLevels[level], pct: round(pct(overallLevels[level], scoreCount), 1) })), { xKey: "level", yKey: "count" }),
-      chart("multi-subject-profile-segments", "bar", "أنماط ملفات الطلبة", "تصنيف وصفي إلى انخفاض متعدد المواد أو تخصصي أو أداء مرتفع متزن.", [
-        { segment: "انخفاض متعدد المواد", count: broadRisk },
-        { segment: "انخفاض تخصصي", count: focusedRisk },
-        { segment: "أداء مرتفع متزن", count: stableHigh },
-        { segment: "دون مستويات دنيا", count: noLow },
-      ], { xKey: "segment", yKey: "count" }),
-      chart("multi-subject-status", "bar", "حالة القيد أو النتيجة", "توزيع الحالات كما وردت في الكشف دون تفسير سببي.", statusDistribution, { xKey: "label", yKey: "count" }),
-    ];
-    result.qualityTools = [
-      qualityTool("score_level_consistency", "فحص اتساق الدرجة والمستوى", overallConsistencyTotal > 0, "يقارن الدرجة الرقمية بحدود أ-هـ لكل مادة.", { mismatchCount: overallMismatchCount, checkedPairs: overallConsistencyTotal }, overallMismatchCount ? "توجد حالات تحتاج مراجعة قبل الاعتماد." : "تطابق كامل بين الدرجات والمستويات في الأزواج القابلة للتحقق."),
-      qualityTool("subject_benchmark", "المقارنة المرجعية الداخلية للمواد", subjectStats.length > 1, "تقارن المتوسط والمستويات الدنيا داخل الكشف نفسه.", subjectStats, `أعلى متوسط في ${bestSubject.subject} وأدناه في ${weakestSubject.subject}.`),
-      qualityTool("student_segmentation", "تصنيف أنماط الاحتياج عبر المواد", studentProfiles.length > 0, "يفصل الانخفاض متعدد المواد عن الانخفاض التخصصي.", { broadRisk, focusedRisk, stableHigh, noLow }, "يستخدم لتوجيه نوع الدعم لا لإصدار حكم فردي نهائي."),
-      qualityTool("correlation", "علاقات وصفية بين المواد", correlations.length > 0, "تبحث عن تزامن الأداء بين المواد مع منع الاستدلال السببي.", correlations.slice(0, 12), correlations.length ? `أقوى علاقة وصفية بين ${correlations[0].subjectA} و${correlations[0].subjectB}.` : "لا تتوفر بيانات مزدوجة كافية."),
-    ];
-    result.improvementPlan = [
-      intervention("عالية", `ارتفاع المستويات الدنيا في ${highestLowSubject.subject}`, `الطلبة ذوو د أو هـ في ${highestLowSubject.subject}`, "تحليل مفردات المادة ونتائج المهارات، ثم تنفيذ تدخل قصير مرتبط بالفجوات الفعلية بدل الاعتماد على الدرجة الكلية وحدها.", "معلم المادة والمعلم الأول", "3 أسابيع", "انخفاض نسبة د وهـ في القياس المكافئ مع توثيق انتقال الحالات", "اختبار مهاري قبلي وبعدي + سجل متابعة", "إذا لم يظهر تحسن، مراجعة أداة القياس وشدة التدخل والمواظبة.", [highestLowSubject.ref]),
-      intervention("عالية", "انخفاض متعدد المواد", `${broadRisk} حالة ضمن السجلات المحللة`, "بناء ملف دعم مشترك لكل حالة يربط المهارات الأساسية والحضور ونتائج المواد ذات الأولوية دون نشر الأسماء خارج الفريق المخول.", "فريق دعم متعدد التخصصات", "4 أسابيع", "تحسن موثق في مادتين على الأقل لكل حالة مستهدفة", "لوحة متابعة سرية قصيرة", "إحالة الحالات غير المستجيبة إلى تشخيص تربوي أعمق.", ["metric:broadRiskCount"]),
-      intervention("متوسطة", "الحفاظ على الأداء المرتفع المتزن", `${stableHigh} حالة`, "توفير مشروعات إثرائية عابرة للمواد ومهام تحليل وإنتاج تحافظ على مستوى التحدي.", "معلمو المواد", "خلال الوحدة التالية", "استمرار الأداء المرتفع وجودة المنتج في أكثر من مادة", "Rubric مشترك + ملف أعمال", "رفع مستوى التحدي عند ظهور سهولة مفرطة.", ["metric:stableHighCount"]),
-    ];
-    result.monitoringPlan = [
-      { stage: "خط الأساس", timing: "الآن", measure: "متوسطات المواد وتوزيع أ-هـ وتصنيف أنماط الاحتياج", owner: "أخصائي التقويم" },
-      { stage: "متابعة مواد الأولوية", timing: "كل أسبوعين", measure: "نتائج المهارات المستهدفة وانتقال الحالات من د/هـ", owner: "المعلم الأول ومعلمو المواد" },
-      { stage: "قياس أثر", timing: "بعد شهر", measure: "تغير الانخفاض متعدد المواد والتخصصي مع ثبات الفئة المرتفعة", owner: "فريق الدعم" },
+      chart("multi-subject-means", "bar", "متوسطات المواد", "مقارنة الدرجات الرقمية عبر المواد؛ الأعلى أفضل.", subjectStats.map(item => ({ subject:item.subject, mean:item.mean })), { xKey:"subject", yKey:"mean" }),
+      chart("multi-subject-low-levels", "bar", "المستويات الدنيا حسب المادة", "نسبة د وهـ في كل مادة لتحديد أولويات الدعم.", subjectStats.map(item => ({ subject:item.subject, lowPct:item.lowPct })), { xKey:"subject", yKey:"lowPct", valueSuffix:"%" }),
+      chart("multi-subject-overall-levels", "bar", "التوزيع العام للمستويات", "تجميع مستويات جميع المواد دون خلطها بدرجات فردية جديدة.", levelOrder.map(level => ({ level, count:overallLevels[level], pct:round(pct(overallLevels[level], scoreCount), 1) })), { xKey:"level", yKey:"count" }),
+      chart("multi-subject-profile-segments", "bar", "التصنيف الأساسي لأنماط الطلبة", "فئات متبادلة لا تتداخل: انخفاض متعدد المواد، انخفاض تخصصي، أو دون د وهـ.", [
+        { segment:"انخفاض متعدد المواد", count:broadRisk }, { segment:"انخفاض تخصصي", count:focusedRisk }, { segment:"دون د أو هـ", count:noLow },
+      ], { xKey:"segment", yKey:"count" }),
+      chart("multi-subject-status", "bar", "حالة القيد أو النتيجة", "توزيع الحالات كما وردت في الكشف دون تفسير سببي.", statusDistribution, { xKey:"label", yKey:"count" }),
     ];
     result.limitations = [
       "المقارنة بين المواد وصفية حتى لو كانت الدرجات من 100؛ اختلاف طبيعة الاختبارات وصعوبتها قد يؤثر في المتوسطات.",
       "الدرجات الكلية لا تحدد المهارات أو المفاهيم المسؤولة عن الفجوة؛ يلزم تحليل مفردات أو اختبار تشخيصي.",
+      "التصنيف الأساسي للطلبة متبادل، بينما الأداء المرتفع المتزن ومستوى هـ مؤشرات ثانوية لا تدخل في مجموع الرسم الأساسي.",
       "العلاقات بين المواد لا تثبت السببية ولا تبرر نسبة الضعف إلى مادة أو معلم بعينه.",
       "الأسماء والجنسية حقول حساسة؛ تُحجب قبل إرسال البيانات إلى الذكاء الاصطناعي ولا تستخدم الجنسية في المقارنة التربوية.",
-      "التحليل يقتصر على الطلبة والمواد الواردة في الكشف ولا يعمم على صفوف أو مدارس أخرى.",
+      "ترتيب الدفعة محلي وشفاف، ولا يدخل فيه من تنقصه درجة مادة أساسية.",
     ];
     result.analysisProfile.dataSufficiency = rows.length >= 30 && subjectStats.length >= 5 ? "مرتفعة للتحليل الوصفي متعدد المواد" : "متوسطة";
-    result.analysisProfile.dimensions = ["أداء المواد", "توزيع المستويات", "أنماط الاحتياج عبر المواد", "اتساق الدرجة والمستوى", "العلاقات الوصفية"];
-    result.analysisProfile.decisionUse = ["ترتيب مواد الأولوية", "فصل التعثر الشامل عن التخصصي", "تحديد مسارات العلاج والإثراء", "مراجعة جودة إدخال الدرجات"];
-    result.executiveTitle = `أولوية المادة: ${highestLowSubject.subject}`;
-    result.executiveSummary = `شمل التحليل ${rows.length} طالبًا و${subjectStats.length} مادة و${scoreCount} درجة. بلغ المتوسط العام ${overallMean}، وظهرت ${broadRisk} حالة انخفاض متعدد المواد و${focusedRisk} حالة انخفاض تخصصي. كانت أعلى نسبة للمستويات الدنيا في ${highestLowSubject.subject}، مع ضرورة تحليل المهارات قبل تفسير الأسباب.`;
-    result.action = { title: result.improvementPlan[0].action, text: `${result.improvementPlan[0].responsibleRole} - ${result.improvementPlan[0].timeframe}`, priority: result.improvementPlan[0].priority, indicator: result.improvementPlan[0].successIndicator };
+    result.analysisProfile.dimensions = ["أداء المواد", "توزيع المستويات", "أنماط الاحتياج المتبادلة", "الأوائل في المواد والدفعة", "اتساق الدرجة والمستوى", "العلاقات الوصفية"];
+    result.analysisProfile.decisionUse = ["اختيار مادة محددة أو تحليل شامل", "ترتيب مواد الأولوية", "تحديد العشرة الأوائل محليًا", "فصل التعثر الشامل عن التخصصي", "بناء مسارات العلاج والإثراء"];
     result.evidenceMap = evidenceMapFromMetrics(result.metrics);
-    subjectStats.forEach(item => {
-      result.evidenceMap[item.ref] = `${item.subject}: متوسط ${item.mean}، أ+ب ${item.highPct}%، د+هـ ${item.lowPct}%، عدد ${item.n}`;
-    });
-    studentProfiles.slice(0, 80).forEach(profile => {
-      result.evidenceMap[profile.ref] = `سجل طالب محجوب: متوسط ${profile.mean}، مواد منخفضة ${profile.lowCount}، مواد مرتفعة ${profile.highCount}`;
-    });
+    subjectStats.forEach(item => { result.evidenceMap[item.ref] = `${item.subject}: متوسط ${item.mean}، أ+ب ${item.highPct}%، د+هـ ${item.lowPct}%، عدد ${item.n}`; });
     return result;
   }
 
@@ -1875,7 +2011,8 @@
       levelColumn: input.levelColumn || "",
       maxScore: parseNumber(input.maxScore),
       thresholdPct: parseNumber(input.thresholdPct),
-      quality: input.quality || {}
+      quality: input.quality || {},
+      analysisOptions: input.analysisOptions || null
     };
     const profiledAnalyzerId = String(context.analysisProfile?.analyzerId || "");
     const capabilityFamilies = Array.isArray(context.analysisProfile?.analysisFamilies) ? context.analysisProfile.analysisFamilies : [];
