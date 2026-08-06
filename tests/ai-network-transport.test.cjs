@@ -57,7 +57,7 @@ function loadClient(fetchImpl) {
 function jsonResponse(body, status = 200, headers = {}) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'content-type': 'application/json', 'x-taqareer-edge-version': '0.15.0', ...headers },
+    headers: { 'content-type': 'application/json', 'x-taqareer-edge-version': '0.15.1', ...headers },
   });
 }
 
@@ -103,10 +103,10 @@ test('primary analysis verifies Edge health before sending the expensive analysi
     const body = JSON.parse(options.body);
     operations.push(body.operation);
     if (body.operation === 'health') {
-      return jsonResponse({ ok: true, operation: 'health', edgeVersion: '0.15.0', aiKeyConfigured: true, result: { status: 'ready' } });
+      return jsonResponse({ ok: true, operation: 'health', edgeVersion: '0.15.1', aiKeyConfigured: true, result: { status: 'ready' } });
     }
     if (body.operation === 'analyze_primary') {
-      return jsonResponse({ ok: true, operation: 'analyze_primary', edgeVersion: '0.15.0', aiKeyConfigured: true, result: { contractVersion: '6.6.0' } });
+      return jsonResponse({ ok: true, operation: 'analyze_primary', edgeVersion: '0.15.1', aiKeyConfigured: true, result: { contractVersion: '6.6.0' } });
     }
     throw new Error(`unexpected operation ${body.operation}`);
   });
@@ -115,7 +115,7 @@ test('primary analysis verifies Edge health before sending the expensive analysi
   assert.deepEqual(operations, ['health', 'analyze_primary']);
   assert.equal(response.result.contractVersion, '6.6.0');
   assert.equal(api.getHealth().status, 'live');
-  assert.equal(api.getHealth().edgeVersion, '0.15.0');
+  assert.equal(api.getHealth().edgeVersion, '0.15.1');
 });
 
 test('rejects malformed endpoints before attempting network access', async () => {

@@ -1,4 +1,4 @@
-const EDGE_VERSION = "0.15.0";
+const EDGE_VERSION = "0.15.1";
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 const DEFAULT_MODEL = "gemini-3.6-flash";
 const DEFAULT_FAST_MODEL = "gemini-3.5-flash-lite";
@@ -582,9 +582,10 @@ function classificationInstructions(): string {
 - استند إلى العنوان، الترويسة، أسماء الأعمدة، عينات القيم، وملف البنية المحلي المرسل semanticProfile.
 - لا تعتبر كل جدول رقمي «درجات طلاب». فرّق بين السجلات الفردية، التوزيعات المجمعة، المؤشرات، المقارنات، السلاسل الزمنية، والنصوص السردية.
 - إذا وجدت أعمدة مستويات مثل أ، ب، ج، د، هـ أو مسميات متميز/جيد/ملائم مع صفوف شعب أو صفوف، فهذا توزيع مستويات مجمع؛ analyzerId وrecommendedTypeId = level_distribution، requiresScoreSettings = false.
+- إذا كان كل صف يمثل طالبًا وتكررت أزواج «اسم المادة - الدرجة» و«اسم المادة - المستوى» لعدة مواد، فهذا سجل نتائج فردي متعدد المواد؛ analyzerId وrecommendedTypeId = multi_subject_results، unitOfAnalysis = student، aggregationLevel = individual، requiresScoreSettings = false. لا تختزله إلى عمود درجة واحد ولا تحوله إلى توزيع مجمع.
 - إذا كان الملف المجمع يحتوي صف إجمالي، اعتبره صف تحقق لا سجلًا إضافيًا للحساب.
 - لا تطلب الدرجة الكلية أو حد الإتقان لملف توزيع مجمع أو مؤشرات أو استبانة.
-- analyzerId يجب أن يكون أحد: single_subject, assessment_component, level_distribution, cross_subject, supervision_indicator, supervision_multi_visit, student_work, supervision_narrative, survey, training_needs, program_evaluation, behavior_attendance, unknown.
+- analyzerId يجب أن يكون أحد: single_subject, assessment_component, level_distribution, multi_subject_results, cross_subject, supervision_indicator, supervision_multi_visit, student_work, supervision_narrative, survey, training_needs, program_evaluation, behavior_attendance, unknown.
 - analysisFamilies تصف طرق التحليل المطلوبة لهذا الملف، لا قائمة موحدة لكل الملفات.
 - إذا لم ينطبق نوع معروف، اجعل suggestedNewType.needed = true واقترح اسمًا وغرضًا، مع analyzerId = unknown وملف دلالي قابل للتحليل التكيفي.
 - لا تعرض أسماء أشخاص أو أرقام هوية. أعد JSON فقط وفق المخطط.`;
@@ -1188,7 +1189,7 @@ function validatePrimaryAnalysis(result: unknown, payload: JsonRecord, mode: "pr
 
   const recognizedType = payload.recognizedType && typeof payload.recognizedType === "object" ? payload.recognizedType as JsonRecord : {};
   const recognizedTypeId = String(recognizedType.id || "");
-  const scoreLike = ["student_results", "single_subject", "assessment_component", "level_distribution", "cross_subject"].includes(recognizedTypeId);
+  const scoreLike = ["student_results", "single_subject", "assessment_component", "level_distribution", "multi_subject_results", "cross_subject"].includes(recognizedTypeId);
   const numericScoreType = ["student_results", "single_subject", "assessment_component"].includes(recognizedTypeId);
   const scoreContext = numericScoreType ? scoreInterventionContext(payload) : null;
 

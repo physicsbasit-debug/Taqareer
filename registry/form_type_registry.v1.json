@@ -1,5 +1,5 @@
 {
-  "registryVersion": "1.2.0",
+  "registryVersion": "1.2.1",
   "status": "runtime-semantic-router-enabled",
   "principles": {
     "openEndedTypes": true,
@@ -317,6 +317,53 @@
         "cross_subject_comparison_without_normalization"
       ],
       "reportTemplate": "cross_subject_profile_report.v1"
+    },
+    {
+      "id": "student_results.multi_subject_individual.v1",
+      "nameAr": "نتائج طلاب فردية متعددة المواد",
+      "unitOfAnalysis": "student",
+      "modality": "individual_score_level_pairs",
+      "sourceExamples": [
+        "كشف نتائج الصف العاشر متعدد المواد المحفوظ من Crystal Reports بصيغة XLSX"
+      ],
+      "recognition": {
+        "titleSignals": [
+          "كشف نتائج الطلاب",
+          "نتائج الطلبة"
+        ],
+        "requiredFields": [
+          "student_name",
+          "at_least_three_subject_score_level_pairs"
+        ],
+        "fieldSignals": [
+          "حالة القيد",
+          "الجنسية",
+          "الدرجة",
+          "المستوى"
+        ],
+        "rowPolicy": "each_retained_row_is_one_student_record"
+      },
+      "analysisFamilies": [
+        "subject_comparison",
+        "student_profile_segmentation",
+        "level_distribution",
+        "score_level_consistency",
+        "cross_subject_relationships",
+        "enrollment_status_summary"
+      ],
+      "qualityTools": [
+        "score_level_consistency",
+        "subject_benchmark",
+        "student_segmentation",
+        "correlation_if_valid"
+      ],
+      "forbiddenInferences": [
+        "use_nationality_as_educational_comparison",
+        "diagnose_skill_causes_from_total_scores",
+        "treat_rows_as_aggregated_distribution",
+        "request_single_score_column"
+      ],
+      "reportTemplate": "multi_subject_individual_results_report.v1"
     },
     {
       "id": "student_results.aggregated_level_distribution.v2",
