@@ -31,5 +31,5 @@ ADDED
 
 EDGE CONTRACT
 - Operation: analyze_primary
-- Contract: 6.0.0
+- Contract: 6.1.0
 - Edge snapshot: V0.13.0

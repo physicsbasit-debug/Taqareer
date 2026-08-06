@@ -1,4 +1,4 @@
-تقارير v1.0.1 — Phase 2-A
+تقارير v1.0.2 — Phase 2-A
 
 1. ارفع ملفات الحزمة فوق المستودع مع الحفاظ على المسارات.
 2. استبدل وظيفة Supabase analyze-educational-form بمحتوى SUPABASE_FUNCTION_GEMINI_V0_13_0.txt.
