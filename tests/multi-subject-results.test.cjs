@@ -107,7 +107,7 @@ test('frontend and Edge recognize the new type, hide score settings semantically
   assert.match(app, /الجنسيه\|الجنسية/);
   assert.match(edge, /multi_subject_results/);
   assert.match(edge, /سجل نتائج فردي متعدد المواد/);
-  assert.match(edge, /EDGE_VERSION = "0\.15\.1"/);
+  assert.match(edge, /EDGE_VERSION = "0\.15\.2"/);
 });
 
 
@@ -148,7 +148,7 @@ test('official report keeps all thirteen subject bars and structured workbook me
   }, { autoPrint: false });
   assert.match(html, /الصف \/ الفئة<\/span><strong>العاشر/);
   assert.match(html, /2025\/2026 - الدور الأول/);
-  assert.match(html, /مواد متعددة \(13\)/);
+  assert.match(html, /المادة<\/span><strong>متعدد المواد/);
   assert.match(html, /data-chart-id="multi-subject-means"[^>]*data-expected-rows="13"/);
   assert.equal((html.match(/class="bar-row"/g) || []).length >= 35, true);
 });

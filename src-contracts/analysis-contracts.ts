@@ -77,6 +77,38 @@ export interface AdaptiveAnalysisRoute {
   semanticProfileVersion: string | null;
 }
 
+export interface MultiSubjectAnalysisOptions {
+  mode: "all" | "subject";
+  subject?: string;
+  includeSubjectTopTen: boolean;
+  includeSchoolRanking: boolean;
+}
+
+export interface MultiSubjectRankingPolicy {
+  gradeNumber: number;
+  coreWeight: number;
+  allWeight: number;
+  requiredCoreSubjects: string[];
+  missingCoreColumns: string[];
+  eligibleCount: number;
+  incompleteCount: number;
+}
+
+export interface MultiSubjectScopeContext {
+  kind: "multi_subject_student_results";
+  analysisMode: "all" | "subject";
+  selectedSubject?: string;
+  studentCount: number;
+  subjectCount: number;
+  grade?: string;
+  period?: string;
+  academicYear?: string;
+  subjects: string[];
+  targetGroup: string;
+  rankingPolicy?: MultiSubjectRankingPolicy;
+  limitation: string;
+}
+
 export interface EvidenceReference {
   sourceId: string;
   fileName: string;

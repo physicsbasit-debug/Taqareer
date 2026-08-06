@@ -1,4 +1,4 @@
-const EDGE_VERSION = "0.15.1";
+const EDGE_VERSION = "0.15.2";
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 const DEFAULT_MODEL = "gemini-3.6-flash";
 const DEFAULT_FAST_MODEL = "gemini-3.5-flash-lite";
@@ -715,7 +715,8 @@ function primaryAnalysisInstructions(): string {
 18) إذا كان recognizedType.id = supervision_multi_visit فتعامل مع data.visits كسجلات زيارات مستقلة، وافهم أن المقياس معكوس: 1 متميز و5 يحتاج إلى تدخل. حلل الاتجاهات المشتركة دون ترتيب المعلمين، واربط أي عدم اتساق رقمي سردي بالزيارة نفسها فقط، واستخدم معرفات الزيارات المحجوبة بدل أسماء الأشخاص.
 19) في زيارات الإشراف المتعددة التزم حرفيًا بنطاق evidenceAnalysis.scopeContext. لا توسع targetGroup إلى الهيئة التدريسية أو جميع معلمي المدرسة إذا كانت العينة تخص قسمًا أو مواد أو زيارات محددة. اجعل التدخل محصورًا في المعلمين المشمولين بالزيارات أو في فئة أضيق تدعمها الأدلة.
 20) إذا كان recognizedType.semanticProfile موجودًا، استخدمه لتحديد وحدة التحليل ومستوى التجميع وعائلات التحليل، ولا تطلب إعدادات درجات لا تخص بنية الملف.
-21) أعد JSON فقط وفق المخطط، بلا مقدمات أو شرح خارجه.`;
+21) إذا كان recognizedType.id = multi_subject_results فالتزم بنطاق evidenceAnalysis.scopeContext.analysisMode: عند subject حلل selectedSubject وحدها ولا تعمم على بقية المواد؛ وعند all حلل المقارنة الشاملة. جداول الأوائل ودرجة ترتيب الدفعة محسوبة محليًا ومحجوبة عنك، فلا تعِد حساب المراكز ولا تطلب أسماء الطلبة. تعامل مع evidenceAnalysis.scopeContext.rankingPolicy بوصفها سياسة حسابية مقفلة: الأوزان والمواد الأساسية والتعادل والبيانات الناقصة لا يجوز تعديلها أو اقتراح بديل لها.
+22) أعد JSON فقط وفق المخطط، بلا مقدمات أو شرح خارجه.`;
 }
 
 function primaryRescueInstructions(): string {
