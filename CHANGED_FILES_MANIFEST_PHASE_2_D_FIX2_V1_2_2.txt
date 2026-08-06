@@ -1,0 +1,32 @@
+Phase 2-D Fix 2 — Multi-Subject Analysis Workspace & Ranking Engine
+Version: v1.2.2 | Edge: V0.15.2
+
+الملفات المعدلة أو الجديدة:
+- APPLY_PHASE_2_D_FIX2_V1_2_2.txt
+- GITHUB_UPLOAD_INSTRUCTIONS.md
+- README.md
+- README_PHASE_2_D_FIX2_MULTI_SUBJECT_WORKSPACE.md
+- SUPABASE_FUNCTION_GEMINI_V0_15_2.txt
+- TEST_REPORT_PHASE_2_D_FIX2_V1_2_2.md
+- assets/ai-client.js
+- assets/analysis-reconciliation.js
+- assets/app.js
+- assets/deep-analysis-orchestrator.js
+- assets/deep-analysis.js
+- assets/report-system.js
+- assets/styles.css
+- index.html
+- manifest.json
+- package.json
+- scripts/check-contracts.cjs
+- scripts/verify-static.cjs
+- src-contracts/analysis-contracts.ts
+- supabase/functions/analyze-educational-form/index.ts
+- tests/edge-network-health.test.cjs
+- tests/multi-subject-ranking.test.cjs
+- tests/multi-subject-report.test.cjs
+- tests/multi-subject-results.test.cjs
+- tests/multi-visit-pdf.test.cjs
+- tests/report-ai-primary.test.cjs
+- tests/semantic-analysis-router.test.cjs
+- CHANGED_FILES_MANIFEST_PHASE_2_D_FIX2_V1_2_2.txt

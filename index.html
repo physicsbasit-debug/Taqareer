@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="تقارير - منصة التحليل التربوي الذكي للبيانات والاستمارات التعليمية" />
-  <title>تقارير | محرك التحليل التربوي بالذكاء الاصطناعي v1.2.1</title>
+  <title>تقارير | محرك التحليل التربوي بالذكاء الاصطناعي v1.2.2</title>
   <link rel="stylesheet" href="assets/styles.css" />
 </head>
 <body>
@@ -18,7 +18,7 @@
         </div>
       </a>
       <div class="top-actions">
-        <span class="version-badge">نسخة تشغيلية v1.2.1</span>
+        <span class="version-badge">نسخة تشغيلية v1.2.2</span>
         <span id="aiHeaderStatus" class="version-badge">الذكاء الاصطناعي غير مربوط</span>
         <button id="openAiSettingsTopBtn" class="ghost-button" type="button">إعداد الذكاء الاصطناعي</button>
         <button id="resetTopBtn" class="ghost-button" type="button">بدء تحليل جديد</button>
@@ -28,7 +28,7 @@
     <main>
       <section class="hero">
         <div class="hero-copy">
-          <span class="eyebrow">Phase 2-D Fix 1 · نتائج فردية متعددة المواد دون اختيار عمود واحد</span>
+          <span class="eyebrow">Phase 2-D Fix 2 · نتائج فردية متعددة المواد دون اختيار عمود واحد</span>
           <h2>ارفع الملف، ودع «تقارير» يفهمه ويحلله تربويًا مع بقاء الأدلة والحسابات قابلة للمراجعة.</h2>
           <p>يفهم التطبيق بنية كل ملف أولًا: وحدة التحليل، مستوى التجميع، المقاييس واتجاهها. وفي كشوف النتائج متعددة المواد يعيد بناء أزواج الدرجة والمستوى لكل مادة، ويحلل سجل الطالب كاملًا بدل طلب اختيار عمود وحيد، مع إخفاء الأسماء والجنسية قبل الذكاء الاصطناعي وبقاء الحسابات المحلية مصدر الحقيقة.</p>
         </div>
@@ -170,6 +170,17 @@
             <div class="soft-note">لا يفترض النظام الدرجة الكلية من أعلى درجة ظهرت. أكّدها فقط عند رغبتك في حساب النسب والإتقان.</div>
           </article>
 
+          <article id="multiSubjectWorkspaceCard" class="card hidden">
+            <div class="card-heading-inline"><div><h4>مساحة تحليل النتائج متعددة المواد</h4><p>اختر تحليلًا شاملًا للمواد أو ركّز على مادة واحدة. الحساب والترتيب محليان، والأسماء لا تُرسل إلى الذكاء الاصطناعي.</p></div><span class="mode-pill">محرك ترتيب موثوق</span></div>
+            <div class="form-grid multi-subject-workspace-grid">
+              <label><span>نطاق التحليل</span><select id="multiSubjectScopeSelect"><option value="all">تحليل شامل لجميع المواد</option><option value="subject">تحليل مادة محددة</option></select></label>
+              <label id="multiSubjectSubjectLabel" class="hidden"><span>المادة</span><select id="multiSubjectSubjectSelect"></select></label>
+              <label class="switch-row"><input id="includeSubjectTopTenInput" type="checkbox" checked /><span>إدراج العشرة الأوائل في المادة / كل مادة</span></label>
+              <label id="includeSchoolRankingLabel" class="switch-row"><input id="includeSchoolRankingInput" type="checkbox" checked /><span>إدراج العشرة الأوائل على مستوى المدرسة / الدفعة</span></label>
+            </div>
+            <div id="multiSubjectFormulaNote" class="soft-note"></div>
+          </article>
+
           <article id="narrativeSetupCard" class="card hidden">
             <h4>مراجعة النص السردي</h4>
             <p class="muted-copy">عدّل أخطاء الاستخراج الواضحة فقط. سيُحلل النص كما يظهر هنا.</p>
@@ -250,6 +261,11 @@
         <div class="section-title-row"><h4>الاستنتاجات التشخيصية</h4><span>كل استنتاج يعرض الدليل والأثر والحدود والإجراء المرتبط</span></div>
         <div id="findings" class="finding-list"></div>
 
+        <section id="rankingResultsSection" class="result-section hidden">
+          <div class="section-title-row"><div><span class="eyebrow">ترتيب محلي محمي</span><h4>الأوائل ونطاق التحليل</h4></div><span>لا تُرسل الأسماء إلى Gemini</span></div>
+          <div id="rankingResultsContent" class="ranking-results"></div>
+        </section>
+
         <section id="qualityToolsSection" class="result-section hidden">
           <div class="section-title-row"><h4>أدوات الجودة المختارة</h4><span>تظهر فقط عندما تتحقق شروط استخدامها</span></div>
           <div id="qualityToolsGrid" class="quality-tools-grid"></div>
@@ -292,7 +308,7 @@
       </section>
     </main>
 
-    <footer><span>تقارير · v1.2.1</span><span>الذكاء الاصطناعي يحلل، والأرقام لا تفاوض الواقع.</span></footer>
+    <footer><span>تقارير · v1.2.2</span><span>الذكاء الاصطناعي يحلل، والأرقام لا تفاوض الواقع.</span></footer>
   </div>
 
   <dialog id="sheetDialog">
