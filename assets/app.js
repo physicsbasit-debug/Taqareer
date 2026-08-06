@@ -469,7 +469,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "1.2.2",
+      appVersion: "1.2.3",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -509,7 +509,8 @@
         state.semanticProfile = window.TaqareerAnalysisProfiler.mergeProfiles(state.semanticProfile, aiProfile, state.headers);
       }
       const aiConfidence = Math.max(0, Math.min(100, Math.round(Number(classification?.confidence ?? aiProfile?.confidence) || 0)));
-      const adoptKnown = known && known.id !== "unknown" && (
+      const structurallyAllowed = known?.id !== "multi_subject_results" || hasUsableMultiSubjectStructure();
+      const adoptKnown = structurallyAllowed && known && known.id !== "unknown" && (
         state.type.id === "unknown" || state.confidence < 85 || aiConfidence >= state.confidence + 5 ||
         state.semanticProfile?.recommendedTypeId === known.id ||
         (state.sourceMeta?.mode === "narrative" && known.id === "supervision_narrative")
@@ -650,9 +651,13 @@
     }
     $("sheetDialogTitle").textContent = source.kind === "excel" ? "اختر ورقة Excel" : "اختر المحتوى المطلوب تحليله";
     $("sheetSelectLabel").textContent = source.kind === "excel" ? "ورقة العمل" : "المحتوى المستخرج";
-    $("sheetSelect").innerHTML = datasets.map((dataset, index) =>
-      `<option value="${index}">${escapeHtml(dataset.name)} · ${dataset.rows.length} سجل · ${dataset.headers.length} أعمدة</option>`
-    ).join("");
+    $("sheetSelect").innerHTML = datasets.map((dataset, index) => {
+      const subjectCount = Number(dataset.meta?.normalization?.subjectCount || dataset.meta?.metadata?.subjects?.length || 0);
+      const kind = dataset.meta?.specializedType === "multi_subject_results" && subjectCount
+        ? ` · نتائج متعددة المواد (${subjectCount} مادة)`
+        : "";
+      return `<option value="${index}">${escapeHtml(dataset.name)} · ${dataset.rows.length} سجل · ${dataset.headers.length} أعمدة${escapeHtml(kind)}</option>`;
+    }).join("");
     $("sheetDialogSummary").textContent = source.kind === "excel"
       ? `عُثر على ${datasets.length} أوراق تحتوي جداول واضحة. اختر الورقة المطلوبة.`
       : `عُثر على ${datasets.length} خيارات قابلة للتحليل. اختر الجدول أو النص السردي الأنسب.`;
@@ -682,22 +687,27 @@
     try {
       if (!window.TaqareerXlsx?.readWorkbook) throw new Error("وحدة قراءة Excel غير متاحة في هذه الصفحة.");
       const workbook = await window.TaqareerXlsx.readWorkbook(file);
-      queueDatasets({
-        name: workbook.name,
-        kind: "excel",
-        datasets: workbook.sheets.map((sheet, index) => ({
-          id: `excel-sheet-${index}`,
-          name: sheet.name,
-          headers: sheet.headers,
-          rows: sheet.rows,
-          meta: {
-            sourceType: "xlsx", mode: "table", sheetName: sheet.name, headerRow: sheet.headerRow,
-            headerEndRow: sheet.headerEndRow, sheetCount: workbook.sheets.length,
-            reportTitle: sheet.metadata?.title || "", preamble: sheet.metadata?.preamble || [],
-            normalization: sheet.normalization || null
-          }
-        }))
-      });
+      const datasets = workbook.sheets.map((sheet, index) => ({
+        id: `excel-sheet-${index}`,
+        name: sheet.name,
+        headers: sheet.headers,
+        rows: sheet.rows,
+        meta: {
+          sourceType: "xlsx", mode: "table", sheetName: sheet.name, headerRow: sheet.headerRow,
+          headerEndRow: sheet.headerEndRow, sheetCount: workbook.sheets.length,
+          reportTitle: sheet.metadata?.title || "", preamble: sheet.metadata?.preamble || [],
+          specializedType: sheet.specializedType || "",
+          metadata: sheet.metadata || {},
+          normalization: sheet.normalization || null
+        }
+      }));
+      const multiSubject = datasets.filter(dataset => dataset.meta.specializedType === "multi_subject_results");
+      const dominant = multiSubject[0];
+      const runnerUp = multiSubject[1];
+      const preferredDatasetId = multiSubject.length === 1 || (dominant && dominant.rows.length >= Math.max(12, (runnerUp?.rows.length || 0) * 2))
+        ? dominant?.id || ""
+        : "";
+      queueDatasets({ name: workbook.name, kind: "excel", datasets, preferredDatasetId });
     } catch (err) {
       state.pendingSource = null;
       setMessage("inputMessage", err.message || "تعذر قراءة ملف Excel.", true);
@@ -935,15 +945,44 @@
     return map[text] || 0;
   }
 
+  function multiSubjectSubjects() {
+    const candidates = [];
+    const add = value => {
+      const text = String(value || "").trim();
+      if (text && !candidates.some(item => normalize(item) === normalize(text))) candidates.push(text);
+    };
+    const profileSubjects = state.semanticProfile?.columnRoles?.subjects;
+    if (Array.isArray(profileSubjects)) profileSubjects.forEach(item => add(typeof item === "string" ? item : item?.subject));
+    const metadataSubjects = state.sourceMeta?.metadata?.subjects;
+    if (Array.isArray(metadataSubjects)) metadataSubjects.forEach(add);
+    const normalizedSubjects = state.sourceMeta?.normalization?.subjects;
+    if (Array.isArray(normalizedSubjects)) normalizedSubjects.forEach(add);
+    for (const header of state.headers || []) {
+      const match = String(header).match(/^(.+?)\s*-\s*(?:الدرجة|الدرجه)$/i);
+      if (match) {
+        const subject = match[1].trim();
+        const hasLevel = (state.headers || []).some(candidate => normalize(candidate) === normalize(`${subject} - المستوى`));
+        if (hasLevel) add(subject);
+      }
+    }
+    return candidates;
+  }
+
+  function hasUsableMultiSubjectStructure() {
+    return multiSubjectSubjects().length >= 2;
+  }
+
   function currentMultiSubjectOptions() {
     if (state.type.id !== "multi_subject_results") return null;
-    const mode = $("multiSubjectScopeSelect")?.value === "subject" ? "subject" : "all";
-    const subject = mode === "subject" ? String($("multiSubjectSubjectSelect")?.value || "") : "";
+    const subjects = multiSubjectSubjects();
+    const requestedMode = $("multiSubjectScopeSelect")?.value === "subject" ? "subject" : "all";
+    const selected = String($("multiSubjectSubjectSelect")?.value || "").trim();
+    const subject = subjects.includes(selected) ? selected : subjects[0] || "";
     return {
-      mode,
-      subject,
+      mode: requestedMode === "subject" && subject ? "subject" : "all",
+      subject: requestedMode === "subject" ? subject : "",
       includeSubjectTopTen: $("includeSubjectTopTenInput")?.checked !== false,
-      includeSchoolRanking: mode === "all" && $("includeSchoolRankingInput")?.checked !== false,
+      includeSchoolRanking: requestedMode !== "subject" && $("includeSchoolRankingInput")?.checked !== false,
     };
   }
 
@@ -952,22 +991,29 @@
     const active = state.type.id === "multi_subject_results";
     card.classList.toggle("hidden", !active);
     if (!active) return;
-    const subjects = Array.isArray(state.semanticProfile?.columnRoles?.subjects) ? state.semanticProfile.columnRoles.subjects.map(item => item.subject).filter(Boolean) : [];
+    const subjects = multiSubjectSubjects();
     const scope = $("multiSubjectScopeSelect");
     const subjectSelect = $("multiSubjectSubjectSelect");
     const previous = subjectSelect.value || state.multiSubjectOptions?.subject || "";
-    subjectSelect.innerHTML = subjects.map(subject => `<option value="${escapeAttr(subject)}">${escapeHtml(subject)}</option>`).join("");
+    subjectSelect.innerHTML = subjects.length
+      ? subjects.map(subject => `<option value="${escapeAttr(subject)}">${escapeHtml(subject)}</option>`).join("")
+      : `<option value="">لم تُكتشف مواد في الورقة المختارة</option>`;
+    subjectSelect.disabled = !subjects.length;
     if (previous && subjects.includes(previous)) subjectSelect.value = previous;
+    else if (subjects.length) subjectSelect.value = subjects[0];
+    if (!subjects.length && scope.value === "subject") scope.value = "all";
     const mode = scope.value === "subject" ? "subject" : "all";
     $("multiSubjectSubjectLabel").classList.toggle("hidden", mode !== "subject");
     $("includeSchoolRankingLabel").classList.toggle("hidden", mode !== "all");
-    const grade = multiSubjectGradeNumber(state.sourceMeta?.metadata?.grade || state.semanticProfile?.metadata?.grade || "");
+    const grade = multiSubjectGradeNumber(state.sourceMeta?.metadata?.grade || state.sourceMeta?.normalization?.grade || state.semanticProfile?.metadata?.grade || "");
     const formula = grade >= 10 ? "60% من متوسط المواد الأساسية + 40% من متوسط جميع المواد" : "70% من متوسط المواد الأساسية + 30% من متوسط جميع المواد";
-    $("multiSubjectFormulaNote").textContent = mode === "subject"
-      ? `سيحلل التطبيق مادة «${subjectSelect.value || "المادة المختارة"}» كاملة، ويحسب أوائلها محليًا مع إظهار جميع المتعادلين في المركز العاشر.`
-      : grade >= 5 && grade <= 12
-        ? `الترتيب العام للصف ${grade}: ${formula}. لا كسر للتعادل، ومن تنقصه مادة أساسية يظهر «غير مكتمل للترتيب».`
-        : "يتطلب ترتيب المدرسة تحديد صف من 5 إلى 12 داخل بيانات الملف؛ سيبقى تحليل المواد متاحًا دون ترتيب عام حتى يُحسم الصف.";
+    $("multiSubjectFormulaNote").textContent = !subjects.length
+      ? "الورقة الحالية لا تحتوي أزواج درجة ومستوى قابلة للتحليل. ارجع واختر ورقة النتائج الشاملة أو أعد رفع المصنف بعد تحديث الصفحة."
+      : mode === "subject"
+        ? `سيحلل التطبيق مادة «${subjectSelect.value}» كاملة، ويحسب أوائلها محليًا مع إظهار جميع المتعادلين في المركز العاشر.`
+        : grade >= 5 && grade <= 12
+          ? `اكتُشفت ${subjects.length} مادة. الترتيب العام للصف ${grade}: ${formula}. لا كسر للتعادل، ومن تنقصه مادة أساسية يظهر «غير مكتمل للترتيب».`
+          : `اكتُشفت ${subjects.length} مادة. يتطلب ترتيب المدرسة تحديد صف من 5 إلى 12 داخل بيانات الملف، بينما يبقى تحليل المواد متاحًا.`;
     state.multiSubjectOptions = currentMultiSubjectOptions() || state.multiSubjectOptions;
   }
 
@@ -1217,7 +1263,7 @@
     if (!window.TaqareerReconciliation?.composePrimary) throw new Error("محرك التحقق من التحليل الذكي غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "1.2.2",
+      appVersion: "1.2.3",
       pipeline: {
         mode: "ai-primary-analysis-v1",
         instruction: "المحرك المحلي يحسب المؤشرات والرسوم فقط. يبني الذكاء الاصطناعي التشخيص والاستنتاجات والتدخلات من الأدلة، ثم تتحقق البوابة من المراجع قبل عرض التقرير."
@@ -1468,6 +1514,17 @@
       const maxScore = parseNumber($("maxScoreInput").value);
       const thresholdPct = parseNumber($("masteryThresholdInput").value);
       const requiresScoreSettings = state.semanticProfile?.requiresScoreSettings ?? ["single_subject", "assessment_component", "cross_subject"].includes(state.type.id);
+      if (state.type.id === "multi_subject_results") {
+        const options = currentMultiSubjectOptions();
+        if (!hasUsableMultiSubjectStructure()) {
+          setMessage("setupMessage", "الورقة المختارة لا تحتوي أزواج درجة ومستوى لمادتين على الأقل. ارجع واختر ورقة النتائج الشاملة؛ لن ينفذ التطبيق تحليلًا على بنية ناقصة.", true);
+          return;
+        }
+        if (options?.mode === "subject" && !options.subject) {
+          setMessage("setupMessage", "اختر مادة صالحة قبل تنفيذ تحليل المادة.", true);
+          return;
+        }
+      }
       if (requiresScoreSettings && !narrativeMode && state.type.id !== "supervision_multi_visit" && (!Number.isFinite(thresholdPct) || thresholdPct <= 0 || thresholdPct > 100)) {
         setMessage("setupMessage", "حد الإتقان يجب أن يكون بين 1 و100.", true);
         return;
@@ -1797,7 +1854,7 @@
   function exportAnalysis() {
     const payload = {
       app: "تقارير",
-      version: "1.2.2",
+      version: "1.2.3",
       generatedAt: new Date().toISOString(),
       source: state.sourceName,
       sourceMeta: state.sourceMeta,
@@ -1810,7 +1867,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v1.2.2.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v1.2.3.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }

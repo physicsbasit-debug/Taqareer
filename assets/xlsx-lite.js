@@ -97,7 +97,7 @@
   function parseRelationships(xml) {
     const result = new Map();
     if (!xml) return result;
-    const regex = /<Relationship\b([^>]*?)(?:\/>|>[\s\S]*?<\/Relationship>)/gi;
+    const regex = /<(?:[A-Za-z_][\w.-]*:)?Relationship\b([^>]*?)(?:\/>|>[\s\S]*?<\/(?:[A-Za-z_][\w.-]*:)?Relationship>)/gi;
     let match;
     while ((match = regex.exec(xml))) {
       const id = attr(match[1], "Id");
@@ -110,7 +110,7 @@
   function parseWorkbookSheets(xml, relationships) {
     const sheets = [];
     if (!xml) return sheets;
-    const regex = /<sheet\b([^>]*?)(?:\/>|>[\s\S]*?<\/sheet>)/gi;
+    const regex = /<(?:[A-Za-z_][\w.-]*:)?sheet\b([^>]*?)(?:\/>|>[\s\S]*?<\/(?:[A-Za-z_][\w.-]*:)?sheet>)/gi;
     let match;
     while ((match = regex.exec(xml))) {
       const name = attr(match[1], "name") || `ورقة ${sheets.length + 1}`;
@@ -123,7 +123,7 @@
 
   function extractTextTags(xml) {
     const parts = [];
-    const regex = /<t\b[^>]*>([\s\S]*?)<\/t>/gi;
+    const regex = /<(?:[A-Za-z_][\w.-]*:)?t\b[^>]*>([\s\S]*?)<\/(?:[A-Za-z_][\w.-]*:)?t>/gi;
     let match;
     while ((match = regex.exec(xml || ""))) parts.push(decodeXml(match[1]));
     return parts.join("");
@@ -132,7 +132,7 @@
   function parseSharedStrings(xml) {
     const strings = [];
     if (!xml) return strings;
-    const regex = /<si\b[^>]*>([\s\S]*?)<\/si>/gi;
+    const regex = /<(?:[A-Za-z_][\w.-]*:)?si\b[^>]*>([\s\S]*?)<\/(?:[A-Za-z_][\w.-]*:)?si>/gi;
     let match;
     while ((match = regex.exec(xml))) strings.push(extractTextTags(match[1]));
     return strings;
@@ -143,7 +143,7 @@
     const dateStyleIndexes = new Set();
     if (!xml) return dateStyleIndexes;
 
-    const numFmtRegex = /<numFmt\b([^>]*?)(?:\/>|>[\s\S]*?<\/numFmt>)/gi;
+    const numFmtRegex = /<(?:[A-Za-z_][\w.-]*:)?numFmt\b([^>]*?)(?:\/>|>[\s\S]*?<\/(?:[A-Za-z_][\w.-]*:)?numFmt>)/gi;
     let match;
     while ((match = numFmtRegex.exec(xml))) {
       const id = Number(attr(match[1], "numFmtId"));
@@ -151,8 +151,8 @@
       if (Number.isFinite(id)) custom.set(id, code);
     }
 
-    const xfsBlock = xml.match(/<cellXfs\b[^>]*>([\s\S]*?)<\/cellXfs>/i)?.[1] || "";
-    const xfRegex = /<xf\b([^>]*?)(?:\/>|>[\s\S]*?<\/xf>)/gi;
+    const xfsBlock = xml.match(/<(?:[A-Za-z_][\w.-]*:)?cellXfs\b[^>]*>([\s\S]*?)<\/(?:[A-Za-z_][\w.-]*:)?cellXfs>/i)?.[1] || "";
+    const xfRegex = /<(?:[A-Za-z_][\w.-]*:)?xf\b([^>]*?)(?:\/>|>[\s\S]*?<\/(?:[A-Za-z_][\w.-]*:)?xf>)/gi;
     let index = 0;
     while ((match = xfRegex.exec(xfsBlock))) {
       const id = Number(attr(match[1], "numFmtId"));
@@ -191,7 +191,7 @@
     const type = attr(attrs, "t");
     const styleIndex = Number(attr(attrs, "s"));
     if (type === "inlineStr") return extractTextTags(body);
-    const raw = decodeXml(body.match(/<v\b[^>]*>([\s\S]*?)<\/v>/i)?.[1] ?? "");
+    const raw = decodeXml(body.match(/<(?:[A-Za-z_][\w.-]*:)?v\b[^>]*>([\s\S]*?)<\/(?:[A-Za-z_][\w.-]*:)?v>/i)?.[1] ?? "");
     if (type === "s") return sharedStrings[Number(raw)] ?? "";
     if (type === "str") return raw;
     if (type === "b") return raw === "1" ? "نعم" : "لا";
@@ -221,7 +221,7 @@
     const hiddenColumns = new Set();
     if (!xml) return { matrix, merges: [], rowHeights, hiddenRows, columnWidths, hiddenColumns, rightToLeft: false, dimension: null };
 
-    const colRegex = /<col\b([^>]*?)(?:\/>|>[\s\S]*?<\/col>)/gi;
+    const colRegex = /<(?:[A-Za-z_][\w.-]*:)?col\b([^>]*?)(?:\/>|>[\s\S]*?<\/(?:[A-Za-z_][\w.-]*:)?col>)/gi;
     let colMatch;
     while ((colMatch = colRegex.exec(xml))) {
       const min = Math.max(1, Number(attr(colMatch[1], "min")) || 1);
@@ -234,7 +234,7 @@
       }
     }
 
-    const rowRegex = /<row\b([^>]*)>([\s\S]*?)<\/row>/gi;
+    const rowRegex = /<(?:[A-Za-z_][\w.-]*:)?row\b([^>]*)>([\s\S]*?)<\/(?:[A-Za-z_][\w.-]*:)?row>/gi;
     let rowMatch;
     while ((rowMatch = rowRegex.exec(xml))) {
       const declaredRow = Number(attr(rowMatch[1], "r"));
@@ -243,7 +243,7 @@
       if (Number.isFinite(height)) rowHeights.set(rowIndex, height);
       if (["1", "true"].includes(attr(rowMatch[1], "hidden").toLowerCase())) hiddenRows.add(rowIndex);
       const row = matrix[rowIndex] || [];
-      const cellRegex = /<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/gi;
+      const cellRegex = /<(?:[A-Za-z_][\w.-]*:)?c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/(?:[A-Za-z_][\w.-]*:)?c>)/gi;
       let cellMatch;
       while ((cellMatch = cellRegex.exec(rowMatch[2]))) {
         const ref = attr(cellMatch[1], "r");
@@ -254,7 +254,7 @@
     }
 
     const merges = [];
-    const mergeRegex = /<mergeCell\b([^>]*?)(?:\/>|>[\s\S]*?<\/mergeCell>)/gi;
+    const mergeRegex = /<(?:[A-Za-z_][\w.-]*:)?mergeCell\b([^>]*?)(?:\/>|>[\s\S]*?<\/(?:[A-Za-z_][\w.-]*:)?mergeCell>)/gi;
     let mergeMatch;
     while ((mergeMatch = mergeRegex.exec(xml))) {
       const parsed = parseRangeReference(attr(mergeMatch[1], "ref"));
@@ -271,9 +271,9 @@
       }
     }
 
-    const viewAttrs = xml.match(/<sheetView\b([^>]*)>/i)?.[1] || "";
+    const viewAttrs = xml.match(/<(?:[A-Za-z_][\w.-]*:)?sheetView\b([^>]*)>/i)?.[1] || "";
     const rightToLeft = ["1", "true"].includes(attr(viewAttrs, "rightToLeft").toLowerCase());
-    const dimensionAttrs = xml.match(/<dimension\b([^>]*)\/?\s*>/i)?.[1] || "";
+    const dimensionAttrs = xml.match(/<(?:[A-Za-z_][\w.-]*:)?dimension\b([^>]*)\/?\s*>/i)?.[1] || "";
     const dimension = attr(dimensionAttrs, "ref") || null;
     return { matrix: Array.from({ length: matrix.length }, (_, index) => matrix[index] || []), merges, mergeMap, rowHeights, hiddenRows, columnWidths, hiddenColumns, rightToLeft, dimension };
   }
@@ -508,11 +508,21 @@
     return "";
   }
 
+  function nearbyNonEmpty(row, markerIndex, maxDistance = 5) {
+    const before = previousNonEmpty(row, markerIndex, maxDistance);
+    if (before) return before;
+    for (let distance = 1; distance <= maxDistance; distance++) {
+      const value = cleanText(row?.[markerIndex + distance]);
+      if (value && !/^(الصف|الفتره|الفترة|الشعبه|الشعبة|العام الدراسي)\s*:?$/i.test(normalizedText(value))) return value;
+    }
+    return "";
+  }
+
   function academicYearFromHeader(row) {
     const marker = (row || []).findIndex(value => normalizedText(value).includes("العام الدراسي"));
     if (marker < 0) return "";
     const candidates = [];
-    for (let index = Math.max(0, marker - 5); index <= Math.min((row || []).length - 1, marker + 2); index++) {
+    for (let index = Math.max(0, marker - 6); index <= Math.min((row || []).length - 1, marker + 6); index++) {
       const value = cleanText(row[index]);
       if (/^20\d{2}$/.test(value)) candidates.push(Number(value));
     }
@@ -527,35 +537,72 @@
     const periodIndex = findMarker(["الفترة :", "الفترة"]);
     const groupIndex = findMarker(["الشعبة :", "الشعبة"]);
     return {
-      grade: gradeIndex >= 0 ? previousNonEmpty(row, gradeIndex) : "",
-      period: periodIndex >= 0 ? previousNonEmpty(row, periodIndex) : "",
-      group: groupIndex >= 0 ? previousNonEmpty(row, groupIndex) : "",
+      grade: gradeIndex >= 0 ? nearbyNonEmpty(row, gradeIndex) : "",
+      period: periodIndex >= 0 ? nearbyNonEmpty(row, periodIndex) : "",
+      group: groupIndex >= 0 ? nearbyNonEmpty(row, groupIndex) : "",
       academicYear: academicYearFromHeader(row),
     };
   }
 
-  function discoverSubjectNames(headerRow, expectedCount) {
+  function isSubjectCandidate(value) {
+    const text = cleanText(value);
+    const key = normalizedText(text);
+    if (!text || text === ":") return false;
+    if (/^(الكل|الكــل|الشعبه|الشعبة|الصف|الفتره|الفترة|م|\d{4}|\/)$/.test(key)) return false;
+    if (key.includes("العام الدراسي") || key.includes("الطلبه ") || key.includes("الطلاب ")) return false;
+    if (MULTI_SUBJECT_NON_GRADED.has(key)) return false;
+    if (["الماده", "الاسم", "اسم الطالب", "المستوي", "الدرجه", "القيد", "حاله القيد", "الجنسيه"].includes(key)) return false;
+    if (/^(منقول|باق|مرفع|راسب|ناجح|مكمل)$/.test(key)) return false;
+    return !/^\d+(?:\.\d+)?$/.test(key);
+  }
+
+  function discoverSubjectNames(headerRow, expectedCount, pairs = []) {
+    // بعض كشوف الوزارة تضع اسم المادة فوق زوج الدرجة/المستوى مباشرة، وبعض تقارير Crystal
+    // تجمع أسماء المواد في كتلة مستقلة. نجرب المحاذاة أولًا ثم نعود إلى الكتلة المتصلة.
+    if (pairs.length === expectedCount) {
+      const aligned = [];
+      const used = new Set();
+      for (const pair of pairs) {
+        let found = "";
+        const positions = [pair.levelCol, pair.scoreCol, pair.startCol, pair.startCol - 1, pair.startCol + 2];
+        for (const index of positions) {
+          const value = cleanText(headerRow?.[index]);
+          const key = normalizedText(value);
+          if (index >= 0 && isSubjectCandidate(value) && !used.has(key)) { found = value; used.add(key); break; }
+        }
+        if (!found) { aligned.length = 0; break; }
+        aligned.push(found);
+      }
+      if (aligned.length === expectedCount) return aligned;
+    }
+
     const materialIndex = (headerRow || []).findIndex(value => normalizedText(value) === "الماده");
-    const nameIndex = (headerRow || []).findIndex(value => normalizedText(value) === "الاسم");
+    const nameIndex = (headerRow || []).findIndex(value => ["الاسم", "اسم الطالب"].includes(normalizedText(value)));
     const limit = materialIndex >= 0 ? materialIndex : nameIndex >= 0 ? nameIndex : (headerRow || []).length;
     const candidates = [];
     for (let index = 0; index < limit; index++) {
       const text = cleanText(headerRow[index]);
-      const key = normalizedText(text);
-      if (!text || text === ":") continue;
-      if (/^(الكل|الكــل|الشعبه|الشعبة|الصف|الفتره|الفترة|م|\d{4}|\/)$/.test(key)) continue;
-      if (key.includes("العام الدراسي") || key.includes("الطلبه ") || key.includes("الطلاب ")) continue;
-      if (MULTI_SUBJECT_NON_GRADED.has(key)) continue;
-      // أسماء المواد تظهر في كتلة متصلة قبل حقول الاسم والمادة، ولا تكون حقولًا عامة.
-      if (["الماده", "الاسم", "المستوي", "الدرجه", "القيد", "الجنسيه"].includes(key)) continue;
-      candidates.push({ index, text });
+      if (isSubjectCandidate(text)) candidates.push({ index, text });
     }
-    // في تقارير Crystal تظهر مواد الصف بعد وصف الفئة مباشرة؛ نأخذ آخر عدد مطلوب من المرشحين مع الحفاظ على ترتيبها.
     const selected = candidates.slice(-Math.max(0, expectedCount));
     return selected.length === expectedCount ? selected.map(item => item.text) : [];
   }
 
-  function pairRunForRows(layout, startRow, sampleSize = 28) {
+  function pairCandidate(samples, firstCol, secondCol, orientation) {
+    let bothHits = 0, considered = 0;
+    const levelCol = orientation === "level-score" ? firstCol : secondCol;
+    const scoreCol = orientation === "level-score" ? secondCol : firstCol;
+    for (const row of samples) {
+      const level = canonicalPerformanceLevel(row[levelCol]);
+      const score = numericValue(row[scoreCol]);
+      if (cleanText(row[firstCol]) || cleanText(row[secondCol])) considered += 1;
+      if (level && Number.isFinite(score) && score >= 0 && score <= 100) bothHits += 1;
+    }
+    const ratio = bothHits / Math.max(1, considered);
+    return { startCol: Math.min(firstCol, secondCol), levelCol, scoreCol, orientation, ratio, considered, bothHits };
+  }
+
+  function pairRunForRows(layout, startRow, sampleSize = 36) {
     const maxColumns = maxUsedColumns(layout);
     const samples = [];
     for (let row = startRow + 1; row < layout.matrix.length && samples.length < sampleSize; row++) {
@@ -564,76 +611,108 @@
       if (rowContainsAny(values, ["العام الدراسي", "الطلبه المنقولون", "طلبه لهم دور ثاني", "الطلبه المرفعون"])) continue;
       samples.push(values);
     }
-    const pairs = [];
-    for (let col = 0; col + 1 < maxColumns; col += 2) {
-      let levelHits = 0, scoreHits = 0, bothHits = 0, considered = 0;
-      for (const row of samples) {
-        const level = canonicalPerformanceLevel(row[col]);
-        const score = numericValue(row[col + 1]);
-        if (cleanText(row[col]) || cleanText(row[col + 1])) considered += 1;
-        if (level) levelHits += 1;
-        if (Number.isFinite(score) && score >= 0 && score <= 100) scoreHits += 1;
-        if (level && Number.isFinite(score) && score >= 0 && score <= 100) bothHits += 1;
+    const candidates = [];
+    for (let col = 0; col + 1 < maxColumns; col++) {
+      for (const orientation of ["level-score", "score-level"]) {
+        const candidate = pairCandidate(samples, col, col + 1, orientation);
+        if (candidate.considered >= 4 && candidate.ratio >= 0.72) candidates.push(candidate);
       }
-      const ratio = bothHits / Math.max(1, considered);
-      if (considered >= 4 && ratio >= 0.72) pairs.push({ levelCol: col, scoreCol: col + 1, ratio, considered });
     }
-    if (!pairs.length) return null;
-    let best = [], current = [];
-    for (const pair of pairs) {
-      if (!current.length || pair.levelCol === current.at(-1).levelCol + 2) current.push(pair);
-      else { if (current.length > best.length) best = current; current = [pair]; }
+    if (!candidates.length) return null;
+
+    let best = [];
+    let bestQuality = -Infinity;
+    for (const orientation of ["level-score", "score-level"]) {
+      const ordered = candidates.filter(item => item.orientation === orientation).sort((a, b) => a.startCol - b.startCol);
+      for (let index = 0; index < ordered.length; index++) {
+        const run = [ordered[index]];
+        for (let next = index + 1; next < ordered.length; next++) {
+          const expected = run.at(-1).startCol + 2;
+          if (ordered[next].startCol === expected) run.push(ordered[next]);
+          else if (ordered[next].startCol > expected) break;
+        }
+        const quality = run.length * 100 + run.reduce((sum, item) => sum + item.ratio, 0) * 10 + Math.min(50, run.reduce((sum, item) => sum + item.considered, 0) / Math.max(1, run.length));
+        if (run.length > best.length || (run.length === best.length && quality > bestQuality)) {
+          best = run;
+          bestQuality = quality;
+        }
+      }
     }
-    if (current.length > best.length) best = current;
     return best.length >= 3 ? best : null;
   }
 
   function identityColumns(layout, pairs, headerRowIndex) {
-    const start = pairs.at(-1).scoreCol + 1;
-    const maxColumns = Math.min(maxUsedColumns(layout), start + 8);
+    const pairColumns = new Set(pairs.flatMap(pair => [pair.levelCol, pair.scoreCol]));
+    const maxColumns = maxUsedColumns(layout);
     const sampleRows = [];
-    for (let row = headerRowIndex + 1; row < layout.matrix.length && sampleRows.length < 60; row++) {
+    for (let row = headerRowIndex + 1; row < layout.matrix.length && sampleRows.length < 80; row++) {
       const values = layout.matrix[row] || [];
       if (rowContainsAny(values, ["العام الدراسي", "الطلبه المنقولون", "طلبه لهم دور ثاني", "الطلبه المرفعون"])) continue;
-      if (canonicalPerformanceLevel(values[pairs[0].levelCol]) && Number.isFinite(numericValue(values[pairs[0].scoreCol]))) sampleRows.push(values);
+      const pairQuality = pairs.filter(pair => canonicalPerformanceLevel(values[pair.levelCol]) && Number.isFinite(numericValue(values[pair.scoreCol]))).length;
+      if (pairQuality >= Math.max(2, Math.ceil(pairs.length * .45))) sampleRows.push(values);
     }
     const stats = [];
-    for (let col = start; col < maxColumns; col++) {
+    for (let col = 0; col < maxColumns; col++) {
+      if (pairColumns.has(col)) continue;
       const values = sampleRows.map(row => cleanText(row[col])).filter(Boolean);
-      if (!values.length) continue;
-      const numeric = values.filter(value => /^\d+$/.test(value)).length;
+      if (values.length < Math.max(3, Math.ceil(sampleRows.length * .2))) continue;
+      const numericValues = values.filter(value => /^\d+$/.test(value)).map(Number);
+      const numericRatio = numericValues.length / values.length;
       const avgLength = values.reduce((sum, value) => sum + value.length, 0) / values.length;
       const uniqueRatio = new Set(values.map(normalizedText)).size / values.length;
       const knownStatus = values.filter(value => /^(منقول|باق|مرفع|راسب|ناجح|مكمل)$/.test(normalizedText(value))).length;
       const knownNationality = values.filter(value => /عماني|السودان|مصر|باكستان|بنجلادش|الهند|اليمن|سوريا|الاردن|الأردن/.test(normalizedText(value))).length;
-      stats.push({ col, values, numericRatio: numeric / values.length, avgLength, uniqueRatio, statusRatio: knownStatus / values.length, nationalityRatio: knownNationality / values.length });
+      const integerRange = numericValues.length ? Math.max(...numericValues) - Math.min(...numericValues) : Infinity;
+      stats.push({ col, values, numericRatio, avgLength, uniqueRatio, statusRatio: knownStatus / values.length, nationalityRatio: knownNationality / values.length, integerRange });
     }
-    const serial = [...stats].sort((a, b) => (b.numericRatio + b.uniqueRatio * .2) - (a.numericRatio + a.uniqueRatio * .2))[0]?.col;
-    const name = [...stats].filter(item => item.col !== serial).sort((a, b) => (b.avgLength + b.uniqueRatio * 4) - (a.avgLength + a.uniqueRatio * 4))[0]?.col;
-    const status = [...stats].filter(item => ![serial, name].includes(item.col)).sort((a, b) => b.statusRatio - a.statusRatio)[0]?.col;
-    const nationality = [...stats].filter(item => ![serial, name, status].includes(item.col)).sort((a, b) => b.nationalityRatio - a.nationalityRatio)[0]?.col;
-    if (![serial, name, status, nationality].every(Number.isInteger)) return null;
-    return { serial, name, status, nationality };
+    if (!stats.length) return null;
+    const statusItem = [...stats].sort((a, b) => b.statusRatio - a.statusRatio)[0];
+    const nationalityItem = [...stats].filter(item => item.col !== statusItem?.col).sort((a, b) => b.nationalityRatio - a.nationalityRatio)[0];
+    const status = statusItem?.statusRatio >= .2 ? statusItem.col : null;
+    const nationality = nationalityItem?.nationalityRatio >= .2 ? nationalityItem.col : null;
+    const reserved = new Set([status, nationality].filter(Number.isInteger));
+    const serialItem = [...stats].filter(item => !reserved.has(item.col)).sort((a, b) => {
+      const scoreA = a.numericRatio * 10 + a.uniqueRatio * 2 - Math.min(3, a.avgLength / 10) - Math.min(3, a.integerRange / 5000);
+      const scoreB = b.numericRatio * 10 + b.uniqueRatio * 2 - Math.min(3, b.avgLength / 10) - Math.min(3, b.integerRange / 5000);
+      return scoreB - scoreA;
+    })[0];
+    const serial = serialItem?.numericRatio >= .65 ? serialItem.col : null;
+    if (Number.isInteger(serial)) reserved.add(serial);
+    const nameItem = [...stats].filter(item => !reserved.has(item.col) && item.numericRatio < .35 && item.statusRatio < .2 && item.nationalityRatio < .2)
+      .sort((a, b) => (b.avgLength + b.uniqueRatio * 5) - (a.avgLength + a.uniqueRatio * 5))[0];
+    if (!nameItem || nameItem.avgLength < 5) return null;
+    return { serial, name: nameItem.col, status, nationality };
   }
 
   function isMultiSubjectHeaderRow(row) {
-    return rowContainsAny(row, ["العام الدراسي"]) && rowContainsAny(row, ["المستوى"]) && rowContainsAny(row, ["الدرجة"]) && rowContainsAny(row, ["الاسم"]);
+    const hasLevel = rowContainsAny(row, ["المستوى"]);
+    const hasScore = rowContainsAny(row, ["الدرجة"]);
+    const hasName = rowContainsAny(row, ["اسم الطالب", "الاسم"]);
+    const hasContext = rowContainsAny(row, ["العام الدراسي", "المادة", "الصف", "الفترة"]);
+    return hasLevel && hasScore && hasName && hasContext;
   }
 
   function multiSubjectResultsTable(layout) {
     const headerRows = [];
-    for (let row = 0; row < Math.min(layout.matrix.length, 80); row++) {
+    for (let row = 0; row < Math.min(layout.matrix.length, 120); row++) {
       if (isMultiSubjectHeaderRow(layout.matrix[row] || [])) headerRows.push(row);
     }
     if (!headerRows.length) return null;
-    const firstHeaderRow = headerRows[0];
-    const pairs = pairRunForRows(layout, firstHeaderRow);
-    if (!pairs || pairs.length < 3) return null;
-    const subjects = discoverSubjectNames(layout.matrix[firstHeaderRow] || [], pairs.length);
-    if (subjects.length !== pairs.length) return null;
-    const identity = identityColumns(layout, pairs, firstHeaderRow);
-    if (!identity) return null;
 
+    let selected = null;
+    for (const headerRowIndex of headerRows) {
+      const pairs = pairRunForRows(layout, headerRowIndex);
+      if (!pairs || pairs.length < 3) continue;
+      const subjects = discoverSubjectNames(layout.matrix[headerRowIndex] || [], pairs.length, pairs);
+      if (subjects.length !== pairs.length) continue;
+      const identity = identityColumns(layout, pairs, headerRowIndex);
+      if (!identity) continue;
+      const quality = pairs.length * 100 + pairs.reduce((sum, pair) => sum + pair.ratio, 0) * 10;
+      if (!selected || quality > selected.quality) selected = { headerRowIndex, pairs, subjects, identity, quality };
+    }
+    if (!selected) return null;
+
+    const { headerRowIndex: firstHeaderRow, pairs, subjects, identity } = selected;
     const headers = ["م", "اسم الطالب", "الجنسية", "حالة القيد", "فئة السجل"];
     for (const subject of subjects) headers.push(`${subject} - الدرجة`, `${subject} - المستوى`);
     const rows = [];
@@ -649,14 +728,13 @@
         continue;
       }
       const name = cleanText(values[identity.name]);
-      const serial = cleanText(values[identity.serial]);
       const pairQuality = pairs.filter(pair => canonicalPerformanceLevel(values[pair.levelCol]) && Number.isFinite(numericValue(values[pair.scoreCol]))).length;
       if (!name || pairQuality < Math.max(2, Math.ceil(pairs.length * .55))) { skippedRows += 1; continue; }
       const record = {
-        "م": serial,
+        "م": Number.isInteger(identity.serial) ? cleanText(values[identity.serial]) : String(rows.length + 1),
         "اسم الطالب": name,
-        "الجنسية": cleanText(values[identity.nationality]),
-        "حالة القيد": cleanText(values[identity.status]),
+        "الجنسية": Number.isInteger(identity.nationality) ? cleanText(values[identity.nationality]) : "",
+        "حالة القيد": Number.isInteger(identity.status) ? cleanText(values[identity.status]) : "",
         "فئة السجل": currentSection,
       };
       subjects.forEach((subject, index) => {
@@ -689,7 +767,7 @@
         scoreCount,
       },
       normalization: {
-        engine: "multi-subject-results-normalizer-v1",
+        engine: "multi-subject-results-normalizer-v2",
         applied: true,
         kind: "multi_subject_results",
         originalRows: layout.matrix.length,
@@ -706,6 +784,8 @@
         academicYear: metadata.academicYear,
         group: metadata.group,
         subjects,
+        pairOrientation: pairs[0]?.orientation || "level-score",
+        pairStartColumn: Math.min(...pairs.map(pair => pair.startCol)) + 1,
       }
     };
   }
