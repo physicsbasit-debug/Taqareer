@@ -5,6 +5,7 @@
     { id: "single_subject", name: "نتائج الطلبة في مادة واحدة", purpose: "تحليل درجات الطلبة في مادة محددة وتحديد أنماط الأداء والاحتياج.", keywords: ["اسم الطالب", "الدرجة", "المستوى", "حالة القيد", "المادة"], min: 2 },
     { id: "assessment_component", name: "درجات مكوّن تقويمي", purpose: "تحليل درجات التقويم المستمر أو الاختبار أو أي عنصر تقويمي محدد.", keywords: ["عنصر المادة", "اختبار", "التقويم المستمر", "درجة عنصر"], min: 2 },
     { id: "level_distribution", name: "توزيع مستويات الأداء", purpose: "تحليل أعداد ونسب الطلبة حسب مستويات الأداء ومقارنة المجموعات.", keywords: ["أ", "ب", "ج", "د", "هـ", "المجموع", "النسبة"], min: 4 },
+    { id: "multi_subject_results", name: "نتائج طلاب فردية متعددة المواد", purpose: "تحليل درجات ومستويات كل طالب عبر عدة مواد مع مقارنة المواد وفصل التعثر الشامل عن التخصصي.", keywords: ["اسم الطالب", "حالة القيد", "المستوى", "الدرجة", "اللغة العربية", "الرياضيات", "الفيزياء"], min: 4 },
     { id: "cross_subject", name: "الأداء عبر المواد", purpose: "بناء صورة شاملة لأداء الطالب أو الصف في عدة مواد.", keywords: ["اللغة العربية", "اللغة الإنجليزية", "الرياضيات", "العلوم", "الدراسات الاجتماعية"], min: 3 },
     { id: "supervision_indicator", name: "ملخص مؤشرات زيارة إشرافية", purpose: "تحليل مؤشرات الأداء الإشرافي ومواطن القوة وأولويات التطوير.", keywords: ["بنود التقويم", "المتوسط", "التخطيط", "إدارة الصف", "استراتيجيات التدريس"], min: 2 },
     { id: "supervision_multi_visit", name: "زيارات إشرافية متعددة", purpose: "تحليل عدة زيارات إشرافية مع فصل المعلمين والزيارات وربط التقدير الرقمي بالدليل السردي.", keywords: ["معرف الزيارة", "رقم الزيارة", "تاريخ الزيارة", "المادة", "جوانب الإجادة", "التوصيات"], min: 4 },
@@ -257,6 +258,7 @@
     single_subject: [["اسم الطالب", "الطالب"], ["الدرجة", "المجموع"]],
     assessment_component: [["اسم الطالب", "الطالب"], ["عنصر المادة", "عنصر التقويم"], ["درجة عنصر المادة", "درجة العنصر", "الدرجة"]],
     level_distribution: [["الصف", "الشعبة", "المجموعة", "البيان", "الفئة"], ["المجموع", "الإجمالي", "جملة عامة", "العدد الكلي"]],
+    multi_subject_results: [["اسم الطالب", "الطالب"], ["حالة القيد", "القيد"]],
     cross_subject: [["اسم الطالب", "الطالب"]],
     supervision_indicator: [["بنود التقويم", "البند"], ["المتوسط"]],
     supervision_multi_visit: [["معرف الزيارة"], ["تاريخ الزيارة"], ["المادة"], ["جوانب الإجادة"], ["التوصيات"]],
@@ -316,6 +318,14 @@
 
     if (sourceMeta?.specializedType === "supervision_multi_visit") {
       add("supervision_multi_visit", 140, "اكتشاف بنية PDF متعددة الزيارات والجداول");
+    }
+    if (sourceMeta?.specializedType === "multi_subject_results") {
+      add("multi_subject_results", 160, "اكتشاف سجل نتائج فردي متعدد المواد بأزواج درجة ومستوى");
+    }
+    const subjectScoreHeaders = headers.filter(header => /-\s*الدرجه$/i.test(normalize(header)));
+    const subjectLevelHeaders = headers.filter(header => /-\s*المستوي$/i.test(normalize(header)));
+    if (subjectScoreHeaders.length >= 3 && subjectLevelHeaders.length >= 3 && exactHeader(headers, ["اسم الطالب"])) {
+      add("multi_subject_results", 96, `وجود ${Math.min(subjectScoreHeaders.length, subjectLevelHeaders.length)} مواد بأزواج درجة ومستوى`);
     }
     if (exactHeader(headers, ["معرف الزيارة"]) && exactHeader(headers, ["تاريخ الزيارة"]) && exactHeader(headers, ["المادة"])) {
       add("supervision_multi_visit", 76, "وجود سجلات زيارات منفصلة ببيانات المعلم والمادة والتاريخ");
@@ -458,7 +468,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "1.2.0",
+      appVersion: "1.2.1",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -942,6 +952,7 @@
       single_subject: ["تحليل وصفي متقدم: الربيعات والمئينات والالتواء والتشتت", "تحليل الإتقان وحساسية المعيار وفئات التدخل", "اكتشاف القيم المتطرفة وبناء خط أساس", "أدوات جودة وخطة علاج وإثراء وإعادة قياس"],
       assessment_component: ["تحليل عميق لمكوّن التقويم وتوزيع الدرجات", "فئات القرب من الإتقان والتعثر الشديد", "مراجعة القيم المتطرفة واتساق الحكم", "خطة تدخل متعددة المستويات قابلة للمقارنة لاحقًا"],
       level_distribution: ["تحليل المستويات العليا والدنيا ومركز التوزيع", "مقارنة الصفوف أو الشعب وترتيب الأولوية", "مصفوفة فجوة وانتقال المستويات", "خطة تدخل جماعي وفردي وإثرائي"],
+      multi_subject_results: ["تحليل شامل لدرجات ومستويات الطلبة عبر جميع المواد", "مقارنة المواد وترتيب أولويات الدعم والإثراء", "فصل التعثر متعدد المواد عن التعثر التخصصي", "فحص اتساق الدرجة والمستوى والعلاقات الوصفية بين المواد"],
       cross_subject: ["ترتيب المواد ونسب الإتقان والتفاوت", "تمييز التعثر الشامل من التعثر التخصصي", "تحليل العلاقات الوصفية بين المواد", "خريطة تدخل مشتركة ومتابعة متعددة التخصصات"],
       supervision_indicator: ["تجميع المؤشرات في مجالات إشرافية", "رادار الأداء وتحليل الفجوة وباريتو الأولويات", "مصفوفة أولوية الأثر والجهد", "خطة نمو مهني ودورة PDCA وإعادة ملاحظة"],
       supervision_multi_visit: ["فصل الزيارات والمعلمين والمواد إلى سجلات مستقلة", "تحليل المقياس المعكوس 1 متميز إلى 5 يحتاج إلى تدخل", "ربط التقدير الرقمي بالدليل السردي داخل كل زيارة", "مقارنة المؤشرات والزيارات وبناء تدخلات جماعية وفردية دون خلط السجلات"],
@@ -962,6 +973,11 @@
       group_comparison: "مقارنة المجموعات وترتيب الأولوية",
       concentration_analysis: "قياس التركّز والتفاوت بين المستويات",
       aggregate_consistency_check: "مطابقة المجاميع والنسب مع الصف الإجمالي",
+      subject_comparison: "مقارنة المواد وترتيب الأداء والأولوية",
+      student_profile_segmentation: "فصل التعثر متعدد المواد عن التعثر التخصصي",
+      score_level_consistency: "فحص اتساق الدرجة الرقمية مع المستوى الحرفي",
+      cross_subject_relationships: "تحليل العلاقات الوصفية بين المواد",
+      enrollment_status_summary: "تلخيص حالات القيد أو النتيجة دون تفسير سببي",
       comparative_analysis: "مقارنة المقاييس أو الفئات وفق بنية الملف",
       indicator_analysis: "تحليل المؤشرات وترتيب الفجوات",
       narrative_evidence: "تحليل الأدلة السردية وقوة الاستدلال",
@@ -983,16 +999,17 @@
 
   function isSensitiveHeader(header) {
     const value = normalize(header);
-    return /اسم.*طالب|اسم.*معلم|^المعلم$|الرقم.*مدني|رقم.*طالب|رقم.*ملف|هاتف|بريد|ايميل|عنوان|بطاقه|هوية|هويه|civil|student.?id|teacher.?id|phone|email/.test(value);
+    return /اسم.*طالب|اسم.*معلم|^المعلم$|الجنسيه|الجنسية|الرقم.*مدني|رقم.*طالب|رقم.*ملف|هاتف|بريد|ايميل|عنوان|بطاقه|هوية|هويه|civil|nationality|student.?id|teacher.?id|phone|email/.test(value);
   }
 
   function tableAiLimit() {
     // ملفات الدرجات تُفهم أساسًا من المؤشرات والرسوم المحسوبة من كامل البيانات؛
     // إرسال عشرات السجلات المتشابهة يبطئ النموذج دون إضافة معنى تحليلي حقيقي.
     if (["single_subject", "assessment_component"].includes(state.type.id)) return 24;
+    if (state.type.id === "multi_subject_results") return 48;
     if (state.type.id === "supervision_multi_visit") return 120;
     if (state.type.id === "unknown") return 60;
-    if (["supervision_indicator", "student_work", "survey", "training_needs", "program_evaluation", "behavior_attendance", "level_distribution", "cross_subject"].includes(state.type.id)) return 60;
+    if (["supervision_indicator", "student_work", "survey", "training_needs", "program_evaluation", "behavior_attendance", "level_distribution", "cross_subject", "multi_subject_results"].includes(state.type.id)) return 60;
     return 40;
   }
 
@@ -1142,7 +1159,7 @@
     if (!window.TaqareerReconciliation?.composePrimary) throw new Error("محرك التحقق من التحليل الذكي غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "1.2.0",
+      appVersion: "1.2.1",
       pipeline: {
         mode: "ai-primary-analysis-v1",
         instruction: "المحرك المحلي يحسب المؤشرات والرسوم فقط. يبني الذكاء الاصطناعي التشخيص والاستنتاجات والتدخلات من الأدلة، ثم تتحقق البوابة من المراجع قبل عرض التقرير."
@@ -1686,7 +1703,7 @@
   function exportAnalysis() {
     const payload = {
       app: "تقارير",
-      version: "1.2.0",
+      version: "1.2.1",
       generatedAt: new Date().toISOString(),
       source: state.sourceName,
       sourceMeta: state.sourceMeta,
@@ -1699,7 +1716,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v1.2.0.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v1.2.1.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }

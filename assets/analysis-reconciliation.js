@@ -1,10 +1,10 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.2.0";
+  const VERSION = "1.2.1";
   const CONTRACT_VERSION = "6.6.0";
 
-  const SCORE_TYPES = new Set(["student_results", "single_subject", "assessment_component", "level_distribution", "cross_subject"]);
+  const SCORE_TYPES = new Set(["student_results", "single_subject", "assessment_component", "level_distribution", "multi_subject_results", "cross_subject"]);
   const NUMERIC_SCORE_TYPES = new Set(["student_results", "single_subject", "assessment_component"]);
   const LOCKED_SCORE_COUNTS = Object.freeze({ diagnosticSections: 4, findings: 5, interventions: 4, monitoring: 4 });
 

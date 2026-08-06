@@ -474,7 +474,245 @@
       .sort((a, b) => rank(a.header, a.originalIndex) - rank(b.header, b.originalIndex));
   }
 
+
+
+  const MULTI_SUBJECT_NON_GRADED = new Set(["خدمه التوجيه المهني", "خدمة التوجيه المهني"]);
+
+  function canonicalPerformanceLevel(value) {
+    const text = normalizedText(value).replace(/\s/g, "");
+    if (["ا", "أ", "a"].includes(text)) return "أ";
+    if (["ب", "b"].includes(text)) return "ب";
+    if (["ج", "c"].includes(text)) return "ج";
+    if (["د", "d"].includes(text)) return "د";
+    if (["ه", "هـ", "e"].includes(text)) return "هـ";
+    return "";
+  }
+
+  function numericValue(value) {
+    const text = cleanText(value).replace(/[٠-٩]/g, ch => "٠١٢٣٤٥٦٧٨٩".indexOf(ch)).replace(/[٬,]/g, "").replace(/٫/g, ".");
+    if (!text) return NaN;
+    const number = Number(text);
+    return Number.isFinite(number) ? number : NaN;
+  }
+
+  function rowContainsAny(row, patterns) {
+    const text = normalizedText((row || []).map(cleanText).filter(Boolean).join(" "));
+    return patterns.some(pattern => text.includes(normalizedText(pattern)));
+  }
+
+  function previousNonEmpty(row, markerIndex, maxDistance = 4) {
+    for (let distance = 1; distance <= maxDistance; distance++) {
+      const value = cleanText(row?.[markerIndex - distance]);
+      if (value) return value;
+    }
+    return "";
+  }
+
+  function academicYearFromHeader(row) {
+    const marker = (row || []).findIndex(value => normalizedText(value).includes("العام الدراسي"));
+    if (marker < 0) return "";
+    const candidates = [];
+    for (let index = Math.max(0, marker - 5); index <= Math.min((row || []).length - 1, marker + 2); index++) {
+      const value = cleanText(row[index]);
+      if (/^20\d{2}$/.test(value)) candidates.push(Number(value));
+    }
+    if (candidates.length < 2) return "";
+    const low = Math.min(...candidates), high = Math.max(...candidates);
+    return `${low}/${high}`;
+  }
+
+  function headerMetadata(row) {
+    const findMarker = aliases => (row || []).findIndex(value => aliases.some(alias => normalizedText(value).includes(normalizedText(alias))));
+    const gradeIndex = findMarker(["الصف :", "الصف"]);
+    const periodIndex = findMarker(["الفترة :", "الفترة"]);
+    const groupIndex = findMarker(["الشعبة :", "الشعبة"]);
+    return {
+      grade: gradeIndex >= 0 ? previousNonEmpty(row, gradeIndex) : "",
+      period: periodIndex >= 0 ? previousNonEmpty(row, periodIndex) : "",
+      group: groupIndex >= 0 ? previousNonEmpty(row, groupIndex) : "",
+      academicYear: academicYearFromHeader(row),
+    };
+  }
+
+  function discoverSubjectNames(headerRow, expectedCount) {
+    const materialIndex = (headerRow || []).findIndex(value => normalizedText(value) === "الماده");
+    const nameIndex = (headerRow || []).findIndex(value => normalizedText(value) === "الاسم");
+    const limit = materialIndex >= 0 ? materialIndex : nameIndex >= 0 ? nameIndex : (headerRow || []).length;
+    const candidates = [];
+    for (let index = 0; index < limit; index++) {
+      const text = cleanText(headerRow[index]);
+      const key = normalizedText(text);
+      if (!text || text === ":") continue;
+      if (/^(الكل|الكــل|الشعبه|الشعبة|الصف|الفتره|الفترة|م|\d{4}|\/)$/.test(key)) continue;
+      if (key.includes("العام الدراسي") || key.includes("الطلبه ") || key.includes("الطلاب ")) continue;
+      if (MULTI_SUBJECT_NON_GRADED.has(key)) continue;
+      // أسماء المواد تظهر في كتلة متصلة قبل حقول الاسم والمادة، ولا تكون حقولًا عامة.
+      if (["الماده", "الاسم", "المستوي", "الدرجه", "القيد", "الجنسيه"].includes(key)) continue;
+      candidates.push({ index, text });
+    }
+    // في تقارير Crystal تظهر مواد الصف بعد وصف الفئة مباشرة؛ نأخذ آخر عدد مطلوب من المرشحين مع الحفاظ على ترتيبها.
+    const selected = candidates.slice(-Math.max(0, expectedCount));
+    return selected.length === expectedCount ? selected.map(item => item.text) : [];
+  }
+
+  function pairRunForRows(layout, startRow, sampleSize = 28) {
+    const maxColumns = maxUsedColumns(layout);
+    const samples = [];
+    for (let row = startRow + 1; row < layout.matrix.length && samples.length < sampleSize; row++) {
+      if (layout.hiddenRows.has(row)) continue;
+      const values = layout.matrix[row] || [];
+      if (rowContainsAny(values, ["العام الدراسي", "الطلبه المنقولون", "طلبه لهم دور ثاني", "الطلبه المرفعون"])) continue;
+      samples.push(values);
+    }
+    const pairs = [];
+    for (let col = 0; col + 1 < maxColumns; col += 2) {
+      let levelHits = 0, scoreHits = 0, bothHits = 0, considered = 0;
+      for (const row of samples) {
+        const level = canonicalPerformanceLevel(row[col]);
+        const score = numericValue(row[col + 1]);
+        if (cleanText(row[col]) || cleanText(row[col + 1])) considered += 1;
+        if (level) levelHits += 1;
+        if (Number.isFinite(score) && score >= 0 && score <= 100) scoreHits += 1;
+        if (level && Number.isFinite(score) && score >= 0 && score <= 100) bothHits += 1;
+      }
+      const ratio = bothHits / Math.max(1, considered);
+      if (considered >= 4 && ratio >= 0.72) pairs.push({ levelCol: col, scoreCol: col + 1, ratio, considered });
+    }
+    if (!pairs.length) return null;
+    let best = [], current = [];
+    for (const pair of pairs) {
+      if (!current.length || pair.levelCol === current.at(-1).levelCol + 2) current.push(pair);
+      else { if (current.length > best.length) best = current; current = [pair]; }
+    }
+    if (current.length > best.length) best = current;
+    return best.length >= 3 ? best : null;
+  }
+
+  function identityColumns(layout, pairs, headerRowIndex) {
+    const start = pairs.at(-1).scoreCol + 1;
+    const maxColumns = Math.min(maxUsedColumns(layout), start + 8);
+    const sampleRows = [];
+    for (let row = headerRowIndex + 1; row < layout.matrix.length && sampleRows.length < 60; row++) {
+      const values = layout.matrix[row] || [];
+      if (rowContainsAny(values, ["العام الدراسي", "الطلبه المنقولون", "طلبه لهم دور ثاني", "الطلبه المرفعون"])) continue;
+      if (canonicalPerformanceLevel(values[pairs[0].levelCol]) && Number.isFinite(numericValue(values[pairs[0].scoreCol]))) sampleRows.push(values);
+    }
+    const stats = [];
+    for (let col = start; col < maxColumns; col++) {
+      const values = sampleRows.map(row => cleanText(row[col])).filter(Boolean);
+      if (!values.length) continue;
+      const numeric = values.filter(value => /^\d+$/.test(value)).length;
+      const avgLength = values.reduce((sum, value) => sum + value.length, 0) / values.length;
+      const uniqueRatio = new Set(values.map(normalizedText)).size / values.length;
+      const knownStatus = values.filter(value => /^(منقول|باق|مرفع|راسب|ناجح|مكمل)$/.test(normalizedText(value))).length;
+      const knownNationality = values.filter(value => /عماني|السودان|مصر|باكستان|بنجلادش|الهند|اليمن|سوريا|الاردن|الأردن/.test(normalizedText(value))).length;
+      stats.push({ col, values, numericRatio: numeric / values.length, avgLength, uniqueRatio, statusRatio: knownStatus / values.length, nationalityRatio: knownNationality / values.length });
+    }
+    const serial = [...stats].sort((a, b) => (b.numericRatio + b.uniqueRatio * .2) - (a.numericRatio + a.uniqueRatio * .2))[0]?.col;
+    const name = [...stats].filter(item => item.col !== serial).sort((a, b) => (b.avgLength + b.uniqueRatio * 4) - (a.avgLength + a.uniqueRatio * 4))[0]?.col;
+    const status = [...stats].filter(item => ![serial, name].includes(item.col)).sort((a, b) => b.statusRatio - a.statusRatio)[0]?.col;
+    const nationality = [...stats].filter(item => ![serial, name, status].includes(item.col)).sort((a, b) => b.nationalityRatio - a.nationalityRatio)[0]?.col;
+    if (![serial, name, status, nationality].every(Number.isInteger)) return null;
+    return { serial, name, status, nationality };
+  }
+
+  function isMultiSubjectHeaderRow(row) {
+    return rowContainsAny(row, ["العام الدراسي"]) && rowContainsAny(row, ["المستوى"]) && rowContainsAny(row, ["الدرجة"]) && rowContainsAny(row, ["الاسم"]);
+  }
+
+  function multiSubjectResultsTable(layout) {
+    const headerRows = [];
+    for (let row = 0; row < Math.min(layout.matrix.length, 80); row++) {
+      if (isMultiSubjectHeaderRow(layout.matrix[row] || [])) headerRows.push(row);
+    }
+    if (!headerRows.length) return null;
+    const firstHeaderRow = headerRows[0];
+    const pairs = pairRunForRows(layout, firstHeaderRow);
+    if (!pairs || pairs.length < 3) return null;
+    const subjects = discoverSubjectNames(layout.matrix[firstHeaderRow] || [], pairs.length);
+    if (subjects.length !== pairs.length) return null;
+    const identity = identityColumns(layout, pairs, firstHeaderRow);
+    if (!identity) return null;
+
+    const headers = ["م", "اسم الطالب", "الجنسية", "حالة القيد", "فئة السجل"];
+    for (const subject of subjects) headers.push(`${subject} - الدرجة`, `${subject} - المستوى`);
+    const rows = [];
+    let currentSection = "";
+    let repeatedHeaderRows = 0;
+    let skippedRows = 0;
+    for (let rowIndex = firstHeaderRow; rowIndex < layout.matrix.length; rowIndex++) {
+      const values = layout.matrix[rowIndex] || [];
+      if (isMultiSubjectHeaderRow(values)) {
+        repeatedHeaderRows += rowIndex === firstHeaderRow ? 0 : 1;
+        const label = values.map(cleanText).find(value => /الطلبه|الطلاب|الدور الثاني|المكملون|المرفعون/.test(normalizedText(value)));
+        if (label) currentSection = label;
+        continue;
+      }
+      const name = cleanText(values[identity.name]);
+      const serial = cleanText(values[identity.serial]);
+      const pairQuality = pairs.filter(pair => canonicalPerformanceLevel(values[pair.levelCol]) && Number.isFinite(numericValue(values[pair.scoreCol]))).length;
+      if (!name || pairQuality < Math.max(2, Math.ceil(pairs.length * .55))) { skippedRows += 1; continue; }
+      const record = {
+        "م": serial,
+        "اسم الطالب": name,
+        "الجنسية": cleanText(values[identity.nationality]),
+        "حالة القيد": cleanText(values[identity.status]),
+        "فئة السجل": currentSection,
+      };
+      subjects.forEach((subject, index) => {
+        const pair = pairs[index];
+        record[`${subject} - الدرجة`] = cleanText(values[pair.scoreCol]);
+        record[`${subject} - المستوى`] = canonicalPerformanceLevel(values[pair.levelCol]) || cleanText(values[pair.levelCol]);
+      });
+      rows.push(record);
+    }
+    if (rows.length < 5) return null;
+    const metadata = headerMetadata(layout.matrix[firstHeaderRow] || []);
+    const scoreCount = rows.reduce((sum, row) => sum + subjects.filter(subject => Number.isFinite(numericValue(row[`${subject} - الدرجة`]))).length, 0);
+    return {
+      headers,
+      rows,
+      headerRow: firstHeaderRow + 1,
+      headerEndRow: firstHeaderRow + 1,
+      matrix: layout.matrix,
+      score: 1000 + subjects.length * 20 + rows.length,
+      specializedType: "multi_subject_results",
+      metadata: {
+        title: "كشف نتائج طلاب فردي متعدد المواد",
+        subject: `مواد متعددة (${subjects.length}): ${subjects.join("، ")}`,
+        grade: metadata.grade,
+        period: metadata.period,
+        academicYear: metadata.academicYear,
+        group: metadata.group,
+        subjects,
+        studentCount: rows.length,
+        scoreCount,
+      },
+      normalization: {
+        engine: "multi-subject-results-normalizer-v1",
+        applied: true,
+        kind: "multi_subject_results",
+        originalRows: layout.matrix.length,
+        originalColumns: maxUsedColumns(layout),
+        logicalColumns: headers.length,
+        retainedRows: rows.length,
+        subjectCount: subjects.length,
+        scoreCount,
+        repeatedHeaderRows,
+        removedSpacerRows: skippedRows,
+        reportTitle: "كشف نتائج طلاب فردي متعدد المواد",
+        grade: metadata.grade,
+        period: metadata.period,
+        academicYear: metadata.academicYear,
+        group: metadata.group,
+        subjects,
+      }
+    };
+  }
+
   function matrixToTable(layout) {
+    const specialized = multiSubjectResultsTable(layout);
+    if (specialized) return specialized;
     const selected = chooseHeaderBand(layout);
     if (!selected || !Number.isFinite(selected.score)) {
       return { headers: [], rows: [], headerRow: -1, matrix: layout.matrix, score: -Infinity, metadata: {}, normalization: {} };
@@ -547,6 +785,22 @@
     };
   }
 
+  function normalizeMatrix(matrix, options = {}) {
+    const safeMatrix = Array.isArray(matrix) ? matrix.map(row => Array.isArray(row) ? [...row] : []) : [];
+    const layout = {
+      matrix: safeMatrix,
+      merges: [],
+      mergeMap: new Map(),
+      rowHeights: new Map(),
+      hiddenRows: new Set(options.hiddenRows || []),
+      columnWidths: new Map(),
+      hiddenColumns: new Set(options.hiddenColumns || []),
+      rightToLeft: Boolean(options.rightToLeft),
+      dimension: null,
+    };
+    return matrixToTable(layout);
+  }
+
   async function readWorkbook(file) {
     const zip = createZipReader(await file.arrayBuffer());
     const workbookXml = await zip.readText("xl/workbook.xml");
@@ -575,5 +829,5 @@
     return { name: file.name, sheets: usableSheets };
   }
 
-  window.TaqareerXlsx = { readWorkbook };
+  window.TaqareerXlsx = { readWorkbook, normalizeMatrix };
 })();

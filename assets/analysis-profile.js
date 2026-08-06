@@ -79,6 +79,77 @@
     return /(^|\s)(الاجمالي|الإجمالي|المجموع الكلي|المجموع العام)(\s|$)/.test(text);
   }
 
+
+
+  function detectMultiSubjectResultsProfile(headers, rows, sourceMeta, stats) {
+    const specialized = sourceMeta?.specializedType === "multi_subject_results" || sourceMeta?.normalization?.kind === "multi_subject_results";
+    const scoreSuffix = " - الدرجه";
+    const levelSuffix = " - المستوي";
+    const scoreHeaders = headers.filter(header => normalize(header).endsWith(scoreSuffix));
+    const levelHeaders = headers.filter(header => normalize(header).endsWith(levelSuffix));
+    if (!specialized && (scoreHeaders.length < 3 || levelHeaders.length < 3)) return null;
+    const levelMap = new Map(levelHeaders.map(header => [normalize(header).slice(0, -levelSuffix.length).trim(), header]));
+    const subjects = scoreHeaders.map(scoreHeader => {
+      const subject = normalize(scoreHeader).slice(0, -scoreSuffix.length).trim();
+      return { subject: String(scoreHeader).slice(0, -" - الدرجة".length).trim(), scoreHeader, levelHeader: levelMap.get(subject) || "" };
+    }).filter(item => item.levelHeader);
+    if (subjects.length < 3) return null;
+    const studentName = headerMatch(headers, ["اسم الطالب", "الاسم"]);
+    const serial = headerMatch(headers, ["م", "الرقم", "التسلسل"]);
+    const nationality = headerMatch(headers, ["الجنسية"]);
+    const enrollmentStatus = headerMatch(headers, ["حالة القيد", "القيد"]);
+    const recordGroup = headerMatch(headers, ["فئة السجل", "الفئة"]);
+    const validRows = rows.map((row, index) => ({ row, index })).filter(({ row }) => {
+      const scoreCount = subjects.filter(item => Number.isFinite(parseNumber(row?.[item.scoreHeader]))).length;
+      return scoreCount >= Math.max(2, Math.ceil(subjects.length * .5));
+    });
+    const scoreCount = validRows.reduce((sum, item) => sum + subjects.filter(subject => Number.isFinite(parseNumber(item.row?.[subject.scoreHeader]))).length, 0);
+    const metadataSubjects = Array.isArray(sourceMeta?.metadata?.subjects) ? sourceMeta.metadata.subjects.map(String) : subjects.map(item => item.subject);
+    return {
+      profileVersion: VERSION,
+      shape: "multi_subject_individual_results",
+      unitOfAnalysis: "student",
+      dataNature: "individual_scores_with_levels",
+      aggregationLevel: "individual",
+      orientation: "students_in_rows_subject_pairs_in_columns",
+      measureType: "score_level_pairs",
+      scaleDirection: "أ_to_هـ_high_to_low",
+      analyzerId: "multi_subject_results",
+      recommendedTypeId: "multi_subject_results",
+      requiresScoreSettings: false,
+      confidence: Math.min(99, 90 + Math.min(8, subjects.length)),
+      rationale: `اكتُشف سجل فردي يضم ${validRows.length} طالبًا و${subjects.length} مادة، مع درجة ومستوى حرفي لكل مادة دون حاجة إلى اختيار عمود واحد.`,
+      analysisFamilies: ["subject_comparison", "student_profile_segmentation", "level_distribution", "score_level_consistency", "cross_subject_relationships", "enrollment_status_summary"],
+      columnRoles: {
+        studentName,
+        serial,
+        nationality,
+        enrollmentStatus,
+        recordGroup,
+        subjects,
+      },
+      rowRoles: { dataRowIndexes: validRows.map(item => item.index), aggregateRowIndexes: [] },
+      scale: {
+        order: ["أ", "ب", "ج", "د", "هـ"],
+        highLevels: ["أ", "ب"],
+        middleLevels: ["ج"],
+        lowLevels: ["د", "هـ"],
+        thresholds: { "أ": 90, "ب": 80, "ج": 65, "د": 50, "هـ": 0 },
+      },
+      metadata: {
+        reportTitle: String(sourceMeta?.normalization?.reportTitle || sourceMeta?.metadata?.title || "كشف نتائج طلاب متعدد المواد"),
+        grade: sourceMeta?.metadata?.grade || sourceMeta?.normalization?.grade || "",
+        period: sourceMeta?.metadata?.period || sourceMeta?.normalization?.period || "",
+        academicYear: sourceMeta?.metadata?.academicYear || sourceMeta?.normalization?.academicYear || "",
+        group: sourceMeta?.metadata?.group || sourceMeta?.normalization?.group || "",
+        subjects: metadataSubjects,
+        studentCount: validRows.length,
+        scoreCount,
+      },
+      requiresSemanticVerification: false,
+    };
+  }
+
   function detectDistributionProfile(headers, rows, sourceMeta, stats) {
     const levelColumns = headers
       .map(header => ({ header, level: canonicalLevel(header) }))
@@ -153,6 +224,8 @@
     const safeHeaders = Array.isArray(headers) ? headers.map(String) : [];
     const safeRows = Array.isArray(rows) ? rows : [];
     const stats = columnStats(safeHeaders, safeRows);
+    const multiSubjectResults = detectMultiSubjectResultsProfile(safeHeaders, safeRows, sourceMeta || {}, stats);
+    if (multiSubjectResults) return multiSubjectResults;
     const distribution = detectDistributionProfile(safeHeaders, safeRows, sourceMeta || {}, stats);
     if (distribution) return distribution;
 
