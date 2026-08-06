@@ -105,21 +105,27 @@
     });
     const scoreCount = validRows.reduce((sum, item) => sum + subjects.filter(subject => Number.isFinite(parseNumber(item.row?.[subject.scoreHeader]))).length, 0);
     const metadataSubjects = Array.isArray(sourceMeta?.metadata?.subjects) ? sourceMeta.metadata.subjects.map(String) : subjects.map(item => item.subject);
+    const levelSource = String(sourceMeta?.normalization?.levelSource || sourceMeta?.metadata?.levelSource || "reported");
+    const derivedLevels = levelSource === "derived_from_score";
     return {
       profileVersion: VERSION,
       shape: "multi_subject_individual_results",
       unitOfAnalysis: "student",
-      dataNature: "individual_scores_with_levels",
+      dataNature: derivedLevels ? "individual_scores_with_derived_levels" : "individual_scores_with_levels",
       aggregationLevel: "individual",
       orientation: "students_in_rows_subject_pairs_in_columns",
-      measureType: "score_level_pairs",
+      measureType: derivedLevels ? "subject_scores_with_derived_levels" : "score_level_pairs",
       scaleDirection: "أ_to_هـ_high_to_low",
       analyzerId: "multi_subject_results",
       recommendedTypeId: "multi_subject_results",
       requiresScoreSettings: false,
       confidence: Math.min(99, 90 + Math.min(8, subjects.length)),
-      rationale: `اكتُشف سجل فردي يضم ${validRows.length} طالبًا و${subjects.length} مادة، مع درجة ومستوى حرفي لكل مادة دون حاجة إلى اختيار عمود واحد.`,
-      analysisFamilies: ["subject_comparison", "student_profile_segmentation", "level_distribution", "score_level_consistency", "cross_subject_relationships", "enrollment_status_summary"],
+      rationale: derivedLevels
+        ? `اكتُشف سجل فردي يضم ${validRows.length} طالبًا و${subjects.length} مادة. يحتوي المصدر درجات المواد، وحُسبت مستويات أ-هـ محليًا من الحدود الرسمية للتحليل دون طلب عمود واحد.`
+        : `اكتُشف سجل فردي يضم ${validRows.length} طالبًا و${subjects.length} مادة، مع درجة ومستوى حرفي لكل مادة دون حاجة إلى اختيار عمود واحد.`,
+      analysisFamilies: derivedLevels
+        ? ["subject_comparison", "student_profile_segmentation", "level_distribution", "cross_subject_relationships", "enrollment_status_summary"]
+        : ["subject_comparison", "student_profile_segmentation", "level_distribution", "score_level_consistency", "cross_subject_relationships", "enrollment_status_summary"],
       columnRoles: {
         studentName,
         serial,
@@ -145,6 +151,7 @@
         subjects: metadataSubjects,
         studentCount: validRows.length,
         scoreCount,
+        levelSource,
       },
       requiresSemanticVerification: false,
     };

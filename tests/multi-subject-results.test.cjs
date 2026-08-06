@@ -152,3 +152,32 @@ test('official report keeps all thirteen subject bars and structured workbook me
   assert.match(html, /data-chart-id="multi-subject-means"[^>]*data-expected-rows="13"/);
   assert.equal((html.match(/class="bar-row"/g) || []).length >= 35, true);
 });
+
+test('score-only variant is analyzed with derived levels without a false score-level consistency claim', () => {
+  const window = loadModules();
+  const subjects = ['التربية الاسلامية', 'اللغة العربية', 'اللغة الانجليزية', 'الرياضيات', 'الفيزياء', 'الكيمياء', 'الاحياء', 'الدراسات الاجتماعية'];
+  const matrix = [[
+    'الكــل', 'الشعبة :', 'العاشر', 'الصف :', 'الدور الأول', 'الفترة :', 'م', 2026, '/', 2025, 'العام الدراسي :',
+    ...subjects, 'الاسم', 'الجنسية', 'القيد'
+  ]];
+  for (let index = 1; index <= 20; index++) {
+    matrix.push([
+      '', '', '', '', '', '', index, '', '', '', '',
+      ...subjects.map((_, subjectIndex) => 50 + ((index * 7 + subjectIndex * 9) % 51)),
+      `طالب تجريبي ${index}`, 'عماني', 'منقول'
+    ]);
+  }
+  const sheet = window.TaqareerXlsx.normalizeMatrix(matrix, { rightToLeft: true });
+  const profile = window.TaqareerAnalysisProfiler.profileTable({ headers: sheet.headers, rows: sheet.rows, sourceMeta: sheet });
+  assert.equal(profile.dataNature, 'individual_scores_with_derived_levels');
+  assert.equal(profile.measureType, 'subject_scores_with_derived_levels');
+  assert.ok(!profile.analysisFamilies.includes('score_level_consistency'));
+  const analysis = window.TaqareerDeepAnalytics.analyzeEvidence({
+    typeId: 'multi_subject_results', headers: sheet.headers, rows: sheet.rows, sourceMeta: sheet, analysisProfile: profile,
+    analysisOptions: { mode: 'all', includeSubjectTopTen: true, includeSchoolRanking: true },
+  });
+  assert.ok(analysis.metrics.some(item => item.id === 'levelSource'));
+  assert.ok(!analysis.metrics.some(item => item.id === 'scoreLevelMismatchCount'));
+  assert.equal(analysis.privateTables.schoolTopTen.length > 0, true);
+  assert.equal(Object.keys(analysis.privateTables.subjectTopTen).length, 8);
+});

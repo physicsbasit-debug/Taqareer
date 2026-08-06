@@ -684,6 +684,229 @@
     return { serial, name: nameItem.col, status, nationality };
   }
 
+
+  const SCORE_ONLY_SUBJECT_ALIASES = [
+    { name: "التربية الاسلامية", aliases: ["التربية الاسلامية", "التربيه الاسلاميه"] },
+    { name: "اللغة العربية", aliases: ["اللغة العربية", "اللغه العربيه"] },
+    { name: "اللغة الانجليزية", aliases: ["اللغة الانجليزية", "اللغة الإنجليزية", "اللغه الانجليزيه", "الانجليزية"] },
+    { name: "الرياضيات", aliases: ["الرياضيات"] },
+    { name: "العلوم", aliases: ["العلوم"] },
+    { name: "الفيزياء", aliases: ["الفيزياء"] },
+    { name: "الكيمياء", aliases: ["الكيمياء"] },
+    { name: "الاحياء", aliases: ["الاحياء", "الأحياء"] },
+    { name: "الدراسات الاجتماعية", aliases: ["الدراسات الاجتماعية", "الدراسات الإجتماعية", "الدراسات الاجتماعيه"] },
+    { name: "الرياضة المدرسية", aliases: ["الرياضة المدرسية", "الرياضه المدرسيه"] },
+    { name: "الفنون التشكيلية", aliases: ["الفنون التشكيلية", "الفنون التشكيليه"] },
+    { name: "المهارات الموسيقية", aliases: ["المهارات الموسيقية", "المهارات الموسيقيه"] },
+    { name: "تقنية المعلومات", aliases: ["تقنية المعلومات", "تقنيه المعلومات"] },
+    { name: "المهارات الحياتية", aliases: ["المهارات الحياتية", "المهارات الحياتيه"] },
+  ];
+
+  function canonicalScoreOnlySubject(value) {
+    const raw = cleanText(value);
+    let key = normalizedText(raw)
+      .replace(/(?:^|\s)(?:الدرجه|درجه|المستوي|الماده|نتيجه|نتائج|معدل|متوسط)(?:\s|$)/g, " ")
+      .replace(/[()\[\]{}:：]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!key) return "";
+    for (const item of SCORE_ONLY_SUBJECT_ALIASES) {
+      if (item.aliases.some(alias => {
+        const aliasKey = normalizedText(alias);
+        return key === aliasKey || key.includes(aliasKey);
+      })) return item.name;
+    }
+    return "";
+  }
+
+  function levelFromNumericScore(value) {
+    const score = numericValue(value);
+    if (!Number.isFinite(score) || score < 0 || score > 100) return "";
+    if (score >= 90) return "أ";
+    if (score >= 80) return "ب";
+    if (score >= 65) return "ج";
+    if (score >= 50) return "د";
+    return "هـ";
+  }
+
+  function metadataFromHeaderRows(layout, endRow) {
+    const metadata = { grade: "", period: "", group: "", academicYear: "" };
+    const max = Math.min(layout.matrix.length, Math.max(1, endRow));
+    for (let row = 0; row < max; row++) {
+      const current = headerMetadata(layout.matrix[row] || []);
+      for (const key of Object.keys(metadata)) if (!metadata[key] && current[key]) metadata[key] = current[key];
+    }
+    return metadata;
+  }
+
+  function explicitIdentityColumns(headers) {
+    const find = aliases => headers.findIndex(header => aliases.some(alias => {
+      const key = normalizedText(header);
+      const target = normalizedText(alias);
+      return key === target || key.includes(target);
+    }));
+    return {
+      serial: find(["م", "الرقم", "التسلسل"]),
+      name: find(["اسم الطالب", "الاسم"]),
+      nationality: find(["الجنسية"]),
+      status: find(["حالة القيد", "القيد"]),
+      group: find(["الشعبة", "الفصل"]),
+    };
+  }
+
+  function inferTextIdentityColumn(layout, dataStartRow, excludedColumns) {
+    const maxColumns = maxUsedColumns(layout);
+    let best = null;
+    for (let col = 0; col < maxColumns; col++) {
+      if (excludedColumns.has(col)) continue;
+      const values = [];
+      for (let row = dataStartRow; row < layout.matrix.length && values.length < 80; row++) {
+        const text = cleanText(layout.matrix[row]?.[col]);
+        if (text) values.push(text);
+      }
+      if (values.length < 5) continue;
+      const numericRatio = values.filter(value => Number.isFinite(numericValue(value))).length / values.length;
+      const avgLength = values.reduce((sum, value) => sum + value.length, 0) / values.length;
+      const uniqueRatio = new Set(values.map(normalizedText)).size / values.length;
+      const arabic = values.reduce((sum, value) => sum + arabicRatio(value), 0) / values.length;
+      const score = avgLength + uniqueRatio * 8 + arabic * 5 - numericRatio * 20;
+      if (avgLength >= 5 && numericRatio < .35 && (!best || score > best.score)) best = { col, score };
+    }
+    return best?.col ?? -1;
+  }
+
+  function scoreOnlyHeaderCandidate(layout, startRow, height) {
+    const maxColumns = maxUsedColumns(layout);
+    const headers = Array.from({ length: maxColumns }, (_, col) => headerPath(layout, startRow, height, col));
+    const subjects = [];
+    const seen = new Set();
+    for (let col = 0; col < maxColumns; col++) {
+      if (layout.hiddenColumns.has(col)) continue;
+      const subject = canonicalScoreOnlySubject(headers[col]);
+      const key = normalizedText(subject);
+      if (!subject || seen.has(key)) continue;
+      seen.add(key);
+      subjects.push({ subject, scoreCol: col, sourceHeader: headers[col] });
+    }
+    if (subjects.length < 3) return null;
+
+    const identities = explicitIdentityColumns(headers);
+    const excluded = new Set(subjects.map(item => item.scoreCol));
+    let nameCol = identities.name;
+    const dataStartRow = startRow + height;
+    if (nameCol < 0) nameCol = inferTextIdentityColumn(layout, dataStartRow, excluded);
+    if (nameCol < 0) return null;
+
+    let validRows = 0;
+    let numericHits = 0;
+    let considered = 0;
+    for (let row = dataStartRow; row < layout.matrix.length && considered < 120; row++) {
+      if (layout.hiddenRows.has(row)) continue;
+      const values = layout.matrix[row] || [];
+      const name = cleanText(values[nameCol]);
+      if (!name || /اسم الطالب|الاسم|العام الدراسي|الطلبه|الطلاب/.test(normalizedText(name))) continue;
+      const hits = subjects.filter(item => {
+        const value = numericValue(values[item.scoreCol]);
+        return Number.isFinite(value) && value >= 0 && value <= 100;
+      }).length;
+      considered += 1;
+      numericHits += hits;
+      if (hits >= Math.max(2, Math.ceil(subjects.length * .55))) validRows += 1;
+    }
+    if (validRows < 5) return null;
+    const score = subjects.length * 150 + validRows * 5 + numericHits / Math.max(1, considered) - startRow;
+    return { startRow, height, headers, subjects, identities: { ...identities, name: nameCol }, dataStartRow, validRows, score };
+  }
+
+  function scoreOnlyMultiSubjectResultsTable(layout) {
+    let best = null;
+    const limit = Math.min(layout.matrix.length, 80);
+    for (let startRow = 0; startRow < limit; startRow++) {
+      for (let height = 1; height <= 4 && startRow + height <= limit; height++) {
+        const candidate = scoreOnlyHeaderCandidate(layout, startRow, height);
+        if (candidate && (!best || candidate.score > best.score)) best = candidate;
+      }
+    }
+    if (!best) return null;
+
+    const { subjects, identities, dataStartRow, startRow, height } = best;
+    const headers = ["م", "اسم الطالب", "الجنسية", "حالة القيد", "فئة السجل"];
+    for (const item of subjects) headers.push(`${item.subject} - الدرجة`, `${item.subject} - المستوى`);
+    const rows = [];
+    let skippedRows = 0;
+    for (let rowIndex = dataStartRow; rowIndex < layout.matrix.length; rowIndex++) {
+      if (layout.hiddenRows.has(rowIndex)) { skippedRows += 1; continue; }
+      const values = layout.matrix[rowIndex] || [];
+      const name = cleanText(values[identities.name]);
+      if (!name || /اسم الطالب|الاسم|العام الدراسي|الطلبه|الطلاب/.test(normalizedText(name))) { skippedRows += 1; continue; }
+      const validScores = subjects.filter(item => {
+        const score = numericValue(values[item.scoreCol]);
+        return Number.isFinite(score) && score >= 0 && score <= 100;
+      }).length;
+      if (validScores < Math.max(2, Math.ceil(subjects.length * .55))) { skippedRows += 1; continue; }
+      const record = {
+        "م": identities.serial >= 0 ? cleanText(values[identities.serial]) : String(rows.length + 1),
+        "اسم الطالب": name,
+        "الجنسية": identities.nationality >= 0 ? cleanText(values[identities.nationality]) : "",
+        "حالة القيد": identities.status >= 0 ? cleanText(values[identities.status]) : "",
+        "فئة السجل": identities.group >= 0 ? cleanText(values[identities.group]) : "",
+      };
+      for (const item of subjects) {
+        const rawScore = cleanText(values[item.scoreCol]);
+        record[`${item.subject} - الدرجة`] = rawScore;
+        record[`${item.subject} - المستوى`] = levelFromNumericScore(rawScore);
+      }
+      rows.push(record);
+    }
+    if (rows.length < 5) return null;
+    const metadata = metadataFromHeaderRows(layout, dataStartRow);
+    const scoreCount = rows.reduce((sum, row) => sum + subjects.filter(item => Number.isFinite(numericValue(row[`${item.subject} - الدرجة`]))).length, 0);
+    return {
+      headers,
+      rows,
+      headerRow: startRow + 1,
+      headerEndRow: startRow + height,
+      matrix: layout.matrix,
+      score: 1200 + subjects.length * 25 + rows.length,
+      specializedType: "multi_subject_results",
+      metadata: {
+        title: "كشف نتائج طلاب فردي متعدد المواد",
+        subject: `مواد متعددة (${subjects.length}): ${subjects.map(item => item.subject).join("، ")}`,
+        grade: metadata.grade,
+        period: metadata.period,
+        academicYear: metadata.academicYear,
+        group: metadata.group,
+        subjects: subjects.map(item => item.subject),
+        studentCount: rows.length,
+        scoreCount,
+        levelSource: "derived_from_score",
+      },
+      normalization: {
+        engine: "multi-subject-results-normalizer-v3",
+        applied: true,
+        kind: "multi_subject_results",
+        variant: "score_only",
+        levelSource: "derived_from_score",
+        originalRows: layout.matrix.length,
+        originalColumns: maxUsedColumns(layout),
+        logicalColumns: headers.length,
+        retainedRows: rows.length,
+        subjectCount: subjects.length,
+        scoreCount,
+        removedSpacerRows: skippedRows,
+        reportTitle: "كشف نتائج طلاب فردي متعدد المواد",
+        grade: metadata.grade,
+        period: metadata.period,
+        academicYear: metadata.academicYear,
+        group: metadata.group,
+        subjects: subjects.map(item => item.subject),
+        pairOrientation: "score-only",
+        pairStartColumn: Math.min(...subjects.map(item => item.scoreCol)) + 1,
+        derivedLevelThresholds: { "أ": 90, "ب": 80, "ج": 65, "د": 50, "هـ": 0 },
+      }
+    };
+  }
+
   function isMultiSubjectHeaderRow(row) {
     const hasLevel = rowContainsAny(row, ["المستوى"]);
     const hasScore = rowContainsAny(row, ["الدرجة"]);
@@ -791,7 +1014,7 @@
   }
 
   function matrixToTable(layout) {
-    const specialized = multiSubjectResultsTable(layout);
+    const specialized = multiSubjectResultsTable(layout) || scoreOnlyMultiSubjectResultsTable(layout);
     if (specialized) return specialized;
     const selected = chooseHeaderBand(layout);
     if (!selected || !Number.isFinite(selected.score)) {

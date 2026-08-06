@@ -76,6 +76,48 @@ test('frontend carries specialized workbook metadata, restores subject options, 
   assert.match(app, /function multiSubjectSubjects\(\)/);
   assert.match(app, /state\.sourceMeta\?\.normalization\?\.subjects/);
   assert.match(app, /لم تُكتشف مواد في الورقة المختارة/);
-  assert.match(app, /الورقة المختارة لا تحتوي أزواج درجة ومستوى لمادتين على الأقل/);
+  assert.match(app, /الورقة المختارة لا تحتوي درجات صالحة لمادتين على الأقل/);
   assert.match(app, /preferredDatasetId/);
+});
+
+test('score-only multi-subject workbook derives levels locally and exposes subjects', () => {
+  const xlsx = loadXlsx();
+  const matrix = [[
+    'الكــل', 'الشعبة :', 'العاشر', 'الصف :', 'الدور الأول', 'الفترة :', 'م', 2026, '/', 2025, 'العام الدراسي :',
+    'اللغة العربية', 'الرياضيات', 'الفيزياء', 'الكيمياء', 'الاحياء', 'الاسم', 'الجنسية', 'القيد', 'المعدل'
+  ]];
+  for (let index = 1; index <= 12; index++) {
+    matrix.push([
+      '', '', '', '', '', '', index, '', '', '', '',
+      90 - index, 82 - index, 74 - index, 66 - index, 58 + index,
+      `طالب تجريبي ${index}`, 'عماني', 'منقول', 75,
+    ]);
+  }
+  const sheet = xlsx.normalizeMatrix(matrix, { rightToLeft: true });
+  assert.equal(sheet.specializedType, 'multi_subject_results');
+  assert.equal(sheet.normalization.engine, 'multi-subject-results-normalizer-v3');
+  assert.equal(sheet.normalization.variant, 'score_only');
+  assert.equal(sheet.normalization.levelSource, 'derived_from_score');
+  assert.equal(sheet.normalization.subjectCount, 5);
+  assert.equal(sheet.rows.length, 12);
+  assert.deepEqual(Array.from(sheet.metadata.subjects), ['اللغة العربية', 'الرياضيات', 'الفيزياء', 'الكيمياء', 'الاحياء']);
+  assert.equal(sheet.rows[0]['اللغة العربية - المستوى'], 'ب');
+  assert.equal(sheet.rows[0]['الرياضيات - المستوى'], 'ب');
+  assert.equal(sheet.metadata.grade, 'العاشر');
+  assert.equal(sheet.metadata.period, 'الدور الأول');
+  assert.equal(sheet.metadata.academicYear, '2025/2026');
+});
+
+test('browser reader detects a dominant comprehensive score-only sheet inside a ten-sheet workbook', async () => {
+  const xlsx = loadXlsx();
+  const workbook = await xlsx.readWorkbook(fileLike(path.join(root, 'tests', 'fixtures', 'multi-subject-score-only-multisheet.xlsx')));
+  assert.equal(workbook.sheets.length, 10);
+  const comprehensive = workbook.sheets[0];
+  assert.equal(comprehensive.name, 'النتائج الشاملة');
+  assert.equal(comprehensive.specializedType, 'multi_subject_results');
+  assert.equal(comprehensive.normalization.engine, 'multi-subject-results-normalizer-v3');
+  assert.equal(comprehensive.normalization.variant, 'score_only');
+  assert.equal(comprehensive.rows.length, 249);
+  assert.equal(comprehensive.normalization.subjectCount, 5);
+  assert.equal(comprehensive.headers.length, 15);
 });

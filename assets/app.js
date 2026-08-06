@@ -321,12 +321,12 @@
       add("supervision_multi_visit", 140, "اكتشاف بنية PDF متعددة الزيارات والجداول");
     }
     if (sourceMeta?.specializedType === "multi_subject_results") {
-      add("multi_subject_results", 160, "اكتشاف سجل نتائج فردي متعدد المواد بأزواج درجة ومستوى");
+      add("multi_subject_results", 160, "اكتشاف سجل نتائج فردي متعدد المواد بدرجات صريحة ومستويات أصلية أو مشتقة محليًا");
     }
     const subjectScoreHeaders = headers.filter(header => /-\s*الدرجه$/i.test(normalize(header)));
     const subjectLevelHeaders = headers.filter(header => /-\s*المستوي$/i.test(normalize(header)));
     if (subjectScoreHeaders.length >= 3 && subjectLevelHeaders.length >= 3 && exactHeader(headers, ["اسم الطالب"])) {
-      add("multi_subject_results", 96, `وجود ${Math.min(subjectScoreHeaders.length, subjectLevelHeaders.length)} مواد بأزواج درجة ومستوى`);
+      add("multi_subject_results", 96, `وجود ${Math.min(subjectScoreHeaders.length, subjectLevelHeaders.length)} مواد قابلة للتحليل بدرجات ومستويات`);
     }
     if (exactHeader(headers, ["معرف الزيارة"]) && exactHeader(headers, ["تاريخ الزيارة"]) && exactHeader(headers, ["المادة"])) {
       add("supervision_multi_visit", 76, "وجود سجلات زيارات منفصلة ببيانات المعلم والمادة والتاريخ");
@@ -469,7 +469,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "1.2.3",
+      appVersion: "1.2.4",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -1008,7 +1008,7 @@
     const grade = multiSubjectGradeNumber(state.sourceMeta?.metadata?.grade || state.sourceMeta?.normalization?.grade || state.semanticProfile?.metadata?.grade || "");
     const formula = grade >= 10 ? "60% من متوسط المواد الأساسية + 40% من متوسط جميع المواد" : "70% من متوسط المواد الأساسية + 30% من متوسط جميع المواد";
     $("multiSubjectFormulaNote").textContent = !subjects.length
-      ? "الورقة الحالية لا تحتوي أزواج درجة ومستوى قابلة للتحليل. ارجع واختر ورقة النتائج الشاملة أو أعد رفع المصنف بعد تحديث الصفحة."
+      ? "الورقة الحالية لا تحتوي درجات مواد قابلة للتحليل. ارجع واختر ورقة النتائج الشاملة أو أعد رفع المصنف بعد تحديث الصفحة."
       : mode === "subject"
         ? `سيحلل التطبيق مادة «${subjectSelect.value}» كاملة، ويحسب أوائلها محليًا مع إظهار جميع المتعادلين في المركز العاشر.`
         : grade >= 5 && grade <= 12
@@ -1263,7 +1263,7 @@
     if (!window.TaqareerReconciliation?.composePrimary) throw new Error("محرك التحقق من التحليل الذكي غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "1.2.3",
+      appVersion: "1.2.4",
       pipeline: {
         mode: "ai-primary-analysis-v1",
         instruction: "المحرك المحلي يحسب المؤشرات والرسوم فقط. يبني الذكاء الاصطناعي التشخيص والاستنتاجات والتدخلات من الأدلة، ثم تتحقق البوابة من المراجع قبل عرض التقرير."
@@ -1517,7 +1517,7 @@
       if (state.type.id === "multi_subject_results") {
         const options = currentMultiSubjectOptions();
         if (!hasUsableMultiSubjectStructure()) {
-          setMessage("setupMessage", "الورقة المختارة لا تحتوي أزواج درجة ومستوى لمادتين على الأقل. ارجع واختر ورقة النتائج الشاملة؛ لن ينفذ التطبيق تحليلًا على بنية ناقصة.", true);
+          setMessage("setupMessage", "الورقة المختارة لا تحتوي درجات صالحة لمادتين على الأقل. ارجع واختر ورقة النتائج الشاملة؛ لن ينفذ التطبيق تحليلًا على بنية ناقصة.", true);
           return;
         }
         if (options?.mode === "subject" && !options.subject) {
@@ -1854,7 +1854,7 @@
   function exportAnalysis() {
     const payload = {
       app: "تقارير",
-      version: "1.2.3",
+      version: "1.2.4",
       generatedAt: new Date().toISOString(),
       source: state.sourceName,
       sourceMeta: state.sourceMeta,
@@ -1867,7 +1867,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v1.2.3.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v1.2.4.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }

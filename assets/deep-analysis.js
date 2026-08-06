@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.2.3";
+  const VERSION = "1.2.4";
 
   function masteryEngine() {
     const engine = window.TaqareerMasteryMetrics;
@@ -660,7 +660,9 @@
     const result = createBase(context, "multi_subject_results", "تحليل نتائج الطلبة الفردية عبر عدة مواد مع مساحة تحليل مرنة وترتيب محلي موثوق");
     const roles = context.analysisProfile?.columnRoles || {};
     const subjectRoles = Array.isArray(roles.subjects) ? roles.subjects.filter(item => item?.subject && item?.scoreHeader) : [];
-    if (subjectRoles.length < 2) throw new Error("لم يكتشف التطبيق أزواج الدرجة والمستوى لعدد كافٍ من المواد.");
+    const levelSource = String(context.sourceMeta?.normalization?.levelSource || context.sourceMeta?.metadata?.levelSource || context.analysisProfile?.metadata?.levelSource || "reported");
+    const levelsDerivedFromScores = levelSource === "derived_from_score";
+    if (subjectRoles.length < 2) throw new Error("لم يكتشف التطبيق درجات صالحة لعدد كافٍ من المواد.");
     const rowIndexes = Array.isArray(context.analysisProfile?.rowRoles?.dataRowIndexes)
       ? context.analysisProfile.rowRoles.dataRowIndexes
       : context.rows.map((_, index) => index);
@@ -686,7 +688,7 @@
         const level = canonicalLevelValue(item.row?.[subject.levelHeader]);
         if (Number.isFinite(score)) values.push(score);
         if (level && Object.hasOwn(distribution, level)) distribution[level] += 1;
-        if (Number.isFinite(score) && level) {
+        if (!levelsDerivedFromScores && Number.isFinite(score) && level) {
           consistencyTotal += 1;
           if (levelFromScore(score) === level) consistencyMatches += 1;
         }
@@ -717,8 +719,9 @@
         failCount: distribution["هـ"],
         failPct: round(pct(distribution["هـ"], denominator), 1),
         levelDistribution: distribution,
-        scoreLevelConsistencyPct: round(pct(consistencyMatches, consistencyTotal), 1),
-        consistencyMismatchCount: Math.max(0, consistencyTotal - consistencyMatches),
+        scoreLevelConsistencyPct: levelsDerivedFromScores || !consistencyTotal ? null : round(pct(consistencyMatches, consistencyTotal), 1),
+        consistencyMismatchCount: levelsDerivedFromScores ? null : Math.max(0, consistencyTotal - consistencyMatches),
+        levelSource,
       };
     }).filter(item => item.n > 0).sort((a, b) => b.mean - a.mean);
     if (subjectStats.length < 2) throw new Error("لا توجد درجات مكتملة لعدد كافٍ من المواد.");
@@ -858,7 +861,9 @@
         metric("selectedSubjectHighPct", "نسبة أ وب", selected.highPct, `${selected.highCount} طالبًا`, "percentage"),
         metric("selectedSubjectLowPct", "نسبة د وهـ", selected.lowPct, `${selected.lowCount} طالبًا`, "percentage"),
         metric("selectedSubjectFailCount", "طلبة المستوى هـ", selected.failCount, "أولوية للمراجعة"),
-        metric("selectedSubjectMismatchCount", "اختلافات الدرجة والمستوى", selected.consistencyMismatchCount, `من ${selected.n} سجلًا`),
+        ...(levelsDerivedFromScores
+          ? [metric("selectedSubjectLevelSource", "مصدر المستويات", "محسوبة محليًا", "اشتُقت مستويات أ-هـ من الدرجة الرقمية وفق الحدود المعتمدة")]
+          : [metric("selectedSubjectMismatchCount", "اختلافات الدرجة والمستوى", selected.consistencyMismatchCount, `من ${selected.n} سجلًا`)]),
         metric("selectedSubjectTopScore", "أعلى درجة", selected.max, selected.subject),
         metric("selectedSubjectBottomScore", "أدنى درجة", selected.min, selected.subject),
       ];
@@ -869,6 +874,7 @@
       ];
       result.limitations = [
         "التحليل خاص بالمادة المختارة، ولا يفسر أسباب الضعف دون بيانات مفردات أو مهارات.",
+        levelsDerivedFromScores ? "المستويات الحرفية محسوبة محليًا من الدرجة الرقمية؛ لذلك لا يُعرض فحص اتساق مستقل بين الدرجة والمستوى." : "المستويات الحرفية منقولة من المصدر ويُفحص اتساقها مع الدرجة الرقمية.",
         "الأسماء محفوظة محليًا في جدول الأوائل ولا تُرسل إلى الذكاء الاصطناعي.",
         "الترتيب داخل المادة يعتمد الدرجة الرقمية، ويعرض جميع المتعادلين عند المركز العاشر.",
       ];
@@ -890,8 +896,8 @@
         if (level && Object.hasOwn(overallLevels, level)) overallLevels[level] += 1;
       }
     }
-    const overallConsistencyTotal = subjectStats.reduce((total, item) => total + item.n, 0);
-    const overallMismatchCount = subjectStats.reduce((total, item) => total + Number(item.consistencyMismatchCount || 0), 0);
+    const overallConsistencyTotal = levelsDerivedFromScores ? 0 : subjectStats.reduce((total, item) => total + item.n, 0);
+    const overallMismatchCount = levelsDerivedFromScores ? null : subjectStats.reduce((total, item) => total + Number(item.consistencyMismatchCount || 0), 0);
     const bestSubject = subjectStats[0];
     const weakestSubject = [...subjectStats].sort((a, b) => a.mean - b.mean)[0];
     const highestLowSubject = [...subjectStats].sort((a, b) => b.lowPct - a.lowPct)[0];
@@ -938,7 +944,9 @@
       metric("studentsWithoutLowLevels", "دون د أو هـ", noLow, "التصنيف الأساسي الثالث"),
       metric("stableHighCount", "أداء مرتفع متزن", stableHigh, `مؤشر ثانوي داخل فئة دون د أو هـ`),
       metric("studentsWithFailLevel", "طلبة لديهم مستوى هـ في مادة واحدة على الأقل", anyFail, "مؤشر أولوية للمراجعة"),
-      metric("scoreLevelMismatchCount", "اختلافات الدرجة والمستوى", overallMismatchCount, `من ${overallConsistencyTotal} زوجًا قابلًا للتحقق`),
+      ...(levelsDerivedFromScores
+        ? [metric("levelSource", "مصدر المستويات", "محسوبة محليًا", "اشتُقت مستويات أ-هـ من الدرجات الرقمية وفق الحدود المعتمدة")]
+        : [metric("scoreLevelMismatchCount", "اختلافات الدرجة والمستوى", overallMismatchCount, `من ${overallConsistencyTotal} زوجًا قابلًا للتحقق`)]),
       metric("rankingEligibleCount", "المكتملون للترتيب العام", rankingCandidates.length, missingCoreColumns.length ? `تعذر الترتيب: مواد أساسية غير موجودة (${missingCoreColumns.join("، ")})` : `${incompleteRanking.length} غير مكتمل`),
       metric("strongestSubjectMean", "أعلى متوسط مادة", bestSubject.mean, bestSubject.subject),
       metric("weakestSubjectMean", "أدنى متوسط مادة", weakestSubject.mean, weakestSubject.subject),

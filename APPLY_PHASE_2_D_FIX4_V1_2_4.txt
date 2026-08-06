@@ -1,0 +1,27 @@
+TAQAREER v1.2.4 — APPLY INSTRUCTIONS
+
+1. Start from the currently published v1.2.3 repository.
+2. Upload the CONTENTS of:
+   taqareer_phase_2_d_fix4_score_only_multisheet_v1_2_4_changed_files_only.zip
+   to the repository root, replacing matching files.
+3. Preserve existing .github/workflows/deploy.yml and .nojekyll.
+4. Wait for GitHub Pages deployment to complete.
+5. Open the site in a new tab and confirm the badge reads: نسخة تشغيلية v1.2.4
+6. Perform one hard refresh: Ctrl+F5.
+7. Upload the multi-sheet result workbook.
+8. Confirm the comprehensive results sheet is selected or clearly marked.
+9. Confirm Review shows: نتائج طلاب فردية متعددة المواد, not نوع جديد غير مسجل.
+10. In Setup, choose تحليل مادة محددة and verify the subject selector is populated.
+11. Run one subject analysis and one full analysis.
+
+Supabase:
+- Keep analyze-educational-form at V0.15.2.
+- Do not redeploy Edge for this release.
+- No SQL migration.
+- No new secret.
+
+Acceptance signs:
+- No first student row is used as table headers.
+- Subject list is populated.
+- Score-only subjects receive locally derived levels.
+- No message claims that score-level pairs are missing when valid subject scores exist.

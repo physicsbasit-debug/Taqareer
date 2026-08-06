@@ -1,0 +1,37 @@
+Phase 2-D Fix 4 / v1.2.4 — Changed files only
+
+Runtime and intake:
+- assets/xlsx-lite.js
+- assets/analysis-profile.js
+- assets/deep-analysis.js
+- assets/app.js
+- assets/ai-client.js
+- assets/report-system.js
+- assets/analysis-reconciliation.js
+- assets/deep-analysis-orchestrator.js
+- index.html
+- manifest.json
+- package.json
+- scripts/verify-static.cjs
+
+Tests:
+- tests/multi-subject-workbook-intake.test.cjs
+- tests/multi-subject-results.test.cjs
+- tests/multi-subject-report.test.cjs
+- tests/multi-visit-pdf.test.cjs
+- tests/report-ai-primary.test.cjs
+- tests/fixtures/multi-subject-score-only-multisheet.xlsx
+
+Release documentation:
+- README_PHASE_2_D_FIX4_SCORE_ONLY_MULTISHEET.md
+- TEST_REPORT_PHASE_2_D_FIX4_V1_2_4.md
+- APPLY_PHASE_2_D_FIX4_V1_2_4.txt
+- CHANGED_FILES_MANIFEST_PHASE_2_D_FIX4_V1_2_4.txt
+
+Not changed:
+- supabase/functions/analyze-educational-form/index.ts
+- SQL migrations
+- secrets
+
+External release artifact:
+- TAQAREER_PHASE_2_D_FIX4_V1_2_4_SHA256.txt
