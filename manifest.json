@@ -1,8 +1,8 @@
 {
   "app": "تقارير",
-  "version": "1.2.2",
-  "phase": "Phase 2-D Fix 2 - Multi-Subject Analysis Workspace & Ranking Engine",
-  "releaseName": "Multi-Subject Analysis Workspace & Ranking Engine",
+  "version": "1.2.3",
+  "phase": "Phase 2-D Fix 3 - Reliable Workbook Intake & Subject Selector",
+  "releaseName": "Reliable Workbook Intake & Subject Selector",
   "buildType": "static-github-pages-plus-supabase-edge-function",
   "supportedInputs": {
     "table": [
@@ -150,7 +150,14 @@
     "no-tie-break-standard-competition-ranking",
     "incomplete-core-subject-ranking-exclusion",
     "exclusive-student-pattern-taxonomy",
-    "local-only-student-name-ranking-tables"
+    "local-only-student-name-ranking-tables",
+    "namespace-safe-ooxml-workbook-reader",
+    "bidirectional-score-level-pair-discovery",
+    "identity-columns-on-either-side-of-subject-block",
+    "multi-source-subject-selector-recovery",
+    "dominant-results-sheet-auto-selection",
+    "versioned-static-asset-cache-busting",
+    "incomplete-multi-subject-structure-execution-guard"
   ],
   "runtime": {
     "frontend": "GitHub Pages static site",
@@ -173,7 +180,7 @@
     "primaryRescueModel": "gemini-3.5-flash-lite",
     "primaryRescueThinkingLevel": "minimal",
     "primaryRescueMaxOutputTokens": 6144,
-    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.2.2",
+    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.2.3",
     "primaryModelFallbackOrder": [
       "gemini-3.5-flash",
       "gemini-3.6-flash",
@@ -246,7 +253,7 @@
     "databaseChanges": false,
     "newSecretsRequired": false,
     "currentFrontendOperation": "analyze_primary",
-    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.2.2",
+    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.2.3",
     "classificationAndVision": "retained"
   },
   "notYetEnabled": [

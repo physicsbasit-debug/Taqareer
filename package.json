@@ -1,11 +1,11 @@
 {
   "name": "taqareer",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "private": true,
   "description": "تقارير: محرك تحليل تربوي تكيفي يفهم بنية كل ملف دلاليًا ويختار مسار الحساب والتحليل المناسب بدل فرض طريقة موحدة.",
   "scripts": {
     "build": "node scripts/verify-static.cjs",
-    "test": "node --test tests/semantic-analysis-router.test.cjs tests/multi-subject-results.test.cjs tests/multi-subject-ranking.test.cjs tests/multi-subject-report.test.cjs tests/ai-network-transport.test.cjs tests/edge-network-health.test.cjs tests/ai-primary-analysis.test.cjs tests/report-ai-primary.test.cjs tests/ai-primary-performance.test.cjs tests/edge-primary-runtime.test.cjs tests/docx-metadata.test.cjs tests/narrative-context.test.cjs tests/multi-visit-pdf.test.cjs && node tests/mastery-metrics.test.js && node tests/mastery-integration.test.js && node tests/deep-analysis.test.js && node tests/chart-completeness.test.js",
+    "test": "node --test tests/semantic-analysis-router.test.cjs tests/multi-subject-results.test.cjs tests/multi-subject-ranking.test.cjs tests/multi-subject-report.test.cjs tests/multi-subject-workbook-intake.test.cjs tests/ai-network-transport.test.cjs tests/edge-network-health.test.cjs tests/ai-primary-analysis.test.cjs tests/report-ai-primary.test.cjs tests/ai-primary-performance.test.cjs tests/edge-primary-runtime.test.cjs tests/docx-metadata.test.cjs tests/narrative-context.test.cjs tests/multi-visit-pdf.test.cjs && node tests/mastery-metrics.test.js && node tests/mastery-integration.test.js && node tests/deep-analysis.test.js && node tests/chart-completeness.test.js",
     "check:syntax": "node scripts/check-syntax.cjs",
     "check:static": "node scripts/verify-static.cjs",
     "check": "npm run test && npm run check:syntax && npm run check:contracts && npm run check:static",

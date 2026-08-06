@@ -1,0 +1,23 @@
+Phase 2-D Fix 3 — changed files
+
+README.md
+README_PHASE_2_D_FIX3_WORKBOOK_INTAKE.md
+APPLY_PHASE_2_D_FIX3_V1_2_3.txt
+TEST_REPORT_PHASE_2_D_FIX3_V1_2_3.md
+CHANGED_FILES_MANIFEST_PHASE_2_D_FIX3_V1_2_3.txt
+index.html
+manifest.json
+package.json
+assets/ai-client.js
+assets/analysis-reconciliation.js
+assets/app.js
+assets/deep-analysis-orchestrator.js
+assets/deep-analysis.js
+assets/report-system.js
+assets/xlsx-lite.js
+scripts/verify-static.cjs
+tests/multi-subject-report.test.cjs
+tests/multi-subject-workbook-intake.test.cjs
+tests/multi-visit-pdf.test.cjs
+tests/report-ai-primary.test.cjs
+tests/fixtures/multi-subject-results-grade10-sanitized.xlsx
