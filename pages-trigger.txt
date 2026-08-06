@@ -1,0 +1,1 @@
+Trigger GitHub Pages branch deployment for Taqareer v1.2.5
