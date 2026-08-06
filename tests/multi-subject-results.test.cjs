@@ -180,4 +180,63 @@ test('score-only variant is analyzed with derived levels without a false score-l
   assert.ok(!analysis.metrics.some(item => item.id === 'scoreLevelMismatchCount'));
   assert.equal(analysis.privateTables.schoolTopTen.length > 0, true);
   assert.equal(Object.keys(analysis.privateTables.subjectTopTen).length, 8);
+  assert.equal(analysis.scopeContext.levelSource, 'derived_from_score');
+  assert.match(analysis.limitations.join(' '), /مشتقة محليًا من الدرجات الرقمية/);
+  const primary = {
+    contractVersion: '6.6.0',
+    analysisProfile: {
+      method: 'تحليل نتائج متعدد المواد',
+      dataAdequacy: 'كافية وصفيًا',
+      dimensions: ['أداء المواد', 'اتساق الدرجة والمستوى'],
+      decisionUses: ['ترتيب الأولويات', 'فحص اختلافات الدرجة والمستوى'],
+    },
+    executive: {
+      title: 'تحليل درجات متعدد المواد',
+      summary: 'تحليل وصفي موثق للدرجات والمستويات المشتقة محليًا.',
+      overallJudgement: 'تحسين موجه',
+      confidence: 'مرتفعة',
+      evidenceRefs: ['metric:studentCount', 'metric:overallMean'],
+      limitations: [],
+    },
+    diagnosticSections: [
+      { id: 'd1', title: 'تفاوت المواد', analysis: 'تختلف المتوسطات بين المواد.', claimType: 'fact', evidenceRefs: ['metric:overallMean'], confidence: 'مرتفعة', implications: ['ترتيب الأولويات'], alternativeExplanations: [], limitations: [], dataRequests: [] },
+      { id: 'd2', title: 'مصدر المستويات', analysis: 'المستويات مشتقة من الدرجات وفق الحدود المعتمدة.', claimType: 'fact', evidenceRefs: ['metric:levelSource'], confidence: 'مرتفعة', implications: ['تفسير المستويات بحذر'], alternativeExplanations: [], limitations: [], dataRequests: [] },
+    ],
+    findings: [
+      { id: 'f1', title: 'فروق بين المواد', statement: 'توجد فروق وصفية بين متوسطات المواد.', claimType: 'fact', evidenceRefs: ['metric:overallMean'], confidence: 'مرتفعة', severity: 'medium', educationalImpact: 'تحديد مواد الأولوية.', recommendedAction: 'تحليل المواد الأدنى.', limitations: [] },
+      { id: 'f2', title: 'مستويات مشتقة', statement: 'المستويات ليست حقلاً مستقلاً في المصدر.', claimType: 'fact', evidenceRefs: ['metric:levelSource'], confidence: 'مرتفعة', severity: 'low', educationalImpact: 'منع ادعاء مقارنة مصدرين مستقلين.', recommendedAction: 'عرض حدود الاشتقاق.', limitations: [] },
+    ],
+    qualityTools: [
+      { id: 'q1', name: 'فحص اتساق الدرجة والمستوى', reason: 'مقارنة الدرجة بالمستوى.', interpretation: 'لا اختلافات.', requiredData: [], evidenceRefs: ['metric:levelSource'] },
+      { id: 'q2', name: 'فحص تفاوت المواد', reason: 'تختلف المتوسطات بين المواد.', interpretation: 'ترتب المواد حسب المتوسط.', requiredData: [], evidenceRefs: ['metric:overallMean'] },
+    ],
+    interventions: [
+      { id: 'i1', priority: 'عالية', issue: 'مادة منخفضة المتوسط', targetGroup: 'طلبة المادة ذات الأولوية', action: 'تنفيذ تشخيص قصير.', implementationSteps: ['تشخيص', 'تدخل', 'قياس'], responsibleRole: 'معلم المادة', timeframe: '3 أسابيع', successIndicator: 'تحسن المتوسط', monitoringMethod: 'اختبار قبلي وبعدي', contingency: 'مراجعة الخطة', resources: [], evidenceRefs: ['metric:overallMean'] },
+      { id: 'i2', priority: 'متوسطة', issue: 'تفاوت في الأداء', targetGroup: 'الحالات ذات الأولوية', action: 'تقسيم الدعم حسب النمط.', implementationSteps: ['تصنيف', 'دعم'], responsibleRole: 'فريق الدعم', timeframe: '4 أسابيع', successIndicator: 'انخفاض الحالات ذات الأولوية', monitoringMethod: 'متابعة دورية', contingency: 'تشخيص أعمق', resources: [], evidenceRefs: ['metric:broadRiskCount'] },
+    ],
+    monitoringPlan: [
+      { id: 'm1', stage: 'خط الأساس', timing: 'الآن', measure: 'متوسطات المواد', owner: 'أخصائي التقويم', evidenceRefs: ['metric:overallMean'] },
+      { id: 'm2', stage: 'متابعة مرحلية', timing: 'بعد أسبوعين', measure: 'نتائج التدخل', owner: 'معلمو المواد', evidenceRefs: ['metric:broadRiskCount'] },
+      { id: 'm3', stage: 'قياس الأثر', timing: 'بعد شهر', measure: 'تغير المؤشرات', owner: 'فريق الدعم', evidenceRefs: ['metric:studentCount'] },
+    ],
+    additionalCautions: [], missingDataRequests: [], suggestedNewType: { needed: false, nameAr: '', purpose: '' },
+  };
+  const reportAnalysis = window.TaqareerReconciliation.composePrimary(analysis, primary, { availableEvidenceRefs: Object.keys(analysis.evidenceMap) });
+  assert.equal(reportAnalysis._reconciliation.levelProvenanceGuardApplied, true);
+  assert.ok(reportAnalysis.analysisProfile.dimensions.includes('مصدر المستويات وحدود اشتقاقها'));
+  assert.ok(!reportAnalysis.analysisProfile.dimensions.includes('اتساق الدرجة والمستوى'));
+  assert.ok(!reportAnalysis.analysisProfile.decisionUse.some(item => /اتساق|اختلافات/.test(item)));
+  assert.ok(!reportAnalysis.qualityTools.some(item => /اتساق الدرجة والمستوى/.test(item.name)));
+  const html = window.TaqareerReports.buildReportHtml({
+    analysis: reportAnalysis,
+    type: { id: 'multi_subject_results', name: 'نتائج طلاب فردية متعددة المواد' },
+    sourceName: 'score-only.xlsx',
+    sourceMeta: sheet,
+    quality: { completeness: 100 },
+    recognitionStatus: 'معتمد',
+  }, { autoPrint: false, reportMode: 'full' });
+  assert.match(html, /مصدر المستويات/);
+  assert.match(html, /مشتقة محليًا من الدرجات/);
+  assert.doesNotMatch(html, /اختلافات الدرجة والمستوى/);
+  assert.doesNotMatch(html, /اتساق الدرجة والمستوى/);
 });

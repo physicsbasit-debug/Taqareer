@@ -469,7 +469,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "1.2.4",
+      appVersion: "1.2.5",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -1263,7 +1263,7 @@
     if (!window.TaqareerReconciliation?.composePrimary) throw new Error("محرك التحقق من التحليل الذكي غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "1.2.4",
+      appVersion: "1.2.5",
       pipeline: {
         mode: "ai-primary-analysis-v1",
         instruction: "المحرك المحلي يحسب المؤشرات والرسوم فقط. يبني الذكاء الاصطناعي التشخيص والاستنتاجات والتدخلات من الأدلة، ثم تتحقق البوابة من المراجع قبل عرض التقرير."
@@ -1826,7 +1826,7 @@
     if(showSuggested){$("aiSuggestedTypeName").textContent=suggested.nameAr||"نوع تحليلي جديد";$("aiSuggestedTypePurpose").textContent=suggested.purpose||"يحتاج الغرض التربوي إلى مراجعة المستخدم.";const tags=[...(suggested.requiredFields||[]).map(item=>`حقل: ${item}`),...(suggested.analysisFamily||[]).map(item=>`تحليل: ${item}`)];$("aiSuggestedTypeMeta").innerHTML=tags.map(item=>`<span>${escapeHtml(item)}</span>`).join("");}
   }
 
-  function openOfficialReport() {
+  function openOfficialReport(reportMode = "full") {
     if (!state.reconciledAnalysis?._reconciliation?.aiPrimary) {
       alert("لا يوجد تحليل ذكاء اصطناعي مكتمل لإنشاء التقرير الرسمي.");
       return;
@@ -1845,7 +1845,7 @@
         recognitionStatus: state.recognitionStatus,
         headers: state.headers,
         rows: state.rows
-      });
+      }, { reportMode: reportMode === "executive" ? "executive" : "full" });
     } catch (error) {
       alert(error.message || "تعذر إنشاء التقرير الرسمي.");
     }
@@ -1854,7 +1854,7 @@
   function exportAnalysis() {
     const payload = {
       app: "تقارير",
-      version: "1.2.4",
+      version: "1.2.5",
       generatedAt: new Date().toISOString(),
       source: state.sourceName,
       sourceMeta: state.sourceMeta,
@@ -1867,7 +1867,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v1.2.4.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v1.2.5.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
@@ -1925,7 +1925,7 @@
     $("includeSchoolRankingInput").addEventListener("change", renderMultiSubjectWorkspace);
     $("backToReviewBtn").addEventListener("click",()=>showPanel(2));
     $("runAnalysisBtn").addEventListener("click",runAnalysis);
-    $("restartBtn").addEventListener("click",reset); $("resetTopBtn").addEventListener("click",reset); $("exportBtn").addEventListener("click",exportAnalysis); $("officialReportBtn").addEventListener("click",openOfficialReport);
+    $("restartBtn").addEventListener("click",reset); $("resetTopBtn").addEventListener("click",reset); $("exportBtn").addEventListener("click",exportAnalysis); $("executiveReportBtn").addEventListener("click",()=>openOfficialReport("executive")); $("officialReportBtn").addEventListener("click",()=>openOfficialReport("full"));
     $("openAiSettingsBtn").addEventListener("click", openAiSettings);
     $("openAiSettingsTopBtn").addEventListener("click", openAiSettings);
     $("saveAiSettingsBtn").addEventListener("click", e => { e.preventDefault(); saveAndTestAiSettings(); });

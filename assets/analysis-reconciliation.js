@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.2.4";
+  const VERSION = "1.2.5";
   const CONTRACT_VERSION = "6.6.0";
 
   const SCORE_TYPES = new Set(["student_results", "single_subject", "assessment_component", "level_distribution", "multi_subject_results", "cross_subject"]);
@@ -669,6 +669,38 @@
     };
   }
 
+  function localLevelsDerivedFromScores(localEvidence) {
+    const source = String(localEvidence?.scopeContext?.levelSource || "");
+    if (source === "derived_from_score") return true;
+    return (Array.isArray(localEvidence?.metrics) ? localEvidence.metrics : []).some(item =>
+      ["levelSource", "selectedSubjectLevelSource"].includes(String(item?.id || ""))
+      && /مشتقه|محسوبه محليا|derived/i.test(normalize(item?.value || item?.note || ""))
+    );
+  }
+
+  function mentionsIndependentScoreLevelCheck(value) {
+    const text = normalize(value);
+    return /اتساق.*الدرجه.*المستوي|اختلافات.*الدرجه.*المستوي|تطابق.*الدرجه.*المستوي/.test(text);
+  }
+
+  function applyLevelProvenanceGuard(result, localEvidence) {
+    if (!localLevelsDerivedFromScores(localEvidence)) return false;
+    const dimensions = (result.analysisProfile?.dimensions || []).filter(item => !mentionsIndependentScoreLevelCheck(item));
+    if (!dimensions.some(item => normalize(item).includes("مصدر المستويات"))) {
+      dimensions.push("مصدر المستويات وحدود اشتقاقها");
+    }
+    result.analysisProfile.dimensions = dimensions;
+    result.analysisProfile.decisionUse = (result.analysisProfile?.decisionUse || []).filter(item => !mentionsIndependentScoreLevelCheck(item));
+    result.qualityTools = (result.qualityTools || []).filter(item =>
+      !mentionsIndependentScoreLevelCheck([item?.name, item?.reason, item?.interpretation].filter(Boolean).join(" "))
+    );
+    result.limitations = uniqueStrings([
+      ...(result.limitations || []),
+      "المستويات أ-هـ مشتقة محليًا من الدرجات الرقمية؛ لذلك لا يُعرض فحص اتساق مستقل بين الدرجة والمستوى.",
+    ]);
+    return true;
+  }
+
   function composePrimary(localEvidence, primaryResult, options = {}) {
     const result = canonicalize(localEvidence || {});
     if (!primaryResult || typeof primaryResult !== "object") throw new Error("لم تصل نتيجة التحليل الذكي الأساسي.");
@@ -813,6 +845,7 @@
     result.cautions = uniqueStrings(primaryResult.additionalCautions || []);
     result.dataRequests = uniqueStrings(primaryResult.missingDataRequests || []);
     result.suggestedNewType = primaryResult.suggestedNewType || null;
+    const levelProvenanceGuardApplied = applyLevelProvenanceGuard(result, localEvidence);
 
     const first = result.improvementPlan[0];
     result.action = first ? {
@@ -837,6 +870,7 @@
       addedInterventions: result.improvementPlan.length,
       addedMonitoring: result.monitoringPlan.length,
       addedTools: result.qualityTools.length,
+      levelProvenanceGuardApplied,
       lockedCounts: null,
     };
     return result;

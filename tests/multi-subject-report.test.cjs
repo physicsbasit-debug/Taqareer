@@ -51,7 +51,7 @@ test('official report shows grade metadata, school formula and local ranking tab
   assert.match(html, /العشرة الأوائل على مستوى المدرسة \/ الدفعة/);
   assert.match(html, /العشرة الأوائل حسب الدرجة/);
   assert.match(html, /طالب اختبار 136/);
-  assert.match(html, /تقارير v1\.2\.4/);
+  assert.match(html, /تقارير v1\.2\.5/);
 });
 
 test('subject report includes only the selected subject top-ten table and selected-subject metadata', () => {
@@ -65,4 +65,38 @@ test('subject report includes only the selected subject top-ten table and select
   assert.match(html, /الأوائل في الرياضيات|>الرياضيات<\/h3>/);
   assert.doesNotMatch(html, /العشرة الأوائل على مستوى الدفعة/);
   assert.doesNotMatch(html, /الأوائل في الفيزياء/);
+});
+
+
+test('executive report keeps the school ranking but omits per-subject ranking appendices', () => {
+  const { window, sheet, analysis } = analysisFixture();
+  const context = {
+    analysis, type: { id: 'multi_subject_results', name: 'نتائج طلاب فردية متعددة المواد' },
+    sourceName: 'كشف نتائج الطلاب العاشر.xlsx', sourceMeta: sheet,
+    quality: { completeness: 100 }, recognitionStatus: 'معتمد',
+  };
+  const fullHtml = window.TaqareerReports.buildReportHtml(context, { autoPrint: false, reportMode: 'full' });
+  const executiveHtml = window.TaqareerReports.buildReportHtml(context, { autoPrint: false, reportMode: 'executive' });
+  const fullPages = (fullHtml.match(/class="report-sheet"/g) || []).length;
+  const executivePages = (executiveHtml.match(/class="report-sheet"/g) || []).length;
+  assert.match(executiveHtml, /التقرير التنفيذي المختصر/);
+  assert.match(executiveHtml, /العشرة الأوائل على مستوى المدرسة \/ الدفعة/);
+  assert.doesNotMatch(executiveHtml, /العشرة الأوائل حسب الدرجة/);
+  assert.ok(executivePages < fullPages);
+  assert.match(fullHtml, /التقرير الكامل مع الجداول/);
+  assert.match(fullHtml, /العشرة الأوائل حسب الدرجة/);
+});
+
+test('executive subject report keeps only the selected subject ranking table', () => {
+  const { window, sheet, analysis } = analysisFixture('subject', 'الرياضيات');
+  const html = window.TaqareerReports.buildReportHtml({
+    analysis, type: { id: 'multi_subject_results', name: 'نتائج طلاب فردية متعددة المواد' },
+    sourceName: 'كشف نتائج الطلاب العاشر.xlsx', sourceMeta: sheet,
+    quality: { completeness: 100 }, recognitionStatus: 'معتمد',
+  }, { autoPrint: false, reportMode: 'executive' });
+  assert.match(html, /التقرير التنفيذي المختصر/);
+  assert.match(html, /العشرة الأوائل حسب الدرجة/);
+  assert.match(html, />الرياضيات<\/h3>/);
+  assert.doesNotMatch(html, /العشرة الأوائل على مستوى المدرسة \/ الدفعة/);
+  assert.doesNotMatch(html, />الفيزياء<\/h3>/);
 });

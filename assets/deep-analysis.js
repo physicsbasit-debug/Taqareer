@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.2.4";
+  const VERSION = "1.2.5";
 
   function masteryEngine() {
     const engine = window.TaqareerMasteryMetrics;
@@ -847,6 +847,7 @@
         studentCount:rows.length, subjectCount:subjectStats.length, grade:gradeText,
         period:context.sourceMeta?.metadata?.period || context.analysisProfile?.metadata?.period || "",
         academicYear:context.sourceMeta?.metadata?.academicYear || context.analysisProfile?.metadata?.academicYear || "",
+        levelSource,
         subjects:originalSubjectOrder, targetGroup:`طلبة ${gradeText || "الصف"} في مادة ${selected.subject}`,
         limitation:"التحليل الحالي خاص بالمادة المختارة ولا يعمم على بقية المواد إلا عند تشغيل التحليل الشامل.",
       };
@@ -862,7 +863,7 @@
         metric("selectedSubjectLowPct", "نسبة د وهـ", selected.lowPct, `${selected.lowCount} طالبًا`, "percentage"),
         metric("selectedSubjectFailCount", "طلبة المستوى هـ", selected.failCount, "أولوية للمراجعة"),
         ...(levelsDerivedFromScores
-          ? [metric("selectedSubjectLevelSource", "مصدر المستويات", "محسوبة محليًا", "اشتُقت مستويات أ-هـ من الدرجة الرقمية وفق الحدود المعتمدة")]
+          ? [metric("selectedSubjectLevelSource", "مصدر المستويات", "مشتقة محليًا من الدرجات", "أ: 90 فأكثر، ب: 80-89، ج: 65-79، د: 50-64، هـ: أقل من 50")]
           : [metric("selectedSubjectMismatchCount", "اختلافات الدرجة والمستوى", selected.consistencyMismatchCount, `من ${selected.n} سجلًا`)]),
         metric("selectedSubjectTopScore", "أعلى درجة", selected.max, selected.subject),
         metric("selectedSubjectBottomScore", "أدنى درجة", selected.min, selected.subject),
@@ -879,7 +880,7 @@
         "الترتيب داخل المادة يعتمد الدرجة الرقمية، ويعرض جميع المتعادلين عند المركز العاشر.",
       ];
       result.analysisProfile.dataSufficiency = selected.n >= 30 ? "مرتفعة للتحليل الوصفي للمادة" : "متوسطة";
-      result.analysisProfile.dimensions = ["توزيع درجات المادة", "مستويات أ-هـ", "الفئات العلاجية والإثرائية", "اتساق الدرجة والمستوى"];
+      result.analysisProfile.dimensions = ["توزيع درجات المادة", "مستويات أ-هـ", "الفئات العلاجية والإثرائية", levelsDerivedFromScores ? "مصدر المستويات وحدود اشتقاقها" : "اتساق الدرجة والمستوى"];
       result.analysisProfile.decisionUse = ["تحديد مواطن القوة والضعف", "اختيار الفئات ذات الأولوية", "بناء خطة علاج وإثراء للمادة", "متابعة انتقال المستويات"];
       result.evidenceMap = evidenceMapFromMetrics(result.metrics);
       result.evidenceMap[selected.ref] = `${selected.subject}: متوسط ${selected.mean}، أ+ب ${selected.highPct}%، د+هـ ${selected.lowPct}%، عدد ${selected.n}`;
@@ -923,6 +924,7 @@
       period:context.sourceMeta?.metadata?.period || context.analysisProfile?.metadata?.period || "",
       academicYear:context.sourceMeta?.metadata?.academicYear || context.analysisProfile?.metadata?.academicYear || "",
       group:context.sourceMeta?.metadata?.group || context.analysisProfile?.metadata?.group || "",
+      levelSource,
       subjects:originalSubjectOrder,
       targetGroup:`الطلبة الواردة سجلاتهم في كشف النتائج متعدد المواد${gradeText ? ` للصف ${gradeText}` : ""}`,
       rankingPolicy:{ gradeNumber, resolved:gradePolicyResolved, coreWeight, allWeight, requiredCoreSubjects:requiredCoreNames, missingCoreColumns, eligibleCount:rankingCandidates.length, incompleteCount:incompleteRanking.length },
@@ -934,7 +936,7 @@
     result.statusDistribution = statusDistribution;
     result.metrics = [
       metric("studentCount", "عدد الطلبة", rows.length, "سجل طالب صالح"),
-      metric("subjectCount", "عدد المواد", subjectStats.length, "مواد بدرجة ومستوى"),
+      metric("subjectCount", "عدد المواد", subjectStats.length, levelsDerivedFromScores ? "مواد بدرجات ومستويات مشتقة محليًا" : "مواد بدرجة ومستوى مستقلين"),
       metric("scoreCount", "عدد الدرجات المحللة", scoreCount, `من ${rows.length * subjectStats.length} متوقع`),
       metric("overallMean", "المتوسط العام عبر المواد", overallMean, "متوسط وصفي لجميع الدرجات الصالحة"),
       metric("overallHighPct", "نسبة المستويين أ وب", round(pct(overallHighCount, scoreCount), 1), `${overallHighCount} تقديرًا`, "percentage"),
@@ -945,7 +947,7 @@
       metric("stableHighCount", "أداء مرتفع متزن", stableHigh, `مؤشر ثانوي داخل فئة دون د أو هـ`),
       metric("studentsWithFailLevel", "طلبة لديهم مستوى هـ في مادة واحدة على الأقل", anyFail, "مؤشر أولوية للمراجعة"),
       ...(levelsDerivedFromScores
-        ? [metric("levelSource", "مصدر المستويات", "محسوبة محليًا", "اشتُقت مستويات أ-هـ من الدرجات الرقمية وفق الحدود المعتمدة")]
+        ? [metric("levelSource", "مصدر المستويات", "مشتقة محليًا من الدرجات", "أ: 90 فأكثر، ب: 80-89، ج: 65-79، د: 50-64، هـ: أقل من 50")]
         : [metric("scoreLevelMismatchCount", "اختلافات الدرجة والمستوى", overallMismatchCount, `من ${overallConsistencyTotal} زوجًا قابلًا للتحقق`)]),
       metric("rankingEligibleCount", "المكتملون للترتيب العام", rankingCandidates.length, missingCoreColumns.length ? `تعذر الترتيب: مواد أساسية غير موجودة (${missingCoreColumns.join("، ")})` : `${incompleteRanking.length} غير مكتمل`),
       metric("strongestSubjectMean", "أعلى متوسط مادة", bestSubject.mean, bestSubject.subject),
@@ -963,6 +965,7 @@
     ];
     result.limitations = [
       "المقارنة بين المواد وصفية حتى لو كانت الدرجات من 100؛ اختلاف طبيعة الاختبارات وصعوبتها قد يؤثر في المتوسطات.",
+      levelsDerivedFromScores ? "المستويات أ-هـ مشتقة محليًا من الدرجات الرقمية؛ لذلك لا يُعرض فحص اتساق مستقل بين الدرجة والمستوى." : "المستويات الحرفية منقولة من المصدر ويُفحص اتساقها مع الدرجة الرقمية.",
       "الدرجات الكلية لا تحدد المهارات أو المفاهيم المسؤولة عن الفجوة؛ يلزم تحليل مفردات أو اختبار تشخيصي.",
       "التصنيف الأساسي للطلبة متبادل، بينما الأداء المرتفع المتزن ومستوى هـ مؤشرات ثانوية لا تدخل في مجموع الرسم الأساسي.",
       "العلاقات بين المواد لا تثبت السببية ولا تبرر نسبة الضعف إلى مادة أو معلم بعينه.",
@@ -970,7 +973,7 @@
       "ترتيب الدفعة محلي وشفاف، ولا يدخل فيه من تنقصه درجة مادة أساسية.",
     ];
     result.analysisProfile.dataSufficiency = rows.length >= 30 && subjectStats.length >= 5 ? "مرتفعة للتحليل الوصفي متعدد المواد" : "متوسطة";
-    result.analysisProfile.dimensions = ["أداء المواد", "توزيع المستويات", "أنماط الاحتياج المتبادلة", "الأوائل في المواد والدفعة", "اتساق الدرجة والمستوى", "العلاقات الوصفية"];
+    result.analysisProfile.dimensions = ["أداء المواد", "توزيع المستويات", "أنماط الاحتياج المتبادلة", "الأوائل في المواد والدفعة", levelsDerivedFromScores ? "مصدر المستويات وحدود اشتقاقها" : "اتساق الدرجة والمستوى", "العلاقات الوصفية"];
     result.analysisProfile.decisionUse = ["اختيار مادة محددة أو تحليل شامل", "ترتيب مواد الأولوية", "تحديد العشرة الأوائل محليًا", "فصل التعثر الشامل عن التخصصي", "بناء مسارات العلاج والإثراء"];
     result.evidenceMap = evidenceMapFromMetrics(result.metrics);
     subjectStats.forEach(item => { result.evidenceMap[item.ref] = `${item.subject}: متوسط ${item.mean}، أ+ب ${item.highPct}%، د+هـ ${item.lowPct}%، عدد ${item.n}`; });

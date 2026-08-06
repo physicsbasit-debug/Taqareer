@@ -1,6 +1,6 @@
 {
   "app": "تقارير",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "phase": "Phase 2-D Fix 4 - Score-Only & Multi-Sheet Workbook Intake",
   "releaseName": "Reliable Workbook Intake & Subject Selector",
   "buildType": "static-github-pages-plus-supabase-edge-function",
@@ -180,7 +180,7 @@
     "primaryRescueModel": "gemini-3.5-flash-lite",
     "primaryRescueThinkingLevel": "minimal",
     "primaryRescueMaxOutputTokens": 6144,
-    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.2.4",
+    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.2.5",
     "primaryModelFallbackOrder": [
       "gemini-3.5-flash",
       "gemini-3.6-flash",
@@ -253,7 +253,7 @@
     "databaseChanges": false,
     "newSecretsRequired": false,
     "currentFrontendOperation": "analyze_primary",
-    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.2.4",
+    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.2.5",
     "classificationAndVision": "retained"
   },
   "notYetEnabled": [
