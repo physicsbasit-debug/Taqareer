@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="تقارير - منصة للتحليل التربوي للبيانات والاستمارات التعليمية" />
-  <title>تقارير | منصة التحليل التربوي v1.2.12</title>
-  <link rel="stylesheet" href="assets/styles.css?v=1.2.12" />
+  <title>تقارير | منصة التحليل التربوي v1.2.13</title>
+  <link rel="stylesheet" href="assets/styles.css?v=1.2.13" />
 </head>
 <body>
   <div class="app-shell">
@@ -18,7 +18,7 @@
         </div>
       </a>
       <div class="top-actions">
-        <span class="version-badge version-badge-muted">v1.2.12</span>
+        <span class="version-badge version-badge-muted">v1.2.13</span>
         <span id="aiHeaderStatus" class="version-badge">خدمة التحليل غير مربوطة</span>
         <button id="openAiSettingsTopBtn" class="ghost-button top-action-button" type="button">إعداد خدمة التحليل</button>
         <button id="resetTopBtn" class="ghost-button top-action-button top-action-primary" type="button">بدء تحليل جديد</button>
@@ -207,27 +207,33 @@
             <div class="soft-note">تُحسب المؤشرات والأدلة محليًا، ثم تبني خدمة التحليل التشخيص والاستنتاجات والتدخلات من الأدلة. لا تُعرض قوالب محلية بديلة بوصفها تحليلًا عميقًا.</div>
           </article>
 
-          <article class="card">
-            <h4>خطة التحليل المقترحة</h4>
-            <ul id="analysisPlan" class="clean-list"></ul>
-          </article>
+          <div class="setup-support-grid">
+            <div class="setup-support-column setup-support-plan">
+              <article class="card setup-plan-card">
+                <h4>خطة التحليل المقترحة</h4>
+                <ul id="analysisPlan" class="clean-list"></ul>
+              </article>
 
-          <article class="card ai-card">
-            <div class="card-heading-inline"><h4>خدمة التحليل التربوي</h4><span class="mode-pill">قراءة تفسيرية</span></div>
-            <p id="aiConnectionStatus">أكمل إعداد الخدمة مرة واحدة، ثم يتولى «تقارير» التحقق من الاتصال تلقائيًا.</p>
-            <div class="ai-controls">
-              <label class="switch-row"><input id="aiModeToggle" type="checkbox" checked /><span>تفعيل التحليل التربوي المتقدم</span></label>
-              <label class="switch-row"><input id="maskPersonalDataInput" type="checkbox" checked /><span>إخفاء الأسماء والحقول الشخصية قبل الإرسال</span></label>
-              <button id="openAiSettingsBtn" class="secondary compact" type="button">إعداد الاتصال واختباره</button>
+              <article class="card deterministic-card">
+                <h4>الحسابات والأدلة</h4>
+                <ul class="clean-list"><li>العد والمتوسط والوسيط والمدى.</li><li>فحص الاكتمال والتكرار والقيم غير الصالحة.</li><li>نسبة الإتقان عند تأكيد الدرجة الكلية.</li><li>إسناد القراءة التفسيرية بأرقام ورسوم ومراجع أدلة ثابتة لا تتغير أثناء التحليل.</li></ul>
+              </article>
             </div>
-            <ul class="clean-list"><li>قراءة الصور وملفات PDF الممسوحة.</li><li>فهم نوع النموذج وهدفه حتى عند ظهور نوع جديد.</li><li>ربط الاستنتاجات بمراجع صفوف أو أسطر أو مؤشرات.</li><li>إنشاء تشخيص واستنتاجات وفرضيات وتدخلات مخصصة للسياق.</li></ul>
-            <div class="soft-note">تتم المعالجة الخارجية بعد تطبيق ضوابط الخصوصية، وتبقى أسرار الخدمة خارج المتصفح.</div>
-          </article>
 
-          <article class="card deterministic-card">
-            <h4>الحسابات والأدلة</h4>
-            <ul class="clean-list"><li>العد والمتوسط والوسيط والمدى.</li><li>فحص الاكتمال والتكرار والقيم غير الصالحة.</li><li>نسبة الإتقان عند تأكيد الدرجة الكلية.</li><li>إسناد القراءة التفسيرية بأرقام ورسوم ومراجع أدلة ثابتة لا تتغير أثناء التحليل.</li></ul>
-          </article>
+            <div class="setup-support-column setup-support-service">
+              <article class="card ai-card">
+                <div class="card-heading-inline"><h4>خدمة التحليل التربوي</h4><span class="mode-pill">قراءة تفسيرية</span></div>
+                <p id="aiConnectionStatus">أكمل إعداد الخدمة مرة واحدة، ثم يتولى «تقارير» التحقق من الاتصال تلقائيًا.</p>
+                <div class="ai-controls">
+                  <label class="switch-row"><input id="aiModeToggle" type="checkbox" checked /><span>تفعيل التحليل التربوي المتقدم</span></label>
+                  <label class="switch-row"><input id="maskPersonalDataInput" type="checkbox" checked /><span>إخفاء الأسماء والحقول الشخصية قبل الإرسال</span></label>
+                  <button id="openAiSettingsBtn" class="secondary compact" type="button">إعداد الاتصال واختباره</button>
+                </div>
+                <ul class="clean-list"><li>قراءة الصور وملفات PDF الممسوحة.</li><li>فهم نوع النموذج وهدفه حتى عند ظهور نوع جديد.</li><li>ربط الاستنتاجات بمراجع صفوف أو أسطر أو مؤشرات.</li><li>إنشاء تشخيص واستنتاجات وفرضيات وتدخلات مخصصة للسياق.</li></ul>
+                <div class="soft-note">تتم المعالجة الخارجية بعد تطبيق ضوابط الخصوصية، وتبقى أسرار الخدمة خارج المتصفح.</div>
+              </article>
+            </div>
+          </div>
         </div>
 
         <div id="setupMessage" class="inline-message hidden"></div>
@@ -320,7 +326,7 @@
 
     </main>
 
-    <footer class="app-footer"><span>تقارير · v1.2.12</span><span>الحسابات المحلية مصدر الحقيقة، والقراءة التربوية قابلة للمراجعة.</span></footer>
+    <footer class="app-footer"><span>تقارير · v1.2.13</span><span>الحسابات المحلية مصدر الحقيقة، والقراءة التربوية قابلة للمراجعة.</span></footer>
   </div>
 
   <dialog id="sheetDialog">
@@ -373,18 +379,18 @@
     </form>
   </dialog>
 
-  <script src="assets/runtime-config.js?v=1.2.12"></script>
-  <script src="assets/xlsx-lite.js?v=1.2.12"></script>
-  <script src="assets/document-lite.js?v=1.2.12"></script>
-  <script src="assets/performance-pipeline.js?v=1.2.12"></script>
-  <script src="assets/analysis-profile.js?v=1.2.12"></script>
-  <script src="assets/display-terms.js?v=1.2.12"></script>
-  <script src="assets/ai-client.js?v=1.2.12"></script>
-  <script src="assets/mastery-metrics.js?v=1.2.12"></script>
-  <script src="assets/deep-analysis.js?v=1.2.12"></script>
-  <script src="assets/analysis-reconciliation.js?v=1.2.12"></script>
-  <script src="assets/deep-analysis-orchestrator.js?v=1.2.12"></script>
-  <script src="assets/report-system.js?v=1.2.12"></script>
-  <script src="assets/app.js?v=1.2.12"></script>
+  <script src="assets/runtime-config.js?v=1.2.13"></script>
+  <script src="assets/xlsx-lite.js?v=1.2.13"></script>
+  <script src="assets/document-lite.js?v=1.2.13"></script>
+  <script src="assets/performance-pipeline.js?v=1.2.13"></script>
+  <script src="assets/analysis-profile.js?v=1.2.13"></script>
+  <script src="assets/display-terms.js?v=1.2.13"></script>
+  <script src="assets/ai-client.js?v=1.2.13"></script>
+  <script src="assets/mastery-metrics.js?v=1.2.13"></script>
+  <script src="assets/deep-analysis.js?v=1.2.13"></script>
+  <script src="assets/analysis-reconciliation.js?v=1.2.13"></script>
+  <script src="assets/deep-analysis-orchestrator.js?v=1.2.13"></script>
+  <script src="assets/report-system.js?v=1.2.13"></script>
+  <script src="assets/app.js?v=1.2.13"></script>
 </body>
 </html>

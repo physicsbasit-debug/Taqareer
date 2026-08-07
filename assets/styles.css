@@ -398,7 +398,6 @@ body[data-active-step]:not([data-active-step="1"]) .steps { margin-top: 8px; }
 /* setup workspace */
 .setup-grid { align-items: start; }
 #multiSubjectWorkspaceCard { grid-column: 1 / -1; }
-.ai-card, .deterministic-card { min-height: 100%; }
 .ai-card .soft-note { background: #eef3ff; color: #43537a; }
 
 /* results workspace */
@@ -482,4 +481,46 @@ body[data-active-step]:not([data-active-step="1"]) .steps { margin-top: 8px; }
     font-weight: 800;
   }
   .app-footer span + span::before { display: none; }
+}
+
+
+/* v1.2.13 — compact setup composition */
+.setup-support-grid {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 15px;
+  align-items: start;
+}
+.setup-support-column {
+  display: grid;
+  gap: 15px;
+  align-content: start;
+  min-width: 0;
+}
+.setup-support-column > .card {
+  min-height: 0;
+  height: auto;
+}
+.setup-plan-card .clean-list,
+.deterministic-card .clean-list,
+.ai-card .clean-list {
+  line-height: 1.62;
+}
+.setup-plan-card .clean-list li,
+.deterministic-card .clean-list li,
+.ai-card .clean-list li {
+  margin: 5px 0;
+}
+.ai-card p { margin: 7px 0 11px; }
+.ai-card .soft-note { margin-top: 10px; }
+#panel-3 .actions {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #eef1f5;
+}
+@media (max-width: 900px) {
+  .setup-support-grid { grid-template-columns: 1fr; }
+  .setup-support-service { order: 1; }
+  .setup-support-plan { order: 2; }
 }

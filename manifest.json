@@ -1,6 +1,6 @@
 {
   "app": "تقارير",
-  "version": "1.2.12",
+  "version": "1.2.13",
   "phase": "Phase 2-D Fix 11 - Professional UI Polish",
   "releaseName": "Professional Focused Interface",
   "buildType": "static-github-pages-plus-supabase-edge-function",
@@ -196,7 +196,7 @@
     "primaryRescueModel": "gemini-3.5-flash-lite",
     "primaryRescueThinkingLevel": "minimal",
     "primaryRescueMaxOutputTokens": 3072,
-    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.2.12",
+    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.2.13",
     "primaryModelFallbackOrder": [
       "gemini-3.6-flash",
       "gemini-3.5-flash-lite"
@@ -269,7 +269,7 @@
     "databaseChanges": false,
     "newSecretsRequired": false,
     "currentFrontendOperation": "analyze_primary",
-    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.2.12",
+    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.2.13",
     "classificationAndVision": "retained"
   },
   "notYetEnabled": [

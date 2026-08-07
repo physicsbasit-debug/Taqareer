@@ -12,7 +12,7 @@ test('public workspace hides development clutter and exposes compact review cont
   const app = read('assets/app.js');
   const css = read('assets/styles.css');
 
-  assert.match(index, /v1\.2\.12/);
+  assert.match(index, /v1\.2\.13/);
   assert.match(index, /id="togglePreviewColumnsBtn"/);
   assert.match(index, /id="qualityDetails"/);
   assert.match(index, /خدمة التحليل التربوي/);
@@ -26,6 +26,10 @@ test('public workspace hides development clutter and exposes compact review cont
   assert.match(app, /primaryActionCard/);
   assert.match(css, /body\[data-active-step\]:not\(\[data-active-step="1"\]\) \.hero/);
   assert.match(css, /#improvementPlanSection \.plan-table td::before/);
+  assert.match(index, /class="setup-support-grid"/);
+  assert.match(index, /class="setup-support-column setup-support-plan"/);
+  assert.match(css, /\.setup-support-grid \{/);
+  assert.match(css, /grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
 });
 
 test('public terminology normalizes leaked implementation-language fragments', () => {
