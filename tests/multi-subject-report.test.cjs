@@ -51,7 +51,7 @@ test('official report shows grade metadata, school formula and local ranking tab
   assert.match(html, /العشرة الأوائل على مستوى المدرسة \/ الدفعة/);
   assert.match(html, /العشرة الأوائل حسب الدرجة/);
   assert.match(html, /طالب اختبار 136/);
-  assert.match(html, /تقارير v1\.2\.8/);
+  assert.match(html, /تقارير v1\.2\.9/);
 });
 
 test('subject report includes only the selected subject top-ten table and selected-subject metadata', () => {
@@ -82,6 +82,7 @@ test('executive report keeps the school ranking but omits per-subject ranking ap
   assert.match(executiveHtml, /التقرير التنفيذي المختصر/);
   assert.match(executiveHtml, /العشرة الأوائل على مستوى المدرسة \/ الدفعة/);
   assert.doesNotMatch(executiveHtml, /العشرة الأوائل حسب الدرجة/);
+  assert.doesNotMatch(executiveHtml, /<div class="ranking-companion">/);
   assert.ok(executivePages < fullPages);
   assert.match(fullHtml, /التقرير الكامل مع الجداول/);
   assert.match(fullHtml, /العشرة الأوائل حسب الدرجة/);
@@ -99,6 +100,7 @@ test('executive subject report keeps only the selected subject ranking table', (
   assert.match(html, />الرياضيات<\/h3>/);
   assert.doesNotMatch(html, /العشرة الأوائل على مستوى المدرسة \/ الدفعة/);
   assert.doesNotMatch(html, />الفيزياء<\/h3>/);
+  assert.doesNotMatch(html, /<div class="ranking-companion">/);
 });
 
 
@@ -113,8 +115,10 @@ test('full multi-subject report compacts ranking appendices and safely splits ve
   const rankingPages = (html.match(/class="ranking-stack ranking-stack-/g) || []).length;
   assert.match(html, /المهارات الحياتية - متابعة 1\/3/);
   assert.match(html, /المهارات الحياتية - متابعة 3\/3/);
-  assert.ok(rankingPages < 13, `expected compact subject ranking pages, got ${rankingPages}`);
-  assert.ok(fullPages < 18, `expected fewer than the v1.2.6 baseline 18 pages, got ${fullPages}`);
+  assert.ok(rankingPages <= 8, `expected dynamically packed ranking pages, got ${rankingPages}`);
+  assert.ok(fullPages <= 12, `expected the representative full report to fit within 12 pages, got ${fullPages}`);
+  assert.match(html, /<div class="ranking-companion">/);
+  assert.match(html, /data-ranking-budget="5[0-5]"/);
   assert.doesNotMatch(html, /TQR-/);
 });
 
