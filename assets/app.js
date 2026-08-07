@@ -84,6 +84,7 @@
     localRecognition: null, aiRecognition: null, semanticProfile: null, recognitionStatus: "محلي", recognitionRequestId: 0, analysisRequestId: 0,
     sampleMaxScore: null, pendingSource: null, sourceMeta: null, pendingManualFileName: "", pendingVisualPreview: null,
     multiSubjectOptions: { mode: "all", subject: "", includeSubjectTopTen: true, includeSchoolRanking: true },
+    scaleSemantics: null,
     previewExpanded: false
   };
 
@@ -115,6 +116,114 @@
   function reviewHeaders() {
     if (state.previewExpanded || state.headers.length <= 7) return state.headers;
     return state.headers.slice(0, 7);
+  }
+
+  function scaleGuardApplies(typeId = state.type?.id) {
+    return ["student_work", "supervision_indicator"].includes(String(typeId || ""));
+  }
+
+  function scaleMeasureHeader() {
+    return state.semanticProfile?.columnRoles?.mean || findHeader(state.headers, ["المتوسط", "الدرجة", "القيمة"]);
+  }
+
+  function inferObservedScale() {
+    const header = scaleMeasureHeader();
+    const indexes = Array.isArray(state.semanticProfile?.rowRoles?.dataRowIndexes)
+      ? state.semanticProfile.rowRoles.dataRowIndexes
+      : state.rows.map((_, index) => index);
+    const values = indexes.map(index => parseNumber(state.rows[index]?.[header])).filter(Number.isFinite);
+    return {
+      header,
+      min: values.length ? Math.min(...values) : null,
+      max: values.length ? Math.max(...values) : null,
+      values: [...new Set(values)].sort((a, b) => a - b)
+    };
+  }
+
+  function currentScaleBounds() {
+    const observed = inferObservedScale();
+    const semantics = state.scaleSemantics || state.sourceMeta?.scaleSemantics || state.semanticProfile?.scale || {};
+    const min = Number.isFinite(Number(semantics.minObserved)) ? Number(semantics.minObserved) : observed.min;
+    const max = Number.isFinite(Number(semantics.maxObserved)) ? Number(semantics.maxObserved) : observed.max;
+    return { min, max };
+  }
+
+  function currentScaleDirection() {
+    return String(state.scaleSemantics?.direction || state.sourceMeta?.scaleSemantics?.direction || state.semanticProfile?.scaleDirection || "unknown");
+  }
+
+  function applyScaleSemanticsToProfile() {
+    if (!state.semanticProfile || !scaleGuardApplies()) return;
+    const observed = inferObservedScale();
+    const bounds = currentScaleBounds();
+    const direction = currentScaleDirection();
+    state.semanticProfile.scaleDirection = direction;
+    state.semanticProfile.requiresScaleConfirmation = direction === "unknown";
+    state.semanticProfile.scale = {
+      ...(state.semanticProfile.scale || {}),
+      direction,
+      source: state.scaleSemantics?.source || state.sourceMeta?.scaleSemantics?.source || (direction === "unknown" ? "unconfirmed" : "source"),
+      minObserved: bounds.min,
+      maxObserved: bounds.max,
+      distinctObserved: observed.values
+    };
+  }
+
+  function setScaleDirection(direction) {
+    if (!scaleGuardApplies()) return;
+    const allowed = new Set(["lower-is-better", "higher-is-better", "descriptive-only"]);
+    if (!allowed.has(direction)) return;
+    const observed = inferObservedScale();
+    const inputMin = parseNumber($("scaleMinInput")?.value);
+    const inputMax = parseNumber($("scaleMaxInput")?.value);
+    const minObserved = Number.isFinite(inputMin) ? inputMin : observed.min;
+    const maxObserved = Number.isFinite(inputMax) ? inputMax : observed.max;
+    if (!Number.isFinite(minObserved) || !Number.isFinite(maxObserved) || maxObserved < minObserved || maxObserved <= 0) {
+      $("scaleSemanticsNote").textContent = "راجع نطاق المقياس: يجب أن تكون القيمتان صالحتين وأن تكون القيمة العليا أكبر من أو مساوية للدنيا.";
+      return;
+    }
+    state.scaleSemantics = {
+      direction,
+      source: "user",
+      minObserved,
+      maxObserved,
+      confirmed: true
+    };
+    state.sourceMeta = {
+      ...(state.sourceMeta || {}),
+      scaleDirection: direction,
+      scaleSemantics: { ...state.scaleSemantics }
+    };
+    applyScaleSemanticsToProfile();
+    state.quality = assessQuality(state.headers, state.rows, state.type, state.sourceMeta || {}, state.semanticProfile);
+    renderReview();
+  }
+
+  function renderScaleSemanticsGuard() {
+    const card = $("scaleSemanticsCard");
+    if (!card) return;
+    const applies = scaleGuardApplies() && state.semanticProfile?.measureType?.startsWith?.("ordinal_");
+    card.classList.toggle("hidden", !applies);
+    if (!applies) return;
+    const observed = inferObservedScale();
+    const bounds = currentScaleBounds();
+    const direction = currentScaleDirection();
+    if ($("scaleMinInput")) $("scaleMinInput").value = Number.isFinite(bounds.min) ? String(bounds.min) : "";
+    if ($("scaleMaxInput")) $("scaleMaxInput").value = Number.isFinite(bounds.max) ? String(bounds.max) : "";
+    $("scaleObservedRange").textContent = Number.isFinite(observed.min) && Number.isFinite(observed.max)
+      ? `القيم المرصودة: ${observed.min}–${observed.max}`
+      : "القيم المرصودة غير مكتملة";
+    $("scaleSemanticsSummary").textContent = direction === "unknown"
+      ? "اتجاه المقياس غير موضح في المصدر، لذلك لن يصدر «تقارير» حكم قوة أو ضعف قبل تأكيده."
+      : direction === "descriptive-only"
+        ? "سيعرض «تقارير» المتوسطات والتوزيع واتساق المتوسط مع الأكثر تكرارًا دون تصنيف قوة أو ضعف أو بناء أولويات علاجية."
+        : direction === "lower-is-better"
+          ? "تم اعتماد أن القيمة الأقل تمثل أداءً أفضل لهذا الملف."
+          : "تم اعتماد أن القيمة الأعلى تمثل أداءً أفضل لهذا الملف.";
+    document.querySelectorAll('input[name="scaleDirection"]').forEach(input => { input.checked = input.value === direction; });
+    $("scaleSemanticsNote").textContent = direction === "unknown"
+      ? "اختر دلالة المقياس كما تعرفها من الأداة الأصلية، أو اختر التحليل الوصفي فقط. لن يخمّن التطبيق الاتجاه."
+      : "اختيارك يخص هذا الملف فقط ويُحفظ ضمن سياق التحليل، ولا يغيّر القيم الأصلية.";
   }
 
   function showPanel(number) {
@@ -471,6 +580,32 @@
     if (duplicates > 0) warnings.push({ title: `${duplicates} سجل مكرر`, detail: "لم تُحذف السجلات تلقائيًا. راجعها قبل الاعتماد النهائي." });
     if (headers.length > 30) info.push({ title: "عدد كبير من الأعمدة", detail: "قد يمثل الملف أداءً متعدد المواد أو أداة مركبة." });
 
+    if (["student_work", "supervision_indicator"].includes(type?.id) && semanticProfile?.measureType?.startsWith?.("ordinal_")) {
+      const direction = String(sourceMeta?.scaleSemantics?.direction || semanticProfile?.scaleDirection || "unknown");
+      if (direction === "unknown") {
+        blockers.push({
+          title: "اتجاه مقياس التقويم غير محدد",
+          detail: "يعرض المصدر القيم الرقمية دون توضيح هل القيمة الأقل أم الأعلى تمثل أداءً أفضل. أكّد دلالة المقياس أو اختر التحليل الوصفي فقط قبل المتابعة."
+        });
+      } else if (direction === "descriptive-only") {
+        warnings.push({
+          title: "سيُنفذ تحليل وصفي فقط",
+          detail: "لن تُصنَّف البنود إلى قوة أو ضعف، ولن تُبنى فجوات أو أولويات علاجية لأن اتجاه المقياس غير معتمد."
+        });
+      } else {
+        const minScale = Number(sourceMeta?.scaleSemantics?.minObserved);
+        const maxScale = Number(sourceMeta?.scaleSemantics?.maxObserved);
+        if (!Number.isFinite(minScale) || !Number.isFinite(maxScale) || maxScale < minScale || maxScale <= 0) {
+          blockers.push({ title: "نطاق المقياس غير صالح", detail: "أكّد أدنى وأعلى قيمة في المقياس قبل التحليل التفسيري." });
+        } else {
+          info.push({
+            title: "تم تأكيد اتجاه ونطاق مقياس التقويم",
+            detail: `${direction === "lower-is-better" ? "القيمة الأقل تمثل أداءً أفضل" : "القيمة الأعلى تمثل أداءً أفضل"}، والنطاق المعتمد ${minScale}–${maxScale}.`
+          });
+        }
+      }
+    }
+
     const normalization = sourceMeta?.normalization;
     if (normalization?.applied) {
       info.unshift({
@@ -500,7 +635,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "1.2.13",
+      appVersion: "1.2.14",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -558,12 +693,16 @@
         state.confidence = Math.max(state.confidence, aiConfidence || Number(state.semanticProfile?.confidence || 0));
         adoptedDynamic = true;
       }
+      applyScaleSemanticsToProfile();
       state.quality = assessQuality(state.headers, state.rows, state.type, state.sourceMeta, state.semanticProfile);
       state.recognitionStatus = adoptedDynamic
         ? `تحقق دلالي تكيفي: بُني نوع ومسار تحليل خاصان بالملف${cached ? " · من الذاكرة المؤقتة" : ""}`
         : known
-          ? `تحقق دلالي هجين: ملف البنية + التحقق الخارجي${adoptKnown ? " · تم اعتماد مسار التحليل" : " · المسار المحلي متسق"}${cached ? " · من الذاكرة المؤقتة" : ""}`
+          ? `تحقق دلالي هجين: ملف البنية + التحقق الخارجي${adoptKnown ? " · تم اعتماد نوع الملف" : " · المسار المحلي متسق"}${cached ? " · من الذاكرة المؤقتة" : ""}`
           : "التحقق الدلالي بنى ملفًا لنوع جديد بدل إجباره على قالب معروف";
+      if (scaleGuardApplies() && currentScaleDirection() === "unknown") {
+        state.recognitionStatus += " · ينتظر تأكيد دلالة المقياس";
+      }
       state.quality.info = state.quality.info.filter(item => item.title !== "تحقق دلالي من النوع");
       state.quality.info.unshift({
         title: "تحقق دلالي من النوع",
@@ -584,28 +723,36 @@
     state.rows = rows;
     state.sourceName = sourceName;
     state.sampleMaxScore = sampleMaxScore;
-    state.sourceMeta = sourceMeta;
+    state.sourceMeta = sourceMeta ? { ...sourceMeta } : {};
+    state.scaleSemantics = state.sourceMeta?.scaleSemantics ? { ...state.sourceMeta.scaleSemantics } : null;
     state.rawText = rawText || "";
     state.narrativeText = sourceMeta?.mode === "narrative"
       ? (rawText || rows.map(row => row["النص"] ?? Object.values(row).join(" ")).join("\n"))
       : "";
-    state.semanticProfile = window.TaqareerAnalysisProfiler?.profileTable?.({
+    const initialProfile = window.TaqareerAnalysisProfiler?.profileTable?.({
       headers: state.headers,
       rows: state.rows,
-      sourceMeta: sourceMeta || {},
-      typeId: state.type?.id || "unknown"
+      sourceMeta: state.sourceMeta || {},
+      typeId: "unknown"
     }) || null;
-    const recognized = classify(state.headers, state.rows, sourceMeta || {}, state.rawText, state.semanticProfile);
-    if (state.semanticProfile && (!state.semanticProfile.recommendedTypeId || state.semanticProfile.recommendedTypeId === "unknown")) {
-      state.semanticProfile.recommendedTypeId = recognized.type.id;
-      state.semanticProfile.analyzerId = state.semanticProfile.analyzerId || recognized.type.id;
-    }
+    const recognized = classify(state.headers, state.rows, state.sourceMeta || {}, state.rawText, initialProfile);
     state.localRecognition = recognized;
     state.aiRecognition = null;
     state.recognitionStatus = `تصنيف محلي: ${recognized.rationale}`;
     state.type = recognized.type;
     state.confidence = recognized.confidence;
-    state.quality = assessQuality(state.headers, state.rows, state.type, sourceMeta || {}, state.semanticProfile);
+    state.semanticProfile = window.TaqareerAnalysisProfiler?.profileTable?.({
+      headers: state.headers,
+      rows: state.rows,
+      sourceMeta: state.sourceMeta || {},
+      typeId: state.type.id
+    }) || initialProfile;
+    if (state.semanticProfile && (!state.semanticProfile.recommendedTypeId || state.semanticProfile.recommendedTypeId === "unknown")) {
+      state.semanticProfile.recommendedTypeId = recognized.type.id;
+      state.semanticProfile.analyzerId = state.semanticProfile.analyzerId || recognized.type.id;
+    }
+    applyScaleSemanticsToProfile();
+    state.quality = assessQuality(state.headers, state.rows, state.type, state.sourceMeta || {}, state.semanticProfile);
     const recognitionRequestId = ++state.recognitionRequestId;
     if (state.semanticProfile) {
       state.quality.info.unshift({
@@ -951,6 +1098,7 @@
       previewToggle.classList.toggle("hidden", state.headers.length <= 7);
       previewToggle.textContent = state.previewExpanded ? "عرض المعاينة المختصرة" : "عرض كل الحقول";
     }
+    renderScaleSemanticsGuard();
 
     const issues = [];
     state.quality.blockers.forEach(i => issues.push({ ...i, kind: "blocker", icon: "!" }));
@@ -1069,9 +1217,12 @@
   function renderSetup() {
     const narrativeMode = isNarrativeMode();
     const multiVisitMode = state.type.id === "supervision_multi_visit";
+    const descriptiveOnly = scaleGuardApplies() && currentScaleDirection() === "descriptive-only";
     const requiresScoreSettings = state.semanticProfile?.requiresScoreSettings ?? ["single_subject", "assessment_component", "cross_subject"].includes(state.type.id);
     $("measurementCard").classList.toggle("hidden", narrativeMode || multiVisitMode || !requiresScoreSettings);
     $("narrativeSetupCard").classList.toggle("hidden", !narrativeMode);
+    $("aiAnalysisCard")?.classList.toggle("hidden", descriptiveOnly);
+    $("runAnalysisBtn").textContent = descriptiveOnly ? "تنفيذ التحليل الوصفي" : "تنفيذ التحليل التربوي";
     renderMultiSubjectWorkspace();
     if (narrativeMode) {
       $("narrativeTextReview").value = state.narrativeText || state.rows.map(row => row["النص"] ?? Object.values(row).join(" ")).join("\n");
@@ -1278,6 +1429,7 @@
       metrics,
       charts,
       calculationLimitations: (analysis.limitations || []).slice(0, 12),
+      scaleSemantics: analysis.scaleSemantics && typeof analysis.scaleSemantics === "object" ? structuredClone(analysis.scaleSemantics) : null,
       scopeContext: analysis.scopeContext && typeof analysis.scopeContext === "object" ? structuredClone(analysis.scopeContext) : null,
       interventionMathContext: Array.isArray(analysis.segments) && analysis.segments.length ? {
         totalCount: Number(analysis.n || 0),
@@ -1312,7 +1464,7 @@
     if (!window.TaqareerReconciliation?.composePrimary) throw new Error("محرك التحقق من التحليل الذكي غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "1.2.13",
+      appVersion: "1.2.14",
       pipeline: {
         mode: "ai-primary-analysis-v1",
         instruction: "المحرك المحلي يحسب المؤشرات والرسوم فقط. يبني الذكاء الاصطناعي التشخيص والاستنتاجات والتدخلات من الأدلة، ثم تتحقق البوابة من المراجع قبل عرض التقرير."
@@ -1545,7 +1697,8 @@
     runButton.disabled = true;
 
     try {
-      if (!aiReady()) {
+      const descriptiveOnly = scaleGuardApplies() && currentScaleDirection() === "descriptive-only";
+      if (!descriptiveOnly && !aiReady()) {
         setMessage("setupMessage", "التحليل التربوي في هذه النسخة يعتمد على خدمة التحليل الخادمية. اربط وظيفة Supabase وفعّلها أولًا.", true);
         return;
       }
@@ -1557,6 +1710,11 @@
         return;
       }
       if (narrativeMode) state.narrativeText = narrativeText;
+
+      if (scaleGuardApplies() && currentScaleDirection() === "unknown") {
+        setMessage("setupMessage", "ارجع إلى مراجعة الفهم وحدد دلالة مقياس التقويم أو اختر التحليل الوصفي فقط قبل تنفيذ التحليل.", true);
+        return;
+      }
 
       const scoreColumn = $("scoreColumnSelect").value;
       const levelColumn = $("levelColumnSelect").value;
@@ -1578,13 +1736,16 @@
         setMessage("setupMessage", "حد الإتقان يجب أن يكون بين 1 و100.", true);
         return;
       }
-      if (!window.TaqareerDeepAnalytics?.analyzeEvidence) throw new Error("محرك الحساب والأدلة غير محمل.");
+      if (!window.TaqareerDeepAnalytics?.analyzeEvidence || !window.TaqareerDeepAnalytics?.analyze) throw new Error("محرك الحساب والأدلة غير محمل.");
 
-      runButton.textContent = "جارٍ بناء حزمة الأدلة…";
-      setMessage("setupMessage", "يجري الآن حساب المؤشرات وتجهيز الأدلة، ثم ستبني خدمة التحليل القراءة التربوية من الأدلة.");
+      runButton.textContent = descriptiveOnly ? "جارٍ بناء الوصف الإحصائي…" : "جارٍ بناء حزمة الأدلة…";
+      setMessage("setupMessage", descriptiveOnly
+        ? "يجري الآن حساب المؤشرات الوصفية كما وردت في المصدر، دون تفسير اتجاهي أو أحكام قوة وضعف."
+        : "يجري الآن حساب المؤشرات وتجهيز الأدلة، ثم ستبني خدمة التحليل القراءة التربوية من الأدلة.");
       await yieldToUi();
-      const localTimer = perfApi()?.startSpan?.("الحسابات وحزمة الأدلة");
-      state.analysis = window.TaqareerDeepAnalytics.analyzeEvidence({
+      const localTimer = perfApi()?.startSpan?.(descriptiveOnly ? "التحليل الوصفي المحلي" : "الحسابات وحزمة الأدلة");
+      const analyzeFn = descriptiveOnly ? window.TaqareerDeepAnalytics.analyze : window.TaqareerDeepAnalytics.analyzeEvidence;
+      state.analysis = analyzeFn({
         typeId: state.type.id,
         headers: state.headers,
         rows: state.rows,
@@ -1599,6 +1760,18 @@
         analysisOptions: currentMultiSubjectOptions()
       });
       recordSpan(localTimer ? perfApi().endSpan(localTimer) : null);
+
+      if (descriptiveOnly) {
+        state.reconciledAnalysis = state.analysis;
+        state.aiUsed = false;
+        state.aiPending = false;
+        clearMessage("setupMessage");
+        renderResults();
+        showPanel(4);
+        if (totalTimer) recordSpan(perfApi().endSpan(totalTimer));
+        renderPerformanceSummary();
+        return;
+      }
 
       state.aiPending = true;
       stopPrimaryTicker = startPrimaryAnalysisTicker(runButton);
@@ -1622,7 +1795,7 @@
     } finally {
       if (stopPrimaryTicker) stopPrimaryTicker();
       runButton.disabled = false;
-      runButton.textContent = "تنفيذ التحليل التربوي";
+      runButton.textContent = scaleGuardApplies() && currentScaleDirection() === "descriptive-only" ? "تنفيذ التحليل الوصفي" : "تنفيذ التحليل التربوي";
       updateAiStatusUi();
     }
   }
@@ -1777,6 +1950,7 @@
   function renderResults() {
     const a = state.reconciledAnalysis;
     if (!a) return;
+    const descriptiveOnly = a.scaleSemantics?.direction === "descriptive-only";
     const delta = state.aiResult;
     const aiApplied = Boolean(a?._reconciliation?.aiApplied);
     const metrics = (a.metrics || []).slice(0, 8);
@@ -1810,7 +1984,7 @@
     $("diagnosticSectionsGrid").innerHTML = diagnosticSections.map(section => {
       const evidence = humanizeEvidenceRefs(section.evidenceRefs || []);
       const implications = Array.isArray(section.implications) ? section.implications : [];
-      const source = "تحليل تربوي موثق";
+      const source = descriptiveOnly ? "تحليل وصفي" : "تحليل تربوي موثق";
       const alternatives = Array.isArray(section.alternativeExplanations) ? section.alternativeExplanations : [];
       const requests = Array.isArray(section.dataRequests) ? section.dataRequests : [];
       return `<article class="diagnostic-section-card"><div class="diagnostic-section-meta"><span>${source}</span><span>ثقة ${escapeHtml(section.confidence || "متوسطة")}</span></div><h5>${escapeHtml(section.title || "قراءة تفسيرية")}</h5><p>${escapeHtml(publicText(section.analysis || ""))}</p>${evidence && evidence !== "لم يحدد مرجع دليل واضح." ? `<div class="soft-note">الدليل: ${escapeHtml(evidence)}</div>` : ""}${implications.length ? `<h6>الآثار العملية</h6><ul>${implications.map(item=>`<li>${escapeHtml(publicText(item))}</li>`).join("")}</ul>` : ""}${alternatives.length ? `<h6>تفسيرات بديلة محتملة</h6><ul>${alternatives.map(item=>`<li>${escapeHtml(publicText(item))}</li>`).join("")}</ul>` : ""}${requests.length ? `<h6>بيانات مطلوبة للتحقق</h6><ul>${requests.map(item=>`<li>${escapeHtml(publicText(item))}</li>`).join("")}</ul>` : ""}</article>`;
@@ -1818,7 +1992,7 @@
 
     // التحسين الخارجي جزء تلقائي من مسار التحليل ولا يظهر للمستخدم كمرحلة مستقلة.
     // تبقى واجهة النتائج هادئة: لا رسائل انتظار، لا أسماء مزودين، ولا أزرار إعادة.
-    $("analysisModeChip").textContent = "تحليل تربوي مكتمل";
+    $("analysisModeChip").textContent = descriptiveOnly ? "تحليل وصفي مكتمل" : "تحليل تربوي مكتمل";
     $("analysisModeChip").className = "success-chip";
     const notice = $("aiResultNotice");
     notice.innerHTML = "";
@@ -1831,7 +2005,7 @@
 
     const findings = (a.findings || []).slice(0, 18);
     $("findings").innerHTML = findings.map((f,i)=>{
-      const sourceLabel="تحليل تربوي موثق";
+      const sourceLabel=descriptiveOnly ? "تحليل وصفي" : "تحليل تربوي موثق";
       const severity=f.severity||"medium";
       const limitations=f.limitations||[];
       const limitationHtml=limitations.length?`<h5>الحدود</h5><p>${limitations.map(escapeHtml).join("، ")}</p>`:"";
@@ -1903,7 +2077,7 @@
   function exportAnalysis() {
     const payload = {
       app: "تقارير",
-      version: "1.2.13",
+      version: "1.2.14",
       generatedAt: new Date().toISOString(),
       source: state.sourceName,
       sourceMeta: state.sourceMeta,
@@ -1916,7 +2090,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v1.2.13.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v1.2.14.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
@@ -1934,6 +2108,7 @@
       analysisRequestId: state.analysisRequestId + 1,
       sampleMaxScore: null, pendingSource: null, sourceMeta: null, pendingManualFileName: "", pendingVisualPreview: null,
       multiSubjectOptions: { mode: "all", subject: "", includeSubjectTopTen: true, includeSchoolRanking: true },
+      scaleSemantics: null,
       previewExpanded: false
     });
     $("fileInput").value = ""; $("pasteInput").value = ""; $("manualTextInput").value = "";
@@ -1969,6 +2144,13 @@
 
     $("backToInputBtn").addEventListener("click",()=>showPanel(1));
     $("togglePreviewColumnsBtn").addEventListener("click", () => { state.previewExpanded = !state.previewExpanded; renderReview(); });
+    document.querySelectorAll('input[name="scaleDirection"]').forEach(input => input.addEventListener("change", event => {
+      if (event.target.checked) setScaleDirection(event.target.value);
+    }));
+    [$("scaleMinInput"), $("scaleMaxInput")].filter(Boolean).forEach(input => input.addEventListener("change", () => {
+      const direction = currentScaleDirection();
+      if (direction !== "unknown") setScaleDirection(direction);
+    }));
     $("toSetupBtn").addEventListener("click",()=>{renderSetup();showPanel(3);});
     $("multiSubjectScopeSelect").addEventListener("change", renderMultiSubjectWorkspace);
     $("multiSubjectSubjectSelect").addEventListener("change", renderMultiSubjectWorkspace);
@@ -1999,7 +2181,7 @@
     });
     window.addEventListener?.("taqareer-ai-health", updateAiStatusUi);
     $("changeTypeBtn").addEventListener("click",()=>{ $("typeSelect").value=state.type.id; $("typeDialog").showModal(); });
-    $("applyTypeBtn").addEventListener("click", e => { e.preventDefault(); const chosen=formTypes.find(t=>t.id===$("typeSelect").value) || (state.type?.id === $("typeSelect").value ? state.type : null); if(chosen){state.type=chosen;state.confidence=100;state.recognitionStatus="اعتماد يدوي من المستخدم";state.semanticProfile=window.TaqareerAnalysisProfiler?.profileTable?.({headers:state.headers,rows:state.rows,sourceMeta:state.sourceMeta||{},typeId:state.type.id})||state.semanticProfile;state.quality=assessQuality(state.headers,state.rows,state.type,state.sourceMeta||{},state.semanticProfile);renderReview();} $("typeDialog").close(); });
+    $("applyTypeBtn").addEventListener("click", e => { e.preventDefault(); const chosen=formTypes.find(t=>t.id===$("typeSelect").value) || (state.type?.id === $("typeSelect").value ? state.type : null); if(chosen){state.type=chosen;state.confidence=100;state.recognitionStatus="اعتماد يدوي من المستخدم";if(!scaleGuardApplies(chosen.id)){state.scaleSemantics=null;if(state.sourceMeta){delete state.sourceMeta.scaleSemantics;delete state.sourceMeta.scaleDirection;}}state.semanticProfile=window.TaqareerAnalysisProfiler?.profileTable?.({headers:state.headers,rows:state.rows,sourceMeta:state.sourceMeta||{},typeId:state.type.id})||state.semanticProfile;applyScaleSemanticsToProfile();state.quality=assessQuality(state.headers,state.rows,state.type,state.sourceMeta||{},state.semanticProfile);renderReview();} $("typeDialog").close(); });
     document.body.dataset.activeStep = "1";
     updateAiStatusUi();
     verifyAiConnectionOnLoad();

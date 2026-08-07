@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "2.0.0";
+  const VERSION = "2.1.0";
 
   function normalize(value) {
     return String(value ?? "")
@@ -77,6 +77,66 @@
     if (/^(الاجمالي|الإجمالي|المجموع|جمله عامه|جملة عامة|total)$/.test(groupValue)) return true;
     const text = headers.map(header => normalize(row?.[header])).join(" ");
     return /(^|\s)(الاجمالي|الإجمالي|المجموع الكلي|المجموع العام)(\s|$)/.test(text);
+  }
+
+  function indicatorAggregateRow(row, itemHeader) {
+    const label = normalize(row?.[itemHeader]);
+    return /^(المستوى الكلي|المستوي الكلي|المستوى العام|المستوي العام|الاجمالي|الإجمالي|المجموع)$/.test(label);
+  }
+
+  function detectIndicatorScaleProfile(headers, rows, sourceMeta, typeId) {
+    if (!["student_work", "supervision_indicator"].includes(typeId)) return null;
+    const itemHeader = headerMatch(headers, ["بنود التقويم", "البند", "المؤشر", "النص"]);
+    const meanHeader = headerMatch(headers, ["المتوسط", "الدرجة", "القيمة"]);
+    if (!itemHeader || !meanHeader) return null;
+    const modeHeader = headerMatch(headers, ["الأكثر تكرارا", "الأكثر تكرارًا", "المنوال"]);
+    const dataRowIndexes = [];
+    const aggregateRowIndexes = [];
+    const values = [];
+    rows.forEach((row, index) => {
+      if (indicatorAggregateRow(row, itemHeader)) { aggregateRowIndexes.push(index); return; }
+      const value = parseNumber(row?.[meanHeader]);
+      if (String(row?.[itemHeader] ?? "").trim() && Number.isFinite(value)) {
+        dataRowIndexes.push(index);
+        values.push(value);
+      }
+    });
+    const sourceScale = sourceMeta?.scaleSemantics && typeof sourceMeta.scaleSemantics === "object" ? sourceMeta.scaleSemantics : {};
+    const direction = String(sourceScale.direction || sourceMeta?.scaleDirection || "unknown");
+    const minObserved = values.length ? Math.min(...values) : null;
+    const maxObserved = values.length ? Math.max(...values) : null;
+    const descriptiveOnly = direction === "descriptive-only";
+    const label = typeId === "student_work" ? "فحص أعمال الطلبة" : "مؤشرات إشرافية";
+    return {
+      profileVersion: VERSION,
+      shape: "ordinal_indicator_summary",
+      unitOfAnalysis: "row",
+      dataNature: "aggregated_ordinal_indicators",
+      aggregationLevel: "aggregated",
+      orientation: "indicators_in_rows",
+      measureType: modeHeader ? "ordinal_mean_and_mode" : "ordinal_mean",
+      scaleDirection: direction,
+      analyzerId: typeId,
+      recommendedTypeId: typeId,
+      requiresScoreSettings: false,
+      requiresScaleConfirmation: direction === "unknown",
+      confidence: 96,
+      rationale: `اكتُشف ${label} يضم ${dataRowIndexes.length} بندًا${aggregateRowIndexes.length ? " مع صف إجمالي منفصل" : ""}، مع متوسط${modeHeader ? " وأكثر تكرارًا" : ""}.`,
+      analysisFamilies: descriptiveOnly
+        ? ["indicator_descriptive_analysis", "mean_mode_consistency"]
+        : ["indicator_analysis", "domain_comparison", "priority_analysis", "mean_mode_consistency"],
+      columnRoles: { item: itemHeader, mean: meanHeader, mode: modeHeader },
+      rowRoles: { dataRowIndexes, aggregateRowIndexes },
+      scale: {
+        direction,
+        source: sourceScale.source || (direction === "unknown" ? "unconfirmed" : "source"),
+        minObserved,
+        maxObserved,
+        distinctObserved: [...new Set(values)].sort((a, b) => a - b),
+      },
+      metadata: { reportTitle: String(sourceMeta?.reportTitle || sourceMeta?.metadata?.title || "") },
+      requiresSemanticVerification: true,
+    };
   }
 
 
@@ -235,6 +295,8 @@
     if (multiSubjectResults) return multiSubjectResults;
     const distribution = detectDistributionProfile(safeHeaders, safeRows, sourceMeta || {}, stats);
     if (distribution) return distribution;
+    const indicatorScale = detectIndicatorScaleProfile(safeHeaders, safeRows, sourceMeta || {}, typeId);
+    if (indicatorScale) return indicatorScale;
 
     const numeric = stats.filter(item => item.numericRatio >= 0.6);
     const dimensions = stats.filter(item => item.numericRatio < 0.5 && item.nonEmptyCount > 0);

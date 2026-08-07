@@ -58,6 +58,14 @@ export interface SemanticAnalysisProfile {
   orientation: string;
   measureType: string;
   scaleDirection: string;
+  requiresScaleConfirmation?: boolean;
+  scale?: {
+    direction?: string;
+    source?: string;
+    minObserved?: number | null;
+    maxObserved?: number | null;
+    distinctObserved?: number[];
+  };
   analyzerId: string;
   recommendedTypeId: string;
   requiresScoreSettings: boolean;

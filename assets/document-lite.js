@@ -246,6 +246,19 @@
     return rows.map(row => Array.from({ length: lastUsed + 1 }, (_, col) => row[col] ?? ""));
   }
 
+  function pruneGeneratedEmptyColumns(headers, rows) {
+    const keep = headers.filter(header => {
+      const generated = /^عمود\s+\d+(?:\s*\(\d+\))?$/i.test(String(header || "").trim());
+      if (!generated) return true;
+      return rows.some(row => String(row?.[header] ?? "").trim() !== "");
+    });
+    if (keep.length === headers.length) return { headers, rows };
+    return {
+      headers: keep,
+      rows: rows.map(row => Object.fromEntries(keep.map(header => [header, row?.[header] ?? ""])))
+    };
+  }
+
   function matrixToTable(matrix) {
     const compact = compactMatrix(matrix);
     if (!compact.length) return { headers: [], rows: [], headerRow: -1, matrix: compact, score: -Infinity };
@@ -260,7 +273,8 @@
     const rows = compact.slice(bestIndex + 1)
       .filter(row => row.some(value => String(value ?? "").trim() !== ""))
       .map(row => Object.fromEntries(headers.map((header, index) => [header, row[index] ?? ""])));
-    return { headers, rows, headerRow: bestIndex + 1, matrix: compact, score: bestScore };
+    const pruned = pruneGeneratedEmptyColumns(headers, rows);
+    return { headers: pruned.headers, rows: pruned.rows, headerRow: bestIndex + 1, matrix: compact, score: bestScore };
   }
 
   function paragraphRows(lines) {
@@ -957,7 +971,7 @@
     imagePreview,
     constants: { PDF_MODULE_URL, PDF_WORKER_URL },
     _test: {
-      matrixToTable, groupPdfItemsIntoLines, paragraphRows, parseWordBody, parseWordMetadata, parseWordMetadataTokens, storyTextTokens,
+      matrixToTable, pruneGeneratedEmptyColumns, groupPdfItemsIntoLines, paragraphRows, parseWordBody, parseWordMetadata, parseWordMetadataTokens, storyTextTokens,
       detectMultiVisitSupervisionPdf, parseSupervisionRatings, parseSupervisionNarrative, parseVisitPage,
       supervisionVisitRows, indicators: SUPERVISION_VISIT_INDICATORS, scale: SUPERVISION_SCALE,
     }

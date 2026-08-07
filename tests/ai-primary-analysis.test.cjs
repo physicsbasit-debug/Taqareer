@@ -243,7 +243,11 @@ test('frontend waits for primary AI analysis before showing results', () => {
   const runStart = source.indexOf('async function runAnalysis()');
   const runEnd = source.indexOf('function round(v)', runStart);
   const run = source.slice(runStart, runEnd);
-  assert.ok(run.indexOf('await enrichAnalysisWithAi') < run.indexOf('renderResults()'));
+  const aiAwait = run.indexOf('await enrichAnalysisWithAi');
+  const aiRender = run.indexOf('renderResults()', aiAwait);
+  assert.ok(aiAwait >= 0);
+  assert.ok(aiRender > aiAwait);
+  assert.match(run, /if \(descriptiveOnly\)[\s\S]*renderResults\(\)/);
   assert.match(run, /لم يعرض التطبيق قوالب محلية بديلة/);
   assert.doesNotMatch(run, /canonicalize\?\.\(state\.analysis\)/);
 });

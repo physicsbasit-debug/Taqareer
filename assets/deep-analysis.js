@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.2.10";
+  const VERSION = "1.2.14";
 
   function masteryEngine() {
     const engine = window.TaqareerMasteryMetrics;
@@ -26,6 +26,23 @@
     const text = String(value).replace(/[٠-٩٫٬]/g, ch => map[ch]).replace(/[%،]/g, m => m === "%" ? "" : ",").trim();
     const n = Number(text.replace(/,/g, ""));
     return Number.isFinite(n) ? n : NaN;
+  }
+
+  function parseNumericList(value) {
+    if (value === null || value === undefined || String(value).trim() === "") return [];
+    const map = {"٠":"0","١":"1","٢":"2","٣":"3","٤":"4","٥":"5","٦":"6","٧":"7","٨":"8","٩":"9","٫":".","٬":""};
+    const text = String(value).replace(/[٠-٩٫٬]/g, ch => map[ch]).replace(/%/g, "").trim();
+    return text.split(/[،,;/\|]+/).map(part => Number(part.trim())).filter(Number.isFinite);
+  }
+
+  function ordinalPerformanceScore(value, minScore, maxScore, direction) {
+    if (!Number.isFinite(value) || !Number.isFinite(maxScore) || maxScore <= 0) return NaN;
+    if (direction === "higher-is-better") return value / maxScore * 100;
+    if (direction === "lower-is-better") {
+      const min = Number.isFinite(minScore) ? minScore : 1;
+      return (maxScore + min - value) / maxScore * 100;
+    }
+    return NaN;
   }
 
   function round(value, digits = 1) {
@@ -1104,26 +1121,92 @@
     return scored[0]?.score ? scored[0] : { id: "other", label: "مجالات أخرى", keys: [], score: 0 };
   }
 
+  function analyzeIndicatorDescriptive(context, mode, result, items, modeHeader, minScore, maxScore) {
+    const domainStats = unique(items.map(item => item.domain)).map(domain => {
+      const domainItems = items.filter(item => item.domain === domain);
+      const values = domainItems.map(item => item.score);
+      return { domain, count: domainItems.length, mean: round(mean(values), 2), minimum: round(Math.min(...values), 2), maximum: round(Math.max(...values), 2) };
+    });
+    const rawValues = items.map(item => item.score);
+    const modeGaps = modeHeader ? items.filter(item => item.modeValues.length).map(item => Math.min(...item.modeValues.map(value => Math.abs(item.score - value)))) : [];
+    const meanModeGap = modeGaps.length ? mean(modeGaps) : NaN;
+    result.items = items;
+    result.domains = domainStats;
+    result.scaleSemantics = { direction: "descriptive-only", minObserved: minScore, maxObserved: maxScore, source: context.sourceMeta?.scaleSemantics?.source || "user" };
+    result.analysisProfile.dataSufficiency = items.length >= 8 ? "جيدة للتحليل الوصفي" : "محدودة";
+    result.analysisProfile.dimensions = ["توزيع القيم", "المتوسطات حسب المجال", ...(modeHeader ? ["اتساق المتوسط مع الأكثر تكرارًا"] : [])];
+    result.analysisProfile.decisionUse = ["وصف بنية النتائج", "تحديد البنود التي تحتاج تفسيرًا بعد اعتماد دلالة المقياس"];
+    result.metrics = [
+      metric("indicatorCount", "عدد المؤشرات", items.length, "مؤشرًا", "integer"),
+      metric("rawMean", "المتوسط الوصفي العام", round(mean(rawValues), 2), `ضمن القيم المرصودة ${minScore}–${maxScore}`, "number"),
+      metric("observedMin", "أدنى قيمة مرصودة", minScore, "دون تفسير جودة", "number"),
+      metric("observedMax", "أعلى قيمة مرصودة", maxScore, "دون تفسير جودة", "number"),
+      metric("domainCount", "عدد المجالات", domainStats.length, "مجالًا", "integer"),
+      ...(Number.isFinite(meanModeGap) ? [metric("meanModeGap", "فارق المتوسط والأكثر تكرارًا", round(meanModeGap, 2), "وصفي فقط")] : [])
+    ];
+    result.charts = [
+      chart("domain-descriptive-bars", "bar", "متوسطات المجالات كما وردت", "عرض وصفي للقيم الأصلية دون افتراض أن الأعلى أو الأدنى أفضل.", domainStats, { xKey: "domain", yKey: "mean" }),
+      chart("indicator-descriptive-bars", "bar", "متوسطات بنود التقويم", "القيم الأصلية مرتبة حسب ورود البنود، دون تحويلها إلى فجوات أداء.", items.slice(0, 18).map(item => ({ label: item.label, value: item.score })), { xKey: "label", yKey: "value" })
+    ];
+    result.findings = [finding(
+      "قراءة وصفية للمقياس",
+      `تتراوح المتوسطات المرصودة بين ${minScore} و${maxScore}، وبلغ المتوسط الوصفي العام ${round(mean(rawValues), 2)}.`,
+      "مرتفعة",
+      "هذه أرقام وصفية فقط؛ اتجاه المقياس غير معتمد، لذلك لا يمكن تحويلها إلى قوة أو ضعف بصورة سليمة.",
+      "تأكيد دلالة المقياس من وثيقة الأداة قبل بناء أولويات أو تدخلات تفسيرية.",
+      "medium",
+      ["metric:rawMean", "metric:observedMin", "metric:observedMax"]
+    )];
+    result.qualityTools = [];
+    result.improvementPlan = [];
+    result.monitoringPlan = [];
+    result.limitations = [
+      "اتجاه مقياس التقويم غير معتمد؛ التحليل وصفي فقط ولا يصنف البنود إلى قوة أو ضعف.",
+      "لا تُبنى فجوات أداء أو أولويات علاجية قبل معرفة ما إذا كانت القيمة الأقل أم الأعلى تمثل أداءً أفضل.",
+      "القيم المركبة في خانة الأكثر تكرارًا مثل 1,2 تُعامل كتعدد في المنوال، ولا تُحوّل إلى العدد 12."
+    ];
+    result.executiveTitle = "وصف نتائج المقياس دون حكم اتجاهي";
+    result.executiveSummary = `حلل النظام ${items.length} بندًا وصفيًا. تراوحت المتوسطات بين ${minScore} و${maxScore}. لم يصدر حكم قوة أو ضعف ولم يبنِ أولويات علاجية لأن اتجاه المقياس لم يُعتمد.`;
+    result.action = null;
+    result.evidenceMap = evidenceMapFromMetrics(result.metrics);
+    return result;
+  }
+
   function analyzeIndicatorSet(context, mode) {
     const domains = mode === "student_work" ? STUDENT_WORK_DOMAINS : SUPERVISION_DOMAINS;
     const familyName = mode === "student_work" ? "student_work" : "supervision_indicator";
     const purpose = mode === "student_work" ? "تحليل جودة أعمال الطلبة وممارسات تصميمها ومتابعتها" : "تحليل المؤشرات الإشرافية والفجوات وأولويات النمو المهني";
     const result = createBase(context, familyName, purpose);
     const itemHeader = findHeader(context.headers, ["بنود التقويم", "البند", "المؤشر", "النص"]);
-    const scoreHeader = context.scoreColumn || findHeader(context.headers, ["المتوسط", "الدرجة", "القيمة"]);
-    const modeHeader = findHeader(context.headers, ["الأكثر تكرارا", "المنوال"]);
+    const scoreHeader = context.scoreColumn || context.analysisProfile?.columnRoles?.mean || findHeader(context.headers, ["المتوسط", "الدرجة", "القيمة"]);
+    const modeHeader = context.analysisProfile?.columnRoles?.mode || findHeader(context.headers, ["الأكثر تكرارا", "الأكثر تكرارًا", "المنوال"]);
     if (!itemHeader || !scoreHeader) throw new Error("لم يكتشف التطبيق عمود البند وعمود الدرجة أو المتوسط.");
-    const maxScore = Number.isFinite(context.maxScore) && context.maxScore > 0 ? context.maxScore : Math.max(...context.rows.map(row => parseNumber(row[scoreHeader])).filter(Number.isFinite));
-    const items = context.rows.map((row, index) => {
-      const label = String(row[itemHeader] || "").trim();
-      const score = parseNumber(row[scoreHeader]);
+    const dataRowIndexes = Array.isArray(context.analysisProfile?.rowRoles?.dataRowIndexes) && context.analysisProfile.rowRoles.dataRowIndexes.length
+      ? context.analysisProfile.rowRoles.dataRowIndexes
+      : context.rows.map((_, index) => index).filter(index => !/^(المستوى الكلي|المستوي الكلي|المستوى العام|المستوي العام|الاجمالي|الإجمالي|المجموع)$/.test(normalize(context.rows[index]?.[itemHeader])));
+    const rawScores = dataRowIndexes.map(index => parseNumber(context.rows[index]?.[scoreHeader])).filter(Number.isFinite);
+    if (!rawScores.length) throw new Error("لا توجد مؤشرات صالحة للتحليل.");
+    const scaleMeta = context.sourceMeta?.scaleSemantics || context.analysisProfile?.scale || {};
+    const scaleDirection = String(scaleMeta.direction || context.analysisProfile?.scaleDirection || context.sourceMeta?.scaleDirection || "unknown");
+    if (scaleDirection === "unknown") throw new Error("اتجاه مقياس التقويم غير محدد. أكّد دلالة المقياس أو اختر التحليل الوصفي فقط.");
+    const maxScore = Number.isFinite(Number(scaleMeta.maxObserved)) ? Number(scaleMeta.maxObserved)
+      : Number.isFinite(context.maxScore) && context.maxScore > 0 ? context.maxScore
+      : Math.max(...rawScores);
+    const minScore = Number.isFinite(Number(scaleMeta.minObserved)) ? Number(scaleMeta.minObserved) : Math.min(...rawScores);
+    const items = dataRowIndexes.map(index => {
+      const row = context.rows[index];
+      const label = String(row?.[itemHeader] || "").trim();
+      const score = parseNumber(row?.[scoreHeader]);
       if (!label || !Number.isFinite(score)) return null;
       const domain = classifyDomain(label, domains);
-      const modeValue = modeHeader ? parseNumber(row[modeHeader]) : NaN;
-      const normalizedScore = maxScore ? score / maxScore * 100 : score;
-      return { ref: `row:${index + 1}`, label, score, mode: modeValue, normalizedScore, gap: Math.max(0, 100 - normalizedScore), domainId: domain.id, domain: domain.label };
+      const modeValues = modeHeader ? parseNumericList(row?.[modeHeader]) : [];
+      const modeValue = modeValues.length === 1 ? modeValues[0] : NaN;
+      const normalizedScore = scaleDirection === "descriptive-only" ? NaN : ordinalPerformanceScore(score, minScore, maxScore, scaleDirection);
+      return { ref: `row:${index + 1}`, label, score, mode: modeValue, modeValues, normalizedScore, gap: Number.isFinite(normalizedScore) ? Math.max(0, 100 - normalizedScore) : NaN, domainId: domain.id, domain: domain.label };
     }).filter(Boolean);
     if (!items.length) throw new Error("لا توجد مؤشرات صالحة للتحليل.");
+    if (scaleDirection === "descriptive-only") return analyzeIndicatorDescriptive(context, mode, result, items, modeHeader, minScore, maxScore);
+    result.scaleSemantics = { direction: scaleDirection, minObserved: minScore, maxObserved: maxScore, source: scaleMeta.source || "user" };
     const domainStats = unique(items.map(item => item.domain)).map(domain => {
       const domainItems = items.filter(item => item.domain === domain);
       return {
@@ -1143,7 +1226,8 @@
     let cumulative = 0; pareto.forEach(item => { cumulative += item.contribution; item.cumulative = round(cumulative); });
     const overall = mean(items.map(item => item.normalizedScore));
     const domainGap = domainStats.length ? domainStats[0].mean - domainStats.at(-1).mean : 0;
-    const meanModeGap = modeHeader ? mean(items.filter(item => Number.isFinite(item.mode)).map(item => Math.abs(item.score - item.mode))) : NaN;
+    const modeGaps = modeHeader ? items.filter(item => item.modeValues.length).map(item => Math.min(...item.modeValues.map(value => Math.abs(item.score - value)))) : [];
+    const meanModeGap = modeGaps.length ? mean(modeGaps) : NaN;
 
     result.items = items; result.domains = domainStats; result.overallPct = overall; result.strengths = strengths; result.priorities = priorities;
     result.analysisProfile.dataSufficiency = items.length >= 8 ? "مرتفعة للتحليل المؤشري" : "محدودة";
@@ -1212,7 +1296,12 @@
       { stage: "إعادة الملاحظة", timing: "الأسبوع 3", measure: "نفس المؤشرات وبالأداة نفسها", owner: "المشرف" },
       { stage: "تثبيت أو تعديل", timing: "بعد المراجعة", measure: "حجم التحسن واستدامته", owner: "فريق المادة" }
     ];
-    result.limitations = ["المتوسطات المجمعة لا تكشف تباين الزيارات الفردية أو اختلاف المقيمين.", "النتيجة الرقمية لا تعوض مراجعة الأدلة الميدانية والنصوص المصاحبة.", `اعتمد التطبيع على الدرجة العليا ${maxScore}؛ يجب التأكد أنها الدرجة الرسمية للمقياس.`];
+    result.limitations = [
+      scaleDirection === "lower-is-better" ? "تم تفسير المقياس وفق اعتماد المستخدم: القيمة الأقل تمثل أداءً أفضل." : "تم تفسير المقياس وفق اعتماد المستخدم: القيمة الأعلى تمثل أداءً أفضل.",
+      "المتوسطات المجمعة لا تكشف تباين الحالات الفردية أو اختلاف المقيمين.",
+      "النتيجة الرقمية لا تعوض مراجعة الأدلة الميدانية والنصوص المصاحبة.",
+      `اعتمد التطبيع على المجال المرصود ${minScore}–${maxScore}؛ يجب مراجعته مع وثيقة الأداة عند توفرها.`
+    ];
     result.executiveTitle = `الأولوية: ${weakestDomain.domain}`;
     result.executiveSummary = `حلل النظام ${items.length} مؤشرًا ضمن ${domainStats.length} مجالات. بلغ المستوى العام ${round(overall)}%. تصدر «${strongestDomain.domain}» الأداء، بينما ظهر «${weakestDomain.domain}» كأولوية بفجوة ${weakestDomain.gap}%. يوصى بتركيز دورة التحسين على عدد محدود من المؤشرات الأعلى إسهامًا في الفجوة وإعادة قياسها بالأداة نفسها.`;
     result.action = result.improvementPlan[0] ? { title: result.improvementPlan[0].action, text: `${result.improvementPlan[0].responsibleRole} - ${result.improvementPlan[0].timeframe}`, priority: result.improvementPlan[0].priority, indicator: result.improvementPlan[0].successIndicator } : result.action;
@@ -2066,5 +2155,5 @@
     return evidence;
   }
 
-  window.TaqareerDeepAnalytics = { VERSION, analyze, analyzeEvidence, analyzers: Object.keys(analyzers), helpers: { normalize, parseNumber, quantile, pearson }, masteryContractVersion: masteryEngine().VERSION };
+  window.TaqareerDeepAnalytics = { VERSION, analyze, analyzeEvidence, analyzers: Object.keys(analyzers), helpers: { normalize, parseNumber, parseNumericList, ordinalPerformanceScore, quantile, pearson }, masteryContractVersion: masteryEngine().VERSION };
 })();
