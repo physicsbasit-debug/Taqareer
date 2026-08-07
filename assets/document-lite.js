@@ -812,22 +812,39 @@
     };
   }
 
+  function detectPdfPageReportTitle(lines, headerRow = 1) {
+    const beforeHeader = (lines || []).slice(0, Math.max(0, Number(headerRow || 1) - 1))
+      .map(line => String(line?.text || "").trim())
+      .filter(Boolean);
+    if (!beforeHeader.length) return "";
+    const signals = /فحص\s+أعمال\s+الطلبة|ملخص\s+الأداء|استبانة|استمارة|زيارة\s+إشرافية|تقرير|كشف|إحصائية/;
+    const signaled = beforeHeader.filter(text => signals.test(text));
+    return String(signaled.at(-1) || beforeHeader.at(-1) || "").trim();
+  }
+
   function mergeCompatiblePdfTables(datasets) {
     const groups = new Map();
     const other = [];
     for (const dataset of datasets) {
       const key = dataset.headers.map(normalize).join("|");
       if (!key || dataset.headers.length < 2) { other.push(dataset); continue; }
-      if (!groups.has(key)) groups.set(key, { ...dataset, name: dataset.name.replace(/ · صفحة \d+$/, ""), rows: [], pages: [] });
+      if (!groups.has(key)) groups.set(key, { ...dataset, name: dataset.name.replace(/ · صفحة \d+$/, ""), rows: [], pages: [], rawTexts: [], reportTitles: [] });
       const group = groups.get(key);
       group.rows.push(...dataset.rows);
       if (dataset.meta?.page) group.pages.push(dataset.meta.page);
+      if (dataset.rawText) group.rawTexts.push(dataset.rawText);
+      if (dataset.meta?.reportTitle) group.reportTitles.push(dataset.meta.reportTitle);
     }
-    return [...groups.values()].map(dataset => ({
-      ...dataset,
-      name: dataset.pages.length > 1 ? `${dataset.name} · الصفحات ${dataset.pages.join("، ")}` : dataset.name,
-      meta: { ...dataset.meta, pages: dataset.pages, pageCount: dataset.pages.length }
-    })).concat(other);
+    return [...groups.values()].map(dataset => {
+      const { rawTexts = [], reportTitles = [], ...clean } = dataset;
+      const reportTitle = reportTitles.find(Boolean) || clean.meta?.reportTitle || "";
+      return {
+        ...clean,
+        rawText: [...new Set(rawTexts.filter(Boolean))].join("\n"),
+        name: clean.pages.length > 1 ? `${clean.name} · الصفحات ${clean.pages.join("، ")}` : clean.name,
+        meta: { ...clean.meta, reportTitle, metadata: { ...(clean.meta?.metadata || {}), title: reportTitle }, pages: clean.pages, pageCount: clean.pages.length }
+      };
+    }).concat(other);
   }
 
   async function loadPdfModule() {
@@ -867,12 +884,19 @@
       const matrix = lines.map(line => line.cells.length >= 2 ? line.cells : [line.text]);
       const table = matrixToTable(matrix);
       if (table.headers.length >= 2 && table.rows.length >= 1 && table.score > 8) {
+        const pageText = lines.map(line => String(line?.text || "").trim()).filter(Boolean).join("\n");
+        const reportTitle = detectPdfPageReportTitle(lines, table.headerRow);
         pageDatasets.push({
           id: `pdf-page-${pageNumber}-table`,
           name: `جدول PDF · صفحة ${pageNumber}`,
           headers: table.headers,
           rows: table.rows,
-          meta: { sourceType: "pdf", mode: "table", page: pageNumber, headerRow: table.headerRow }
+          rawText: pageText,
+          meta: {
+            sourceType: "pdf", mode: "table", page: pageNumber, headerRow: table.headerRow,
+            reportTitle, metadata: { title: reportTitle },
+            documentPreamble: lines.slice(0, Math.max(0, table.headerRow - 1)).map(line => String(line?.text || "").trim()).filter(Boolean)
+          }
         });
       }
     }
@@ -971,7 +995,7 @@
     imagePreview,
     constants: { PDF_MODULE_URL, PDF_WORKER_URL },
     _test: {
-      matrixToTable, pruneGeneratedEmptyColumns, groupPdfItemsIntoLines, paragraphRows, parseWordBody, parseWordMetadata, parseWordMetadataTokens, storyTextTokens,
+      matrixToTable, pruneGeneratedEmptyColumns, groupPdfItemsIntoLines, detectPdfPageReportTitle, paragraphRows, parseWordBody, parseWordMetadata, parseWordMetadataTokens, storyTextTokens,
       detectMultiVisitSupervisionPdf, parseSupervisionRatings, parseSupervisionNarrative, parseVisitPage,
       supervisionVisitRows, indicators: SUPERVISION_VISIT_INDICATORS, scale: SUPERVISION_SCALE,
     }

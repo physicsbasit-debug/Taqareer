@@ -81,7 +81,7 @@
     analysis: null, reconciledAnalysis: null, aiResult: null, aiError: "", aiWarning: "", aiUsed: false, aiPending: false,
     aiSegments: { results: {}, failures: {}, statuses: {}, taskResults: {}, taskFailures: {}, taskStatuses: {}, taskPlan: [], failedTaskIds: [], recovery: null },
     performance: { spans: [], cacheHit: false, payloadChars: 0, aiUsage: null, aiModel: "", aiServerTiming: null, segmentTimings: {} },
-    localRecognition: null, aiRecognition: null, semanticProfile: null, recognitionStatus: "محلي", recognitionRequestId: 0, analysisRequestId: 0,
+    localRecognition: null, aiRecognition: null, recognitionConflict: null, semanticProfile: null, recognitionStatus: "محلي", recognitionRequestId: 0, analysisRequestId: 0,
     sampleMaxScore: null, pendingSource: null, sourceMeta: null, pendingManualFileName: "", pendingVisualPreview: null,
     multiSubjectOptions: { mode: "all", subject: "", includeSubjectTopTen: true, includeSchoolRanking: true },
     scaleSemantics: null,
@@ -96,6 +96,16 @@
   }
 
   function displayTerms() { return window.TaqareerDisplayTerms || null; }
+  function recognitionPolicy() { return window.TaqareerRecognitionPolicy || null; }
+  function confirmedScaleDirectionFromMeta(sourceMeta = {}) {
+    const policy = recognitionPolicy();
+    if (policy?.confirmedScaleDirection) {
+      return policy.confirmedScaleDirection({ sourceScaleSemantics: sourceMeta?.scaleSemantics || null });
+    }
+    const semantics = sourceMeta?.scaleSemantics;
+    const allowed = new Set(["lower-is-better", "higher-is-better", "descriptive-only"]);
+    return semantics?.confirmed === true && allowed.has(String(semantics.direction || "")) ? String(semantics.direction) : "unknown";
+  }
   function publicAnalysisMethod(value, fallback = "تحليل تربوي متخصص") {
     return displayTerms()?.analysisMethod?.(value, fallback) || String(value || fallback);
   }
@@ -149,7 +159,22 @@
   }
 
   function currentScaleDirection() {
-    return String(state.scaleSemantics?.direction || state.sourceMeta?.scaleSemantics?.direction || state.semanticProfile?.scaleDirection || "unknown");
+    if (scaleGuardApplies()) {
+      const policy = recognitionPolicy();
+      if (policy?.confirmedScaleDirection) {
+        return policy.confirmedScaleDirection({
+          localScaleSemantics: state.scaleSemantics || null,
+          sourceScaleSemantics: state.sourceMeta?.scaleSemantics || null
+        });
+      }
+      const local = state.scaleSemantics;
+      const source = state.sourceMeta?.scaleSemantics;
+      const allowed = new Set(["lower-is-better", "higher-is-better", "descriptive-only"]);
+      if (local?.confirmed === true && allowed.has(String(local.direction || ""))) return String(local.direction);
+      if (source?.confirmed === true && allowed.has(String(source.direction || ""))) return String(source.direction);
+      return "unknown";
+    }
+    return String(state.semanticProfile?.scaleDirection || "unknown");
   }
 
   function applyScaleSemanticsToProfile() {
@@ -452,6 +477,20 @@
     };
     const has = phrase => allText.includes(normalize(phrase));
     const headerHas = phrase => headerText.includes(normalize(phrase));
+    const explicitLock = recognitionPolicy()?.explicitTypeLock?.({ headers, rows, sourceMeta, rawText }) || null;
+    if (explicitLock?.typeId) {
+      const lockedType = typeById(explicitLock.typeId);
+      if (lockedType) {
+        return {
+          type: lockedType,
+          confidence: Math.max(98, Number(explicitLock.confidence || 0)),
+          rationale: explicitLock.reason || "عنوان المصدر يحدد نوع الوثيقة صراحةً.",
+          source: "local",
+          lockedTypeId: lockedType.id,
+          lockAuthority: explicitLock.authority || "explicit-source-title"
+        };
+      }
+    }
 
     if (semanticProfile?.recommendedTypeId && semanticProfile.recommendedTypeId !== "unknown") {
       add(semanticProfile.recommendedTypeId, Math.max(36, Math.round(Number(semanticProfile.confidence || 0) * 0.72)), `ملف دلالي: ${semanticProfile.rationale || semanticProfile.shape || "بنية مكتشفة"}`);
@@ -499,6 +538,9 @@
     if (has("تخطيط") && has("اداره الصف") && has("استراتيجيات التدريس")) add("supervision_indicator", 18, "مجالات أداء إشرافي");
 
     if (has("فحص اعمال الطلبه") || has("فحص أعمال الطلبة")) add("student_work", 52, "عنوان فحص أعمال الطلبة");
+    if (headerHas("بنود التقويم") && headerHas("المتوسط") && (headerHas("الاكثر تكرارا") || headerHas("الأكثر تكرارا"))) {
+      add("student_work", 46, "بنية فحص أعمال الطلبة: بند + متوسط + الأكثر تكرارًا");
+    }
     if (has("التغذيه الراجعه") && has("التمايز") && has("الانشطه")) add("student_work", 24, "مؤشرات أعمال الطلبة");
     if (headerHas("الاكثر تكرارا") || headerHas("الأكثر تكرارا")) add("student_work", 18, "وجود المنوال أو الأكثر تكرارًا");
 
@@ -581,7 +623,7 @@
     if (headers.length > 30) info.push({ title: "عدد كبير من الأعمدة", detail: "قد يمثل الملف أداءً متعدد المواد أو أداة مركبة." });
 
     if (["student_work", "supervision_indicator"].includes(type?.id) && semanticProfile?.measureType?.startsWith?.("ordinal_")) {
-      const direction = String(sourceMeta?.scaleSemantics?.direction || semanticProfile?.scaleDirection || "unknown");
+      const direction = confirmedScaleDirectionFromMeta(sourceMeta);
       if (direction === "unknown") {
         blockers.push({
           title: "اتجاه مقياس التقويم غير محدد",
@@ -635,7 +677,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "1.2.14",
+      appVersion: "1.2.15",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -670,13 +712,33 @@
       const aiProfile = result?.analysisProfile || classification?.analysisProfile || null;
       const routedId = String(aiProfile?.recommendedTypeId || aiProfile?.analyzerId || classification?.id || "");
       const known = typeById(String(classification?.id || routedId));
+      const localTypeBeforeVerify = String(state.type?.id || "unknown");
+      const localProfileBeforeVerify = state.semanticProfile;
+      const localTitleLock = String(state.localRecognition?.lockedTypeId || "") === localTypeBeforeVerify;
+      const localStructuralAuthority = localTitleLock || (
+        state.confidence >= 90
+        && Number(localProfileBeforeVerify?.confidence || 0) >= 90
+        && String(localProfileBeforeVerify?.recommendedTypeId || "") === localTypeBeforeVerify
+        && !["", "unknown", "unknown_table"].includes(String(localProfileBeforeVerify?.shape || ""))
+      );
+      const conflictsLocalAuthority = Boolean(known && known.id !== "unknown" && known.id !== localTypeBeforeVerify && localStructuralAuthority);
       state.aiRecognition = classification || null;
+      state.recognitionConflict = conflictsLocalAuthority ? {
+        proposedTypeId: known.id,
+        proposedName: classification?.nameAr || known.name,
+        retainedTypeId: localTypeBeforeVerify
+      } : null;
       if (window.TaqareerAnalysisProfiler?.mergeProfiles) {
         state.semanticProfile = window.TaqareerAnalysisProfiler.mergeProfiles(state.semanticProfile, aiProfile, state.headers);
       }
+      if (conflictsLocalAuthority && state.semanticProfile) {
+        state.semanticProfile.recommendedTypeId = localTypeBeforeVerify;
+        state.semanticProfile.analyzerId = localProfileBeforeVerify?.analyzerId || localTypeBeforeVerify;
+        state.semanticProfile.scaleDirection = currentScaleDirection();
+      }
       const aiConfidence = Math.max(0, Math.min(100, Math.round(Number(classification?.confidence ?? aiProfile?.confidence) || 0)));
       const structurallyAllowed = known?.id !== "multi_subject_results" || hasUsableMultiSubjectStructure();
-      const adoptKnown = structurallyAllowed && known && known.id !== "unknown" && (
+      const adoptKnown = !conflictsLocalAuthority && structurallyAllowed && known && known.id !== "unknown" && (
         state.type.id === "unknown" || state.confidence < 85 || aiConfidence >= state.confidence + 5 ||
         state.semanticProfile?.recommendedTypeId === known.id ||
         (state.sourceMeta?.mode === "narrative" && known.id === "supervision_narrative")
@@ -695,18 +757,22 @@
       }
       applyScaleSemanticsToProfile();
       state.quality = assessQuality(state.headers, state.rows, state.type, state.sourceMeta, state.semanticProfile);
-      state.recognitionStatus = adoptedDynamic
-        ? `تحقق دلالي تكيفي: بُني نوع ومسار تحليل خاصان بالملف${cached ? " · من الذاكرة المؤقتة" : ""}`
-        : known
-          ? `تحقق دلالي هجين: ملف البنية + التحقق الخارجي${adoptKnown ? " · تم اعتماد نوع الملف" : " · المسار المحلي متسق"}${cached ? " · من الذاكرة المؤقتة" : ""}`
-          : "التحقق الدلالي بنى ملفًا لنوع جديد بدل إجباره على قالب معروف";
+      state.recognitionStatus = conflictsLocalAuthority
+        ? `تحقق دلالي هجين: احتُفظ بنوع الملف الذي تثبته بنية المصدر ولم يُعتمد اقتراح خارجي متعارض${cached ? " · من الذاكرة المؤقتة" : ""}`
+        : adoptedDynamic
+          ? `تحقق دلالي تكيفي: بُني نوع ومسار تحليل خاصان بالملف${cached ? " · من الذاكرة المؤقتة" : ""}`
+          : known
+            ? `تحقق دلالي هجين: ملف البنية + التحقق الخارجي${adoptKnown ? " · تم اعتماد نوع الملف" : " · المسار المحلي متسق"}${cached ? " · من الذاكرة المؤقتة" : ""}`
+            : "التحقق الدلالي بنى ملفًا لنوع جديد بدل إجباره على قالب معروف";
       if (scaleGuardApplies() && currentScaleDirection() === "unknown") {
         state.recognitionStatus += " · ينتظر تأكيد دلالة المقياس";
       }
       state.quality.info = state.quality.info.filter(item => item.title !== "تحقق دلالي من النوع");
       state.quality.info.unshift({
         title: "تحقق دلالي من النوع",
-        detail: `${classification?.nameAr || "نوع غير محدد"} (${aiConfidence}%). ${classification?.rationale || ""}`.trim()
+        detail: conflictsLocalAuthority
+          ? `اقترحت الخدمة «${classification?.nameAr || known?.name || "نوعًا آخر"}»، لكن احتُفظ بـ«${state.type.name}» لأن عنوان/بنية المصدر أكثر حسمًا.`
+          : `${classification?.nameAr || "نوع غير محدد"} (${aiConfidence}%). ${classification?.rationale || ""}`.trim()
       });
       renderReview();
     } catch (error) {
@@ -724,7 +790,13 @@
     state.sourceName = sourceName;
     state.sampleMaxScore = sampleMaxScore;
     state.sourceMeta = sourceMeta ? { ...sourceMeta } : {};
-    state.scaleSemantics = state.sourceMeta?.scaleSemantics ? { ...state.sourceMeta.scaleSemantics } : null;
+    state.scaleSemantics = recognitionPolicy()?.isConfirmedScaleSemantics?.(state.sourceMeta?.scaleSemantics)
+      ? { ...state.sourceMeta.scaleSemantics }
+      : null;
+    if (!state.scaleSemantics && state.sourceMeta?.scaleSemantics && state.sourceMeta.scaleSemantics.confirmed !== true) {
+      delete state.sourceMeta.scaleSemantics;
+      delete state.sourceMeta.scaleDirection;
+    }
     state.rawText = rawText || "";
     state.narrativeText = sourceMeta?.mode === "narrative"
       ? (rawText || rows.map(row => row["النص"] ?? Object.values(row).join(" ")).join("\n"))
@@ -738,6 +810,7 @@
     const recognized = classify(state.headers, state.rows, state.sourceMeta || {}, state.rawText, initialProfile);
     state.localRecognition = recognized;
     state.aiRecognition = null;
+    state.recognitionConflict = null;
     state.recognitionStatus = `تصنيف محلي: ${recognized.rationale}`;
     state.type = recognized.type;
     state.confidence = recognized.confidence;
@@ -1073,7 +1146,9 @@
     const recognitionSource = $("recognitionSource");
     if (recognitionSource) recognitionSource.textContent = state.recognitionStatus || "تصنيف محلي";
     const recognitionRationale = $("recognitionRationale");
-    if (recognitionRationale) recognitionRationale.textContent = state.aiRecognition?.rationale || state.localRecognition?.rationale || "";
+    if (recognitionRationale) recognitionRationale.textContent = state.recognitionConflict
+      ? `${state.localRecognition?.rationale || "تثبيت النوع من بنية المصدر."} لم يُعتمد اقتراح خارجي متعارض.`
+      : state.aiRecognition?.rationale || state.localRecognition?.rationale || "";
     $("recognitionConfidence").textContent = `${state.confidence}%`;
     $("recognitionBar").style.width = `${state.confidence}%`;
     $("rowCount").textContent = state.rows.length.toLocaleString("ar");
@@ -1464,7 +1539,7 @@
     if (!window.TaqareerReconciliation?.composePrimary) throw new Error("محرك التحقق من التحليل الذكي غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "1.2.14",
+      appVersion: "1.2.15",
       pipeline: {
         mode: "ai-primary-analysis-v1",
         instruction: "المحرك المحلي يحسب المؤشرات والرسوم فقط. يبني الذكاء الاصطناعي التشخيص والاستنتاجات والتدخلات من الأدلة، ثم تتحقق البوابة من المراجع قبل عرض التقرير."
@@ -2077,7 +2152,7 @@
   function exportAnalysis() {
     const payload = {
       app: "تقارير",
-      version: "1.2.14",
+      version: "1.2.15",
       generatedAt: new Date().toISOString(),
       source: state.sourceName,
       sourceMeta: state.sourceMeta,
@@ -2090,7 +2165,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v1.2.14.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v1.2.15.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
@@ -2151,7 +2226,16 @@
       const direction = currentScaleDirection();
       if (direction !== "unknown") setScaleDirection(direction);
     }));
-    $("toSetupBtn").addEventListener("click",()=>{renderSetup();showPanel(3);});
+    $("toSetupBtn").addEventListener("click",()=>{
+      if (scaleGuardApplies() && currentScaleDirection() === "unknown") {
+        renderReview();
+        $("scaleSemanticsCard")?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+        return;
+      }
+      if (state.quality.blockers.length) return;
+      renderSetup();
+      showPanel(3);
+    });
     $("multiSubjectScopeSelect").addEventListener("change", renderMultiSubjectWorkspace);
     $("multiSubjectSubjectSelect").addEventListener("change", renderMultiSubjectWorkspace);
     $("includeSubjectTopTenInput").addEventListener("change", renderMultiSubjectWorkspace);

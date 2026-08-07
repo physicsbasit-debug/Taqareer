@@ -126,4 +126,6 @@ test('review UI exposes scale choices and blocks silent scale guessing', () => {
   assert.match(app, /اتجاه مقياس التقويم غير محدد/);
   assert.match(app, /setScaleDirection/);
   assert.match(app, /currentScaleDirection\(\) === "unknown"/);
+  assert.match(app, /confirmedScaleDirection/);
+  assert.doesNotMatch(index, /name="scaleDirection"[^>]+checked/);
 });
