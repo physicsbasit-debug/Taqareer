@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.0.0";
+  const VERSION = "1.1.0";
 
   const ANALYSIS_LABELS = Object.freeze({
     multi_subject_individual_analysis: "تحليل نتائج طلاب فردية متعددة المواد",
@@ -11,6 +11,8 @@
     single_subject: "تحليل نتائج مادة واحدة",
     assessment_component: "تحليل درجات وتقويم",
     level_distribution: "تحليل توزيع مستويات الأداء",
+    "level distribution": "تحليل توزيع مستويات الأداء",
+    level_distribution_analysis: "تحليل توزيع مستويات الأداء",
     cross_subject: "تحليل مقارن بين المواد",
     cross_subject_analysis: "تحليل مقارن بين المواد",
     supervision_multi_visit: "تحليل زيارات إشرافية متعددة",
@@ -32,6 +34,14 @@
   const REPORT_TOKEN_PATTERN = /^TQR-[A-Z0-9-]+$/i;
   const PROVIDER_PATTERN = /\b(?:gemini|openai|anthropic|claude)\b/i;
   const AI_AR_PATTERN = /(?:الذكاء\s*الاصطناعي|ذكاء\s*اصطناعي)/i;
+
+  const TEXT_REPLACEMENTS = Object.freeze([
+    [/\blevel\s+distribution\b/gi, "توزيع مستويات الأداء"],
+    [/\bsemanas?\b/gi, "أسابيع"],
+    [/\bweeks?\b/gi, "أسابيع"],
+    [/\bmonths?\b/gi, "أشهر"],
+    [/\bundefined\b/gi, ""],
+  ]);
 
   function clean(value) {
     return String(value ?? "").replace(/\s+/g, " ").trim();
@@ -73,11 +83,20 @@
     return text;
   }
 
+  function publicText(value, fallback = "") {
+    let text = clean(value);
+    if (!text) return fallback;
+    for (const [pattern, replacement] of TEXT_REPLACEMENTS) text = text.replace(pattern, replacement);
+    text = clean(text).replace(/\s+([،؛:.])/g, "$1");
+    return text || fallback;
+  }
+
   window.TaqareerDisplayTerms = Object.freeze({
     VERSION,
     ANALYSIS_LABELS,
     analysisMethod,
     publicLabel,
+    publicText,
     looksInternal,
     neutralizeProviderWording,
   });

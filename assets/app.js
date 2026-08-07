@@ -83,7 +83,8 @@
     performance: { spans: [], cacheHit: false, payloadChars: 0, aiUsage: null, aiModel: "", aiServerTiming: null, segmentTimings: {} },
     localRecognition: null, aiRecognition: null, semanticProfile: null, recognitionStatus: "محلي", recognitionRequestId: 0, analysisRequestId: 0,
     sampleMaxScore: null, pendingSource: null, sourceMeta: null, pendingManualFileName: "", pendingVisualPreview: null,
-    multiSubjectOptions: { mode: "all", subject: "", includeSubjectTopTen: true, includeSchoolRanking: true }
+    multiSubjectOptions: { mode: "all", subject: "", includeSubjectTopTen: true, includeSchoolRanking: true },
+    previewExpanded: false
   };
 
   const $ = (id) => document.getElementById(id);
@@ -100,8 +101,24 @@
   function publicDisplayLabel(value, fallback = "بيان تحليلي") {
     return displayTerms()?.publicLabel?.(value, fallback) || String(value || fallback);
   }
+  function publicText(value, fallback = "") {
+    return displayTerms()?.publicText?.(value, fallback) || String(value ?? fallback);
+  }
+  function displaySourceLabel(value = state.sourceName) {
+    const reportTitle = String(state.sourceMeta?.reportTitle || state.sourceMeta?.metadata?.title || "").trim();
+    if (reportTitle) return reportTitle;
+    let text = String(value || "").trim();
+    text = text.replace(/\s*[·•]\s*(?:sheet|ورقة)\s*\d+.*$/i, "");
+    text = text.replace(/\.(?:xlsx|xlsm|xls|csv|tsv|txt|docx|doc|pdf)$/i, "");
+    return text || "ملف مرفوع";
+  }
+  function reviewHeaders() {
+    if (state.previewExpanded || state.headers.length <= 7) return state.headers;
+    return state.headers.slice(0, 7);
+  }
 
   function showPanel(number) {
+    document.body.dataset.activeStep = String(number);
     panels.forEach(n => $("panel-" + n).classList.toggle("active-panel", n === number));
     document.querySelectorAll(".step").forEach(btn => {
       const stepNumber = Number(btn.dataset.step);
@@ -162,24 +179,24 @@
     if (mode) mode.checked = enabled;
 
     let text = "خدمة التحليل غير مربوطة";
-    let cardText = "يتطلب التحليل التربوي ربط خدمة Supabase؛ لن يعرض التطبيق قوالب محلية بديلة على أنها تحليل عميق.";
+    let cardText = "يتطلب التحليل التربوي تفعيل خدمة التحليل؛ ولن يعتمد التطبيق نتيجة ناقصة أو بديلة.";
     let liveClass = false;
     if (configured && !enabled) {
       text = "خدمة التحليل متوقفة";
       cardText = "إعداد الاتصال محفوظ، لكن خدمة التحليل متوقفة من مفتاح التشغيل.";
     } else if (configured && enabled && health.status === "checking") {
       text = "جارٍ فحص خدمة التحليل";
-      cardText = "يفحص التطبيق وظيفة Supabase فعليًا قبل إعلان الجاهزية.";
+      cardText = "يجري التحقق من اتصال خدمة التحليل قبل إعلان الجاهزية.";
     } else if (configured && enabled && health.status === "live") {
       text = "خدمة التحليل جاهزة";
       liveClass = true;
-      cardText = `اتصال Supabase مؤكد${health.edgeVersion ? ` · Edge ${health.edgeVersion}` : ""}. الحسابات تُبنى محليًا ثم يبدأ التحليل التربوي من الأدلة.`;
+      cardText = "الخدمة متصلة وجاهزة. تُبنى الحسابات محليًا ثم تبدأ القراءة التربوية من الأدلة.";
     } else if (configured && enabled && health.status === "failed") {
       text = "تعذر اتصال خدمة التحليل";
       cardText = "إعداد الربط محفوظ، لكن فحص الاتصال الحي فشل. افتح إعداد خدمة التحليل واضغط «حفظ واختبار» قبل إعادة التحليل.";
     } else if (configured && enabled) {
       text = "ربط خدمة التحليل محفوظ";
-      cardText = "إعداد الربط محفوظ، وسيُفحص اتصال Supabase قبل بدء التحليل.";
+      cardText = "إعداد الاتصال محفوظ، وسيُفحص تلقائيًا قبل بدء التحليل.";
     }
 
     if (header) {
@@ -458,7 +475,7 @@
     if (normalization?.applied) {
       info.unshift({
         title: "تم تطبيع ملف Excel الطباعي تلقائيًا",
-        detail: `حوّل محرك ملفات الوزارة ${normalization.originalColumns} عمودًا ماديًا إلى ${normalization.logicalColumns} حقول منطقية، واحتفظ بـ${normalization.retainedRows} سجلًا، مع معالجة ${normalization.mergeCount} خلية مدمجة.`
+        detail: `حوّل محرك ملفات الوزارة ${normalization.originalColumns} عمودًا ماديًا إلى ${normalization.logicalColumns} حقول منطقية، واحتفظ بـ${normalization.retainedRows} سجلًا${Number.isFinite(Number(normalization.mergeCount)) ? `، مع معالجة ${normalization.mergeCount} خلية مدمجة` : ""}.`
       });
       if (normalization.reportTitle) info.unshift({ title: "تم فصل عنوان التقرير عن الجدول", detail: normalization.reportTitle });
     }
@@ -483,7 +500,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "1.2.11",
+      appVersion: "1.2.12",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -915,11 +932,25 @@
     $("rowCount").textContent = state.rows.length.toLocaleString("ar");
     $("columnCount").textContent = state.headers.length.toLocaleString("ar");
     $("completenessValue").textContent = `${state.quality.completeness}%`;
-    $("sourceName").textContent = state.sourceName;
-    $("headerTags").innerHTML = state.headers.slice(0, 12).map(h => `<span>${escapeHtml(h)}</span>`).join("");
+    const sourceLabel = displaySourceLabel();
+    $("sourceName").textContent = sourceLabel;
+    $("sourceName").title = state.sourceName || sourceLabel;
+    const tagHeaders = state.headers.slice(0, 8);
+    const hiddenTagCount = Math.max(0, state.headers.length - tagHeaders.length);
+    $("headerTags").innerHTML = tagHeaders.map(h => `<span>${escapeHtml(h)}</span>`).join("") + (hiddenTagCount ? `<span class="tag-more">+${hiddenTagCount} حقول</span>` : "");
 
+    const visibleHeaders = reviewHeaders();
     const table = $("previewTable");
-    table.innerHTML = `<thead><tr>${state.headers.map(h => `<th>${escapeHtml(h)}</th>`).join("")}</tr></thead><tbody>${state.rows.slice(0,8).map(row => `<tr>${state.headers.map(h => `<td>${escapeHtml(row[h]) || "—"}</td>`).join("")}</tr>`).join("")}</tbody>`;
+    table.innerHTML = `<thead><tr>${visibleHeaders.map(h => `<th>${escapeHtml(h)}</th>`).join("")}</tr></thead><tbody>${state.rows.slice(0,8).map(row => `<tr>${visibleHeaders.map(h => `<td>${escapeHtml(row[h]) || "—"}</td>`).join("")}</tr>`).join("")}</tbody>`;
+    const previewWrap = $("previewTableWrap");
+    previewWrap?.classList.toggle("expanded-preview", state.previewExpanded);
+    const previewToggle = $("togglePreviewColumnsBtn");
+    const previewMeta = $("previewColumnsMeta");
+    if (previewMeta) previewMeta.textContent = state.previewExpanded ? `عرض جميع الحقول (${state.headers.length})` : `عرض ${visibleHeaders.length} من ${state.headers.length} حقلاً`;
+    if (previewToggle) {
+      previewToggle.classList.toggle("hidden", state.headers.length <= 7);
+      previewToggle.textContent = state.previewExpanded ? "عرض المعاينة المختصرة" : "عرض كل الحقول";
+    }
 
     const issues = [];
     state.quality.blockers.forEach(i => issues.push({ ...i, kind: "blocker", icon: "!" }));
@@ -927,6 +958,10 @@
     state.quality.info.forEach(i => issues.push({ ...i, kind: "info", icon: "✓" }));
     if (state.type.id === "unknown") issues.push({ kind: "warning", icon: "?", title: "نوع جديد غير مسجل", detail: "يمكن متابعة التحليل العام، ثم حفظ تعريف النوع لاحقًا بدل إجباره على قالب غير مناسب." });
     $("qualityIssues").innerHTML = issues.map(i => `<div class="issue ${i.kind}"><span class="issue-icon">${i.icon}</span><div><strong>${escapeHtml(i.title)}</strong><span>${escapeHtml(i.detail)}</span></div></div>`).join("");
+    const qualityDetails = $("qualityDetails");
+    const qualityIssueCount = $("qualityIssueCount");
+    if (qualityIssueCount) qualityIssueCount.textContent = `${issues.length} نقاط`;
+    if (qualityDetails) qualityDetails.open = Boolean(state.quality.blockers.length || state.quality.warnings.length || state.type.id === "unknown");
     const status = $("qualityStatus");
     if (state.quality.blockers.length) { status.textContent = "يوجد مانع"; status.className = "quality-status block"; }
     else if (state.quality.warnings.length || state.type.id === "unknown") { status.textContent = "صالح مع تنبيهات"; status.className = "quality-status warn"; }
@@ -1102,7 +1137,7 @@
       adaptive_profile_analysis: "بناء تحليل تكيفي وفق ملف البنية الدلالي"
     };
     const selectedPlan = semanticFamilies.length
-      ? semanticFamilies.map(item => familyLabels[item] || String(item).replace(/_/g, " ")).slice(0, 4)
+      ? semanticFamilies.map(item => familyLabels[item] || publicDisplayLabel(item, "مسار تحليلي")).slice(0, 4)
       : (plans[state.type.id] || plans.unknown);
     $("analysisPlan").innerHTML = selectedPlan.map(x => `<li>${escapeHtml(x)}</li>`).join("");
     updateAiStatusUi();
@@ -1277,7 +1312,7 @@
     if (!window.TaqareerReconciliation?.composePrimary) throw new Error("محرك التحقق من التحليل الذكي غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "1.2.11",
+      appVersion: "1.2.12",
       pipeline: {
         mode: "ai-primary-analysis-v1",
         instruction: "المحرك المحلي يحسب المؤشرات والرسوم فقط. يبني الذكاء الاصطناعي التشخيص والاستنتاجات والتدخلات من الأدلة، ثم تتحقق البوابة من المراجع قبل عرض التقرير."
@@ -1546,7 +1581,7 @@
       if (!window.TaqareerDeepAnalytics?.analyzeEvidence) throw new Error("محرك الحساب والأدلة غير محمل.");
 
       runButton.textContent = "جارٍ بناء حزمة الأدلة…";
-      setMessage("setupMessage", "يجري الآن حساب المؤشرات وتجهيز الأدلة، ثم سيبني المحلل الذكي القراءة التربوية من الصفر.");
+      setMessage("setupMessage", "يجري الآن حساب المؤشرات وتجهيز الأدلة، ثم ستبني خدمة التحليل القراءة التربوية من الأدلة.");
       await yieldToUi();
       const localTimer = perfApi()?.startSpan?.("الحسابات وحزمة الأدلة");
       state.analysis = window.TaqareerDeepAnalytics.analyzeEvidence({
@@ -1733,7 +1768,7 @@
       const table = rankingTableHtml(`الأوائل في ${subject}`, rows, [
         { key:"rankLabel", label:"المركز" }, { key:"name", label:"اسم الطالب" }, { key:"scoreDisplay", label:"الدرجة" }, { key:"level", label:"المستوى" }
       ]);
-      if (table) parts.push(`<details class="ranking-subject-details" ${Object.keys(subjectLists).length === 1 ? "open" : ""}><summary>${escapeHtml(subject)} · ${rows.length} سجلًا ضمن المراكز العشرة</summary>${table}</details>`);
+      if (table) { const countLabel = rows.length > 10 ? `${rows.length} طالبًا بسبب التعادلات` : `${rows.length} طلاب`; parts.push(`<details class="ranking-subject-details" ${Object.keys(subjectLists).length === 1 ? "open" : ""}><summary>${escapeHtml(subject)} · ${countLabel}</summary>${table}</details>`); }
     });
     target.innerHTML = parts.join("");
     section.classList.remove("hidden");
@@ -1765,7 +1800,7 @@
       { title:"عائلة التحليل", value:publicAnalysisMethod(profile.method || profile.purpose || a.kind), items:profileDimensions.map(item=>publicDisplayLabel(item,"بعد تحليلي")) },
       { title:"كفاية البيانات", value:publicDisplayLabel(profile.dataAdequacy || profile.dataSufficiency || "غير محددة","غير محددة"), items:(profile.assumptions || []).map(item=>publicDisplayLabel(item,"افتراض تحليلي")) },
       { title:"القرارات التي يدعمها", value:`${decisionUses.length} استخدامات`, items:decisionUses.map(item=>publicDisplayLabel(item,"استخدام تحليلي")) },
-      { title:"نطاق التحليل", value:state.type.name, items:[`المصدر: ${state.sourceName}`,`الثقة في النوع: ${state.confidence}%`,`طريقة التصنيف: ${state.recognitionStatus}`] }
+      { title:"نطاق التحليل", value:state.type.name, items:[`المصدر: ${displaySourceLabel()}`,`الثقة في النوع: ${state.confidence}%`,`طريقة التصنيف: ${state.recognitionStatus}`] }
     ];
     $("diagnosticProfileSection").classList.toggle("hidden", !profileCards.length);
     $("diagnosticProfileGrid").innerHTML = profileCards.map(card=>`<article class="diagnostic-card"><h5>${escapeHtml(card.title)}</h5><strong>${escapeHtml(card.value)}</strong><ul>${card.items.map(item=>`<li>${escapeHtml(item)}</li>`).join("")}</ul></article>`).join("");
@@ -1778,7 +1813,7 @@
       const source = "تحليل تربوي موثق";
       const alternatives = Array.isArray(section.alternativeExplanations) ? section.alternativeExplanations : [];
       const requests = Array.isArray(section.dataRequests) ? section.dataRequests : [];
-      return `<article class="diagnostic-section-card"><div class="diagnostic-section-meta"><span>${source}</span><span>ثقة ${escapeHtml(section.confidence || "متوسطة")}</span></div><h5>${escapeHtml(section.title || "قراءة تفسيرية")}</h5><p>${escapeHtml(section.analysis || "")}</p>${evidence && evidence !== "لم يحدد مرجع دليل واضح." ? `<div class="soft-note">الدليل: ${escapeHtml(evidence)}</div>` : ""}${implications.length ? `<h6>الآثار العملية</h6><ul>${implications.map(item=>`<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}${alternatives.length ? `<h6>تفسيرات بديلة محتملة</h6><ul>${alternatives.map(item=>`<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}${requests.length ? `<h6>بيانات مطلوبة للتحقق</h6><ul>${requests.map(item=>`<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}</article>`;
+      return `<article class="diagnostic-section-card"><div class="diagnostic-section-meta"><span>${source}</span><span>ثقة ${escapeHtml(section.confidence || "متوسطة")}</span></div><h5>${escapeHtml(section.title || "قراءة تفسيرية")}</h5><p>${escapeHtml(publicText(section.analysis || ""))}</p>${evidence && evidence !== "لم يحدد مرجع دليل واضح." ? `<div class="soft-note">الدليل: ${escapeHtml(evidence)}</div>` : ""}${implications.length ? `<h6>الآثار العملية</h6><ul>${implications.map(item=>`<li>${escapeHtml(publicText(item))}</li>`).join("")}</ul>` : ""}${alternatives.length ? `<h6>تفسيرات بديلة محتملة</h6><ul>${alternatives.map(item=>`<li>${escapeHtml(publicText(item))}</li>`).join("")}</ul>` : ""}${requests.length ? `<h6>بيانات مطلوبة للتحقق</h6><ul>${requests.map(item=>`<li>${escapeHtml(publicText(item))}</li>`).join("")}</ul>` : ""}</article>`;
     }).join("");
 
     // التحسين الخارجي جزء تلقائي من مسار التحليل ولا يظهر للمستخدم كمرحلة مستقلة.
@@ -1810,30 +1845,30 @@
 
     const tools=(a.qualityTools||[]).filter(tool=>tool.conditionsMet!==false).slice(0,12);
     $("qualityToolsSection").classList.toggle("hidden",!tools.length);
-    $("qualityToolsGrid").innerHTML=tools.map(tool=>`<article class="quality-tool-card"><strong>${escapeHtml(publicDisplayLabel(tool.name,"أداة جودة"))}</strong><p>${escapeHtml(tool.reason||"")}</p><span>مطبقة فعليًا</span>${tool.interpretation?`<div class="tool-output">${escapeHtml(tool.interpretation)}</div>`:""}</article>`).join("");
+    $("qualityToolsGrid").innerHTML=tools.map(tool=>`<article class="quality-tool-card"><strong>${escapeHtml(publicDisplayLabel(tool.name,"أداة جودة"))}</strong><p>${escapeHtml(publicText(tool.reason||""))}</p><span>مطبقة فعليًا</span>${tool.interpretation?`<div class="tool-output">${escapeHtml(publicText(tool.interpretation))}</div>`:""}</article>`).join("");
 
     const plans=(a.improvementPlan||[]).slice(0,10);
     $("improvementPlanSection").classList.toggle("hidden",!plans.length);
-    $("improvementPlanBody").innerHTML=plans.map(item=>`<tr><td>${escapeHtml(item.priority)}</td><td><strong>${escapeHtml(item.issue)}</strong><small>${escapeHtml(item.targetGroup)}</small></td><td>${escapeHtml(item.action)}<small>بديل عند عدم التحسن: ${escapeHtml(item.contingency)}</small></td><td>${escapeHtml(item.responsibleRole)}<small>${escapeHtml(item.timeframe)}</small></td><td>${escapeHtml(item.successIndicator)}<small>${escapeHtml(item.monitoringMethod)}</small></td></tr>`).join("");
+    $("improvementPlanBody").innerHTML=plans.map(item=>`<tr><td data-label="الأولوية">${escapeHtml(publicText(item.priority))}</td><td data-label="المشكلة والفئة"><strong>${escapeHtml(publicText(item.issue))}</strong><small>${escapeHtml(publicText(item.targetGroup))}</small></td><td data-label="الإجراء">${escapeHtml(publicText(item.action))}<small>بديل عند عدم التحسن: ${escapeHtml(publicText(item.contingency))}</small></td><td data-label="المسؤول والزمن">${escapeHtml(publicText(item.responsibleRole))}<small>${escapeHtml(publicText(item.timeframe))}</small></td><td data-label="مؤشر النجاح والمتابعة">${escapeHtml(publicText(item.successIndicator))}<small>${escapeHtml(publicText(item.monitoringMethod))}</small></td></tr>`).join("");
 
     const monitoring=(a.monitoringPlan||[]).slice(0,8);
     $("monitoringPlanSection").classList.toggle("hidden",!monitoring.length);
-    $("monitoringPlanGrid").innerHTML=monitoring.map(item=>`<article class="monitoring-card"><small>${escapeHtml(item.timing||"")}</small><h5>${escapeHtml(item.stage||"")}</h5><p>${escapeHtml(item.measure||"")}</p><p class="owner">${escapeHtml(item.owner||"")}</p></article>`).join("");
+    $("monitoringPlanGrid").innerHTML=monitoring.map(item=>`<article class="monitoring-card"><small>${escapeHtml(publicText(item.timing||""))}</small><h5>${escapeHtml(publicText(item.stage||""))}</h5><p>${escapeHtml(publicText(item.measure||""))}</p><p class="owner">${escapeHtml(publicText(item.owner||""))}</p></article>`).join("");
 
-    const limitations=a.limitations||[];
+    const cautions=a.cautions||[];
+    const limitations=[...new Set([...(a.limitations||[]), ...cautions].map(item => publicText(item)).filter(Boolean))];
     $("analysisLimitations").classList.toggle("hidden",!limitations.length);
     $("analysisLimitationsList").innerHTML=limitations.map(item=>`<li>${escapeHtml(item)}</li>`).join("");
+    $("aiCautions").classList.add("hidden");
+    $("aiCautionsList").innerHTML="";
 
     const firstPlan=plans[0];
     const action=firstPlan?{title:firstPlan.action,text:`${firstPlan.responsibleRole} · ${firstPlan.timeframe}`,priority:firstPlan.priority,indicator:firstPlan.successIndicator}:a.action;
-    $("actionTitle").textContent=action?.title||"مراجعة النتائج";
-    $("actionText").textContent=action?.text||"";
-    $("actionPriority").textContent=action?.priority||"متوسطة";
-    $("actionIndicator").textContent=action?.indicator||"مؤشر متابعة";
-
-    const cautions=a.cautions||[];
-    $("aiCautions").classList.toggle("hidden",!cautions.length);
-    $("aiCautionsList").innerHTML=cautions.map(item=>`<li>${escapeHtml(item)}</li>`).join("");
+    $("actionTitle").textContent=publicText(action?.title||"مراجعة النتائج");
+    $("actionText").textContent=publicText(action?.text||"");
+    $("actionPriority").textContent=publicText(action?.priority||"متوسطة");
+    $("actionIndicator").textContent=publicText(action?.indicator||"مؤشر متابعة");
+    $("primaryActionCard")?.classList.toggle("hidden", plans.length > 0);
 
     const suggested=delta?.suggestedNewType || a.suggestedNewType; const showSuggested=Boolean(suggested?.needed);
     $("aiSuggestedType").classList.toggle("hidden",!showSuggested);
@@ -1868,7 +1903,7 @@
   function exportAnalysis() {
     const payload = {
       app: "تقارير",
-      version: "1.2.11",
+      version: "1.2.12",
       generatedAt: new Date().toISOString(),
       source: state.sourceName,
       sourceMeta: state.sourceMeta,
@@ -1881,7 +1916,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v1.2.11.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v1.2.12.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
@@ -1898,7 +1933,8 @@
       localRecognition: null, aiRecognition: null, semanticProfile: null, recognitionStatus: "محلي", recognitionRequestId: state.recognitionRequestId + 1,
       analysisRequestId: state.analysisRequestId + 1,
       sampleMaxScore: null, pendingSource: null, sourceMeta: null, pendingManualFileName: "", pendingVisualPreview: null,
-      multiSubjectOptions: { mode: "all", subject: "", includeSubjectTopTen: true, includeSchoolRanking: true }
+      multiSubjectOptions: { mode: "all", subject: "", includeSubjectTopTen: true, includeSchoolRanking: true },
+      previewExpanded: false
     });
     $("fileInput").value = ""; $("pasteInput").value = ""; $("manualTextInput").value = "";
     if ($("multiSubjectScopeSelect")) $("multiSubjectScopeSelect").value = "all";
@@ -1932,6 +1968,7 @@
     });
 
     $("backToInputBtn").addEventListener("click",()=>showPanel(1));
+    $("togglePreviewColumnsBtn").addEventListener("click", () => { state.previewExpanded = !state.previewExpanded; renderReview(); });
     $("toSetupBtn").addEventListener("click",()=>{renderSetup();showPanel(3);});
     $("multiSubjectScopeSelect").addEventListener("change", renderMultiSubjectWorkspace);
     $("multiSubjectSubjectSelect").addEventListener("change", renderMultiSubjectWorkspace);
@@ -1963,6 +2000,7 @@
     window.addEventListener?.("taqareer-ai-health", updateAiStatusUi);
     $("changeTypeBtn").addEventListener("click",()=>{ $("typeSelect").value=state.type.id; $("typeDialog").showModal(); });
     $("applyTypeBtn").addEventListener("click", e => { e.preventDefault(); const chosen=formTypes.find(t=>t.id===$("typeSelect").value) || (state.type?.id === $("typeSelect").value ? state.type : null); if(chosen){state.type=chosen;state.confidence=100;state.recognitionStatus="اعتماد يدوي من المستخدم";state.semanticProfile=window.TaqareerAnalysisProfiler?.profileTable?.({headers:state.headers,rows:state.rows,sourceMeta:state.sourceMeta||{},typeId:state.type.id})||state.semanticProfile;state.quality=assessQuality(state.headers,state.rows,state.type,state.sourceMeta||{},state.semanticProfile);renderReview();} $("typeDialog").close(); });
+    document.body.dataset.activeStep = "1";
     updateAiStatusUi();
     verifyAiConnectionOnLoad();
   }

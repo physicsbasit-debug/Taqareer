@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.2.11";
+  const VERSION = "1.2.12";
 
   function escapeHtml(value) {
     return String(value ?? "").replace(/[&<>'"]/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" }[char]));
@@ -27,6 +27,8 @@
   function displayTerms(){ return window.TaqareerDisplayTerms || null; }
   function safeAnalysisMethod(value,fallback="تحليل تربوي متخصص"){ return displayTerms()?.analysisMethod?.(value,fallback) || (()=>{const text=String(value??"").trim();return /^[A-Za-z][A-Za-z0-9]*(?:[_-][A-Za-z0-9]+)+$/.test(text)||/^(?:TQR-)/i.test(text)?fallback:(text||fallback);})(); }
   function safePublicLabel(value,fallback="بيان تحليلي"){ return displayTerms()?.publicLabel?.(value,fallback) || (()=>{const text=String(value??"").trim();return /^[A-Za-z][A-Za-z0-9]*(?:[_-][A-Za-z0-9]+)+$/.test(text)||/^(?:TQR-)/i.test(text)?fallback:(text||fallback);})(); }
+  function safePublicText(value,fallback=""){ return displayTerms()?.publicText?.(value,fallback) || (()=>{let text=String(value??"").replace(/\s+/g," ").trim();text=text.replace(/\blevel\s+distribution\b/gi,"توزيع مستويات الأداء").replace(/\bsemanas?\b/gi,"أسابيع").replace(/\bweeks?\b/gi,"أسابيع").replace(/\bmonths?\b/gi,"أشهر").replace(/\bundefined\b/gi,"").replace(/\s+([،؛:.])/g,"$1").replace(/\s+/g," ").trim();return text||fallback;})(); }
+  function safeTextList(items){ return Array.isArray(items)?items.map(item=>safePublicText(item,"")).filter(Boolean):[]; }
   function chunkBalanced(items,maxPerPage){
     if(!items.length) return [];
     const pageCount=Math.ceil(items.length/maxPerPage);
@@ -65,7 +67,7 @@
     return safePublicLabel(ref,"مرجع تحليلي موثق");
   }
 
-  function normalizePlan(item){return{priority:item.priority||"متوسطة",issue:item.issue||"أولوية تحسين",targetGroup:item.targetGroup||"الفئة المستهدفة",action:item.action||"",implementationSteps:Array.isArray(item.implementationSteps)?item.implementationSteps:[],resources:Array.isArray(item.resources)?item.resources:[],responsibleRole:item.responsibleRole||"يحدد لاحقًا",timeframe:item.timeframe||"يحدد لاحقًا",successIndicator:item.successIndicator||"مؤشر قابل للقياس",monitoringMethod:item.monitoringMethod||"متابعة دورية",contingency:item.contingency||"مراجعة التدخل عند ضعف الاستجابة"};}
+  function normalizePlan(item){return{priority:safePublicText(item.priority,"متوسطة"),issue:safePublicText(item.issue,"أولوية تحسين"),targetGroup:safePublicText(item.targetGroup,"الفئة المستهدفة"),action:safePublicText(item.action,""),implementationSteps:safeTextList(item.implementationSteps),resources:safeTextList(item.resources),responsibleRole:safePublicText(item.responsibleRole,"يحدد لاحقًا"),timeframe:safePublicText(item.timeframe,"يحدد لاحقًا"),successIndicator:safePublicText(item.successIndicator,"مؤشر قابل للقياس"),monitoringMethod:safePublicText(item.monitoringMethod,"متابعة دورية"),contingency:safePublicText(item.contingency,"مراجعة التدخل عند ضعف الاستجابة")};}
 
   function renderBar(chart){
     const data=Array.isArray(chart.data)?chart.data:[],xKey=chart.xKey||"label",yKey=chart.yKey||"count",max=Math.max(1,...data.map(item=>Number(item[yKey]||0))),total=data.reduce((sum,item)=>sum+Number(item[yKey]||0),0);
@@ -87,18 +89,40 @@
     const analysis=context.analysis||{},meta=extractMetadata(context);
     const findings=(analysis.findings||[]).map(item=>({
       ...item,
-      evidence:item.evidence||((item.evidenceRefs||[]).map(ref=>evidenceLabel(ref,analysis)).join("، ")||"دليل يحتاج مراجعة"),
-      impact:item.educationalImpact||item.impact||"",
-      action:item.recommendedAction||item.action||""
+      title:safePublicText(item.title,"استنتاج تشخيصي"),
+      statement:safePublicText(item.statement,""),
+      confidence:safePublicText(item.confidence,"متوسطة"),
+      evidence:safePublicText(item.evidence||((item.evidenceRefs||[]).map(ref=>evidenceLabel(ref,analysis)).join("، ")||"دليل يحتاج مراجعة"),"دليل يحتاج مراجعة"),
+      impact:safePublicText(item.educationalImpact||item.impact||"",""),
+      action:safePublicText(item.recommendedAction||item.action||"",""),
+      limitations:safeTextList(item.limitations)
     })).slice(0,18);
-    const tools=(analysis.qualityTools||[]).filter(t=>t.conditionsMet!==false).slice(0,12);
+    const tools=(analysis.qualityTools||[]).filter(t=>t.conditionsMet!==false).slice(0,12).map(item=>({
+      ...item,
+      name:safePublicLabel(item.name||item.id,"أداة جودة"),
+      reason:safePublicText(item.reason,""),
+      interpretation:safePublicText(item.interpretation,"")
+    }));
     const plan=(analysis.improvementPlan||[]).map(normalizePlan).slice(0,10);
-    const monitoring=(analysis.monitoringPlan||[]).slice(0,8);
+    const monitoring=(analysis.monitoringPlan||[]).slice(0,8).map(item=>({
+      ...item,
+      timing:safePublicText(item.timing,""),
+      stage:safePublicText(item.stage,"مرحلة متابعة"),
+      measure:safePublicText(item.measure,""),
+      owner:safePublicText(item.owner,"")
+    }));
     const metrics=(analysis.metrics||[]).slice(0,14),charts=(analysis.charts||[]).slice(0,12);
-    const limitations=uniqueBy(analysis.limitations||[],item=>normalize(item));
+    const limitations=uniqueBy(safeTextList(analysis.limitations),item=>normalize(item));
     const diagnosticSections=(analysis.diagnosticSections||[]).slice(0,12).map(item=>({
       ...item,
-      source:"قراءة موثقة بالأدلة"
+      title:safePublicText(item.title,"قراءة تفسيرية"),
+      analysis:safePublicText(item.analysis,""),
+      source:"قراءة موثقة بالأدلة",
+      confidence:safePublicText(item.confidence,"متوسطة"),
+      implications:safeTextList(item.implications),
+      alternativeExplanations:safeTextList(item.alternativeExplanations),
+      limitations:safeTextList(item.limitations),
+      dataRequests:safeTextList(item.dataRequests)
     }));
     const localProfile=analysis.analysisProfile||{};
     const profile={

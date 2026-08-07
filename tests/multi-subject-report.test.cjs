@@ -51,7 +51,7 @@ test('official report shows grade metadata, school formula and local ranking tab
   assert.match(html, /العشرة الأوائل على مستوى المدرسة \/ الدفعة/);
   assert.match(html, /العشرة الأوائل حسب الدرجة/);
   assert.match(html, /طالب اختبار 136/);
-  assert.match(html, /تقارير v1\.2\.11/);
+  assert.match(html, /تقارير v1\.2\.12/);
 });
 
 test('subject report includes only the selected subject top-ten table and selected-subject metadata', () => {
@@ -189,4 +189,45 @@ test('three detailed improvement interventions share one professionally packed p
   assert.equal((html.match(/class="plan-card"/g) || []).length, 3);
   assert.match(html, /class="plan-cards plan-cards-3(?: plan-cards-dense)?" data-plan-budget="\d+"/);
   assert.match(html, /plan-clip:/);
+});
+
+test('official report normalizes leaked mixed-language narrative fragments before rendering', () => {
+  const { window, sheet, analysis } = analysisFixture();
+  analysis.diagnosticSections = [{
+    title: 'level distribution',
+    analysis: 'مراجعة undefined للحالة خلال 6 semanas.',
+    confidence: 'متوسطة',
+    implications: ['متابعة خلال 2 weeks'],
+    alternativeExplanations: ['مقارنة بعد 1 month'],
+    limitations: ['لا يعتمد على undefined بيانات'],
+    dataRequests: ['إعادة القياس خلال 3 semanas'],
+  }];
+  analysis.findings = [{
+    title: 'استنتاج تجريبي',
+    statement: 'تحقق level distribution دون undefined.',
+    confidence: 'مرتفعة',
+    educationalImpact: 'متابعة خلال 2 weeks',
+    recommendedAction: 'مراجعة خلال 1 month',
+    limitations: ['لا يوجد undefined حقل'],
+  }];
+  analysis.qualityTools = [{ id: 'scope_consistency_guard', conditionsMet: true, reason: 'مراجعة خلال 1 week', interpretation: 'لا يوجد undefined.' }];
+  analysis.improvementPlan = [{
+    priority: 'عالية', issue: 'رفع الأداء', targetGroup: 'الفئة المستهدفة', action: 'تنفيذ خطة خلال 6 semanas',
+    implementationSteps: ['قياس بعد 2 weeks'], resources: ['ورقة undefined عمل'], responsibleRole: 'معلم المادة',
+    timeframe: '6 semanas', successIndicator: 'تحسن خلال 1 month', monitoringMethod: 'متابعة كل 2 weeks', contingency: 'مراجعة undefined الخطة',
+  }];
+  analysis.monitoringPlan = [{ timing: 'بعد 2 weeks', stage: 'متابعة مرحلية', measure: 'قياس خلال 1 month', owner: 'معلم المادة' }];
+  analysis.limitations = ['لا تتوفر undefined بيانات إضافية خلال 3 semanas'];
+
+  const html = window.TaqareerReports.buildReportHtml({
+    analysis, type: { id: 'multi_subject_results', name: 'نتائج طلاب فردية متعددة المواد' },
+    sourceName: 'كشف نتائج الطلاب العاشر.xlsx', sourceMeta: sheet,
+    quality: { completeness: 100 }, recognitionStatus: 'معتمد',
+  }, { autoPrint: false, reportMode: 'full' });
+
+  assert.match(html, /توزيع مستويات الأداء/);
+  assert.match(html, /6 أسابيع/);
+  assert.match(html, /2 أسابيع/);
+  assert.match(html, /1 أشهر/);
+  assert.doesNotMatch(html, /\blevel distribution\b|\bsemanas?\b|\bweeks?\b|\bmonths?\b|\bundefined\b/i);
 });
