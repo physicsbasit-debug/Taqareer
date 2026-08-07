@@ -1,8 +1,8 @@
 {
   "app": "تقارير",
-  "version": "1.2.9",
-  "phase": "Phase 2-D Fix 9 - Dynamic Ranking Page Packing",
-  "releaseName": "Compact Dynamic Ranking Pagination",
+  "version": "1.2.10",
+  "phase": "Phase 2-D Fix 10 - Unified Dynamic Report Pagination",
+  "releaseName": "Unified Compact Report Pagination",
   "buildType": "static-github-pages-plus-supabase-edge-function",
   "supportedInputs": {
     "table": [
@@ -195,7 +195,7 @@
     "primaryRescueModel": "gemini-3.5-flash-lite",
     "primaryRescueThinkingLevel": "minimal",
     "primaryRescueMaxOutputTokens": 3072,
-    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.2.9",
+    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.2.10",
     "primaryModelFallbackOrder": [
       "gemini-3.6-flash",
       "gemini-3.5-flash-lite"
@@ -268,7 +268,7 @@
     "databaseChanges": false,
     "newSecretsRequired": false,
     "currentFrontendOperation": "analyze_primary",
-    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.2.9",
+    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.2.10",
     "classificationAndVision": "retained"
   },
   "notYetEnabled": [

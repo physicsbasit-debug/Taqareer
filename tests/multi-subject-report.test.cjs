@@ -51,7 +51,7 @@ test('official report shows grade metadata, school formula and local ranking tab
   assert.match(html, /العشرة الأوائل على مستوى المدرسة \/ الدفعة/);
   assert.match(html, /العشرة الأوائل حسب الدرجة/);
   assert.match(html, /طالب اختبار 136/);
-  assert.match(html, /تقارير v1\.2\.9/);
+  assert.match(html, /تقارير v1\.2\.10/);
 });
 
 test('subject report includes only the selected subject top-ten table and selected-subject metadata', () => {
@@ -150,4 +150,43 @@ test('official report sanitizes internal analysis ids and technical evidence fal
   assert.match(html, /مؤشر محسوب/);
   assert.match(html, /أداة جودة/);
   assert.doesNotMatch(html, /multi_subject_individual_analysis|subject_comparison|student_profile_segmentation|ranking_decision_support|missing_internal_metric|scope_consistency_guard/);
+});
+
+
+test('three detailed improvement interventions share one professionally packed page when capacity allows', () => {
+  const { window, sheet, analysis } = analysisFixture();
+  const plans = [
+    {
+      priority: 'عالية', issue: 'رفع إتقان الطلبة في المواد ذات الأداء الأدنى', targetGroup: 'الطلبة دون مستوى الإتقان',
+      action: 'تنفيذ تدخل تعليمي قصير ومركز قائم على المهارات الأكثر فجوة، ثم إعادة قياس الأثر على نفس المؤشرات.',
+      implementationSteps: ['تحديد المهارات ذات الأولوية من نتائج التحليل.', 'تنفيذ مجموعات علاجية صغيرة بمهام متدرجة.', 'إعادة القياس ومقارنة التحسن بخط الأساس.'],
+      resources: ['أنشطة علاجية', 'أسئلة قصيرة موجهة'], responsibleRole: 'معلم المادة والمنسق', timeframe: '4 أسابيع',
+      successIndicator: 'ارتفاع نسبة الإتقان في الفئة المستهدفة', monitoringMethod: 'قياس أسبوعي ومراجعة كل أسبوعين', contingency: 'تعديل نوع التدخل عند غياب التحسن المتوقع.',
+    },
+    {
+      priority: 'متوسطة', issue: 'تقليص فجوة الأداء بين المواد', targetGroup: 'المواد الأقل أداءً',
+      action: 'استخدام ممارسات صفية مشتركة ومقارنة تقدم المواد الأقل أداءً بمتوسط المدرسة.',
+      implementationSteps: ['تحديد الممارسات الأعلى أثرًا.', 'تطبيقها في المواد المستهدفة.', 'مراجعة المؤشرات بعد دورة قصيرة.'],
+      resources: ['اجتماع مهني قصير'], responsibleRole: 'الفريق الأكاديمي', timeframe: '3 أسابيع',
+      successIndicator: 'انخفاض الفجوة بين المواد', monitoringMethod: 'مراجعة نصف شهرية', contingency: 'إعادة تحديد الأولوية حسب البيانات الجديدة.',
+    },
+    {
+      priority: 'متوسطة', issue: 'الحفاظ على تفوق الطلبة المتميزين وتطويرهم', targetGroup: 'الطلبة مرتفعو الأداء',
+      action: 'تقديم مهام إثرائية ممتدة تحافظ على مستوى التحدي وتمنع ثبات الأداء عند مستوى واحد.',
+      implementationSteps: ['اختيار مهام إثرائية مناسبة.', 'توزيع أنشطة ممتدة بحسب المادة.', 'توثيق التقدم ومراجعة جودة المخرجات.'],
+      resources: ['مهام إثرائية'], responsibleRole: 'معلمو المواد', timeframe: 'مستمر',
+      successIndicator: 'استمرار الأداء المرتفع مع تقدم نوعي', monitoringMethod: 'مراجعة شهرية', contingency: 'رفع مستوى التحدي أو تنويع المهمة عند ثبات الأداء.',
+    },
+  ];
+  analysis.improvementPlan = plans;
+  const html = window.TaqareerReports.buildReportHtml({
+    analysis, type: { id: 'multi_subject_results', name: 'نتائج طلاب فردية متعددة المواد' },
+    sourceName: 'كشف نتائج الطلاب العاشر.xlsx', sourceMeta: sheet,
+    quality: { completeness: 100 }, recognitionStatus: 'معتمد',
+  }, { autoPrint: false, reportMode: 'full' });
+
+  assert.equal((html.match(/<h2>خطة التحسين والتدخل<\/h2>/g) || []).length, 1);
+  assert.equal((html.match(/class="plan-card"/g) || []).length, 3);
+  assert.match(html, /class="plan-cards plan-cards-3(?: plan-cards-dense)?" data-plan-budget="\d+"/);
+  assert.match(html, /plan-clip:/);
 });
