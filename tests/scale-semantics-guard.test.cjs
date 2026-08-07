@@ -28,6 +28,7 @@ function loadAnalytics() {
   const sandbox = { window: {}, console, Intl, Date, Math, Set, Map, structuredClone, Array, Object, String, Number, RegExp, JSON };
   vm.createContext(sandbox);
   vm.runInContext(read('assets/mastery-metrics.js'), sandbox, { filename: 'mastery-metrics.js' });
+  vm.runInContext(read('assets/visualization-policy.js'), sandbox, { filename: 'visualization-policy.js' });
   vm.runInContext(read('assets/deep-analysis.js'), sandbox, { filename: 'deep-analysis.js' });
   return sandbox.window.TaqareerDeepAnalytics;
 }

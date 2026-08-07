@@ -8,6 +8,7 @@ const root = path.resolve(__dirname, '..');
 const sandbox = { window: {}, console, Intl, Date, Math, Set, Map, structuredClone, Array, Object, String, Number, RegExp, JSON };
 vm.createContext(sandbox);
 vm.runInContext(fs.readFileSync(path.join(root, 'assets', 'mastery-metrics.js'), 'utf8'), sandbox);
+vm.runInContext(fs.readFileSync(path.join(root, 'assets', 'visualization-policy.js'), 'utf8'), sandbox);
 vm.runInContext(fs.readFileSync(path.join(root, 'assets', 'deep-analysis.js'), 'utf8'), sandbox);
 
 test('aggregated narrative reports contextual variation without declaring confirmed contradiction', () => {

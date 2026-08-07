@@ -677,7 +677,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "1.2.15",
+      appVersion: "1.2.16",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -1539,7 +1539,7 @@
     if (!window.TaqareerReconciliation?.composePrimary) throw new Error("محرك التحقق من التحليل الذكي غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "1.2.15",
+      appVersion: "1.2.16",
       pipeline: {
         mode: "ai-primary-analysis-v1",
         instruction: "المحرك المحلي يحسب المؤشرات والرسوم فقط. يبني الذكاء الاصطناعي التشخيص والاستنتاجات والتدخلات من الأدلة، ثم تتحقق البوابة من المراجع قبل عرض التقرير."
@@ -1901,6 +1901,66 @@
     }).join("")}</div>`;
   }
 
+
+  function renderHistogramChart(chart) {
+    const data = Array.isArray(chart.data) ? chart.data : [];
+    const xKey = chart.xKey || "label", yKey = chart.yKey || "count";
+    const max = Math.max(1, ...data.map(item => chartValue(item, yKey)));
+    return `<div class="deep-histogram" data-chart-id="${escapeAttr(chart.id||"")}">${data.map(item => {
+      const value = chartValue(item, yKey), label = item?.[xKey] ?? item?.label ?? "—";
+      return `<div class="deep-hist-bin" title="${escapeAttr(`${label}: ${round(value)}${chart.valueSuffix||""}`)}"><strong>${round(value)}</strong><div class="deep-hist-column"><span style="height:${Math.max(3, value/max*100)}%"></span></div><small>${escapeHtml(label)}</small></div>`;
+    }).join("")}</div>`;
+  }
+
+  function renderStacked100Chart(chart) {
+    const data = Array.isArray(chart.data) ? chart.data : [];
+    const xKey = chart.xKey || "label";
+    const series = Array.isArray(chart.series) ? chart.series : [];
+    const segment = (label, value, total, index) => {
+      const pct = total > 0 ? value / total * 100 : 0;
+      return value > 0 ? `<span class="deep-stack-segment seg-${index%6}" style="width:${pct}%" title="${escapeAttr(`${label}: ${round(value)} (${round(pct)}%)`)}"></span>` : "";
+    };
+    if (series.length) {
+      return `<div class="deep-stacked-list">${data.map(row => {
+        const values = series.map(key => Math.max(0, chartValue(row,key))), total = values.reduce((a,b)=>a+b,0) || 1;
+        return `<div class="deep-stacked-row"><strong>${escapeHtml(row?.[xKey] ?? "—")}</strong><div class="deep-stacked-track">${series.map((key,i)=>segment(key,values[i],total,i)).join("")}</div><small>${series.map((key,i)=>`${escapeHtml(key)} ${round(values[i]/total*100)}%`).join(" · ")}</small></div>`;
+      }).join("")}</div>`;
+    }
+    const yKey = chart.yKey || "count", values = data.map(row => Math.max(0, chartValue(row,yKey))), total = values.reduce((a,b)=>a+b,0) || 1;
+    return `<div class="deep-stacked-single"><div class="deep-stacked-track">${data.map((row,i)=>segment(row?.[xKey] ?? row?.label ?? `فئة ${i+1}`,values[i],total,i)).join("")}</div><div class="deep-stack-legend">${data.map((row,i)=>`<span><i class="seg-${i%6}"></i>${escapeHtml(row?.[xKey] ?? row?.label ?? `فئة ${i+1}`)} <strong>${round(values[i]/total*100)}%</strong></span>`).join("")}</div></div>`;
+  }
+
+  function renderBulletChart(chart) {
+    const data = Array.isArray(chart.data) ? chart.data : [];
+    const labelKey = chart.xKey || "label", currentKey = chart.currentKey || chart.yKey || "current", targetKey = chart.targetKey || "target";
+    const values = data.flatMap(row => [chartValue(row,currentKey), Number.isFinite(Number(chart.targetValue)) ? Number(chart.targetValue) : chartValue(row,targetKey)]);
+    const max = Math.max(1, chart.max || 0, ...values);
+    return `<div class="deep-bullet-list">${data.slice(0,16).map(row=>{
+      const current=chartValue(row,currentKey), target=Number.isFinite(Number(chart.targetValue))?Number(chart.targetValue):chartValue(row,targetKey);
+      const currentPct=Math.max(0,Math.min(100,current/max*100)), targetPct=Math.max(0,Math.min(100,target/max*100));
+      return `<div class="deep-bullet-row"><span>${escapeHtml(row?.[labelKey] ?? row?.label ?? "—")}</span><div class="deep-bullet-track"><i style="width:${currentPct}%"></i><b style="right:${targetPct}%" title="المستهدف ${round(target)}"></b></div><strong>${round(current)} / ${round(target)}</strong></div>`;
+    }).join("")}</div>`;
+  }
+
+  function renderDumbbellChart(chart) {
+    const data = Array.isArray(chart.data) ? chart.data : [];
+    const labelKey=chart.xKey||"label", beforeKey=chart.beforeKey||"before", afterKey=chart.afterKey||"after";
+    const vals=data.flatMap(row=>[chartValue(row,beforeKey),chartValue(row,afterKey)]), min=Math.min(...vals,0), max=Math.max(...vals,1), span=Math.max(1e-9,max-min);
+    return `<div class="deep-dumbbell-list">${data.slice(0,14).map(row=>{const before=chartValue(row,beforeKey),after=chartValue(row,afterKey),bp=(before-min)/span*100,ap=(after-min)/span*100,left=Math.min(bp,ap),width=Math.max(1,Math.abs(ap-bp));return `<div class="deep-dumbbell-row"><span>${escapeHtml(row?.[labelKey]??"—")}</span><div class="deep-dumbbell-track"><i style="right:${left}%;width:${width}%"></i><b class="before" style="right:${bp}%" title="قبل ${round(before)}"></b><b class="after" style="right:${ap}%" title="بعد ${round(after)}"></b></div><strong>${round(before)} ← ${round(after)}</strong></div>`}).join("")}</div>`;
+  }
+
+  function renderParetoChart(chart, compact=false) {
+    const data=Array.isArray(chart.data)?chart.data:[], xKey=chart.xKey||"label", yKey=chart.yKey||"gap", max=Math.max(1,...data.map(row=>chartValue(row,yKey))), total=data.reduce((sum,row)=>sum+Math.max(0,chartValue(row,yKey)),0)||1; let running=0;
+    return `<div class="deep-pareto-list">${data.slice(0,compact?8:20).map(row=>{const value=Math.max(0,chartValue(row,yKey));running+=value;const cumulative=Number.isFinite(Number(row?.[chart.cumulativeKey]))?Number(row[chart.cumulativeKey]):running/total*100;return `<div class="deep-pareto-row"><span title="${escapeAttr(row?.[xKey]??"—")}">${escapeHtml(row?.[xKey]??"—")}</span><div class="deep-pareto-track"><i style="width:${Math.max(2,value/max*100)}%"></i></div><strong>${round(value)}${escapeHtml(chart.valueSuffix||"")} <em>${round(cumulative)}%</em></strong></div>`}).join("")}</div>`;
+  }
+
+  function renderScatterChart(chart) {
+    const data=Array.isArray(chart.data)?chart.data:[], xKey=chart.xKey||"x", yKey=chart.yKey||"y"; if(!data.length)return "";
+    const xs=data.map(row=>chartValue(row,xKey)), ys=data.map(row=>chartValue(row,yKey)), minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys),w=640,h=220,p=32;
+    const sx=x=>p+(x-minX)/Math.max(1e-9,maxX-minX)*(w-p*2), sy=y=>h-p-(y-minY)/Math.max(1e-9,maxY-minY)*(h-p*2);
+    return `<div class="deep-scatter-chart"><svg viewBox="0 0 ${w} ${h}" role="img"><line class="axis" x1="${p}" y1="${h-p}" x2="${w-p}" y2="${h-p}"/><line class="axis" x1="${p}" y1="${p}" x2="${p}" y2="${h-p}"/>${data.slice(0,40).map((row,i)=>`<circle class="point" cx="${sx(xs[i])}" cy="${sy(ys[i])}" r="4"><title>${round(xs[i])}, ${round(ys[i])}</title></circle>`).join("")}</svg></div>`;
+  }
+
   function renderLineChart(chart) {
     const data = Array.isArray(chart.data) ? chart.data : [];
     const xKey = chart.xKey || "label", yKey = chart.yKey || "value";
@@ -1950,13 +2010,17 @@
 
   function renderChartContent(chart, compact = false) {
     if (!chart) return "";
+    if (chart.type === "histogram") return renderHistogramChart(chart);
+    if (chart.type === "stacked100" || chart.type === "stacked") return renderStacked100Chart(chart);
+    if (chart.type === "bullet") return renderBulletChart(chart);
+    if (chart.type === "dumbbell") return renderDumbbellChart(chart);
+    if (chart.type === "pareto") return renderParetoChart(chart, compact);
+    if (chart.type === "scatter") return renderScatterChart(chart);
     if (chart.type === "line") return renderLineChart(chart);
     if (chart.type === "radar") return renderRadarChart(chart);
     if (chart.type === "box") return renderBoxChart(chart);
     if (chart.type === "heatmap") return renderHeatmap(chart);
     if (chart.type === "table") return renderTableChart(chart);
-    if (chart.type === "stacked") return renderHeatmap({ ...chart, columns: chart.series || [] });
-    if (chart.type === "pareto") return renderBarChart({ ...chart, yKey: chart.yKey || "gap" }, compact);
     return renderBarChart(chart, compact);
   }
 
@@ -2039,7 +2103,7 @@
 
     const extraCharts = charts.slice(1);
     $("deepChartsSection").classList.toggle("hidden", !extraCharts.length);
-    $("deepChartsGrid").innerHTML = extraCharts.map(chart=>`<article class="deep-chart-card ${chart.type==='heatmap'||chart.type==='table'?'wide':''}"><h5>${escapeHtml(chart.title)}</h5><p>${escapeHtml(chart.description||"")}</p>${renderChartContent(chart)}</article>`).join("");
+    $("deepChartsGrid").innerHTML = extraCharts.map(chart=>`<article class="deep-chart-card ${['heatmap','table','bullet','dumbbell','scatter'].includes(chart.type)?'wide':''}" data-chart-type="${escapeAttr(chart.type||'bar')}"><h5>${escapeHtml(chart.title)}</h5><p>${escapeHtml(chart.description||"")}</p>${renderChartContent(chart)}</article>`).join("");
     renderRankingResults(a);
 
     const profile = a.analysisProfile || {};
@@ -2152,7 +2216,7 @@
   function exportAnalysis() {
     const payload = {
       app: "تقارير",
-      version: "1.2.15",
+      version: "1.2.16",
       generatedAt: new Date().toISOString(),
       source: state.sourceName,
       sourceMeta: state.sourceMeta,
@@ -2165,7 +2229,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v1.2.15.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v1.2.16.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }

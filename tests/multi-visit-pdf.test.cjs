@@ -99,6 +99,7 @@ test('multi-visit analyzer preserves reversed-scale arithmetic and flags only wi
   const sandbox = { window, console, Intl, Date, Math, Set, Map, structuredClone, Array, Object, String, Number, RegExp, JSON };
   vm.createContext(sandbox);
   vm.runInContext(fs.readFileSync(path.join(root, 'assets', 'mastery-metrics.js'), 'utf8'), sandbox);
+  vm.runInContext(fs.readFileSync(path.join(root, 'assets', 'visualization-policy.js'), 'utf8'), sandbox);
   vm.runInContext(fs.readFileSync(path.join(root, 'assets', 'deep-analysis.js'), 'utf8'), sandbox);
   const analysis = window.TaqareerDeepAnalytics.analyzeEvidence({
     typeId: 'supervision_multi_visit',
@@ -144,7 +145,7 @@ test('multi-visit metadata summarizes contiguous grades for the official report 
   assert.equal(parsed.dataset.meta.metadata.grade, '8-10');
 });
 
-test('multi-visit report moves all four charts to print-safe analytical pages and keeps every bar row', () => {
+test('multi-visit report uses semantic chart types on print-safe analytical pages', () => {
   const docs = loadDocuments();
   const pages = [
     visitPage(1, 'المعلم الأول', '16140001', '43', '2026/03/05', 'الفيزياء', 'الثامن', 'الصوت', [1,2,1,2,1,1,2,1,1,1,2,1,1]),
@@ -157,7 +158,7 @@ test('multi-visit report moves all four charts to print-safe analytical pages an
   const parsed = docs._test.detectMultiVisitSupervisionPdf(pages);
   const sandbox = { window: {}, console, Intl, Date, Math, Set, Map, structuredClone, Array, Object, String, Number, RegExp, JSON };
   vm.createContext(sandbox);
-  for (const file of ['mastery-metrics.js', 'deep-analysis.js', 'report-system.js']) {
+  for (const file of ['mastery-metrics.js', 'visualization-policy.js', 'deep-analysis.js', 'report-system.js']) {
     vm.runInContext(fs.readFileSync(path.join(root, 'assets', file), 'utf8'), sandbox, { filename: file });
   }
   const analysis = sandbox.window.TaqareerDeepAnalytics.analyzeEvidence({
@@ -176,13 +177,15 @@ test('multi-visit report moves all four charts to print-safe analytical pages an
     sourceMeta: parsed.dataset.meta,
   });
   const sheets = html.split('<section class="report-sheet">').slice(1);
-  assert.equal(sandbox.window.TaqareerReports.VERSION, '1.2.15');
+  assert.equal(sandbox.window.TaqareerReports.VERSION, '1.2.16');
   assert.doesNotMatch(sheets[0], /supervision-level-distribution|supervision-indicator-performance/);
   assert.match(sheets.slice(1).join('\n'), /supervision-level-distribution/);
   assert.match(sheets.slice(1).join('\n'), /supervision-indicator-performance/);
   assert.match(html, /الصف \/ الفئة<\/span><strong>8-10<\/strong>/);
-  assert.equal((html.match(/class="bar-row"/g) || []).length, 5 + 13 + 3 + 3);
-  assert.match(html, /chart-card chart-wide chart-dense[^>]*data-chart-id="supervision-indicator-performance"/);
+  assert.match(html, /data-chart-id="supervision-level-distribution"[^>]*data-chart-type="stacked100"/);
+  assert.match(html, /data-chart-id="supervision-visit-performance"[^>]*data-chart-type="line"/);
+  assert.match(html, /data-chart-id="supervision-indicator-performance"[^>]*data-chart-type="bar"/);
+  assert.match(html, /data-chart-id="supervision-numeric-narrative-alignment"/);
 });
 
 

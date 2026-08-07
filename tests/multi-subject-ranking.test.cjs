@@ -14,7 +14,7 @@ function loadModules() {
   sandbox.globalThis = sandbox.window;
   sandbox.window.performance = performance;
   vm.createContext(sandbox);
-  for (const file of ['xlsx-lite.js', 'analysis-profile.js', 'mastery-metrics.js', 'deep-analysis.js', 'deep-analysis-orchestrator.js']) {
+  for (const file of ['xlsx-lite.js', 'analysis-profile.js', 'mastery-metrics.js', 'visualization-policy.js', 'deep-analysis.js', 'deep-analysis-orchestrator.js']) {
     vm.runInContext(fs.readFileSync(path.join(root, 'assets', file), 'utf8'), sandbox, { filename: file });
   }
   return sandbox.window;

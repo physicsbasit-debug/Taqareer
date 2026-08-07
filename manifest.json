@@ -1,8 +1,8 @@
 {
   "app": "تقارير",
-  "version": "1.2.15",
-  "phase": "Phase 2-D Fix 15 - Recognition Authority & Explicit Scale Consent",
-  "releaseName": "Source-Grounded Recognition and Explicit Scale Consent",
+  "version": "1.2.16",
+  "phase": "Phase 2-D Fix 16 - Global Visualization Engine",
+  "releaseName": "Semantic Visualization Policy and Multi-Chart Rendering",
   "buildType": "static-github-pages-plus-supabase-edge-function",
   "supportedInputs": {
     "table": [
@@ -36,7 +36,8 @@
       "semantic-structure-profiling",
       "ai-semantic-type-verification",
       "evidence-contract",
-      "report-rendering"
+      "report-rendering",
+      "semantic-visualization-policy"
     ],
     "specializedAnalyzers": [
       "single-subject-results",
@@ -59,7 +60,8 @@
     "reconciliation": "server computes score intervention groups and success indicators, then client independently revalidates them against local counts before display",
     "routingRule": "a semantic profile determines unit of analysis, aggregation, measures, scale direction and required analytical families; known type labels are optional routing hints, not a mandatory template",
     "reportPrivacyRule": "official reports use neutral professional provenance wording, map internal analysis identifiers to human Arabic labels, and do not expose provider/model labels or random report tokens",
-    "presentationBoundary": "internal analyzer ids remain available for routing, while report/result presentation resolves them through a centralized public display dictionary"
+    "presentationBoundary": "internal analyzer ids remain available for routing, while report/result presentation resolves them through a centralized public display dictionary",
+    "visualizationRule": "specialized analyzers declare or imply analytical intent; a shared semantic visualization policy selects a safe chart form without changing source calculations"
   },
   "features": [
     "adaptive-analysis-router",
@@ -173,7 +175,16 @@
     "public-terminology-boundary",
     "internal-identifier-sanitization",
     "provider-neutral-official-reporting",
-    "professional-focused-interface"
+    "professional-focused-interface",
+    "global-semantic-visualization-engine",
+    "chart-intent-contract",
+    "histogram-rendering",
+    "stacked-100-composition-charts",
+    "bullet-target-gap-charts",
+    "dumbbell-before-after-charts",
+    "scatter-relationship-ready",
+    "pareto-cumulative-rendering",
+    "radar-dimension-readability-guard"
   ],
   "runtime": {
     "frontend": "GitHub Pages static site",
@@ -196,7 +207,7 @@
     "primaryRescueModel": "gemini-3.5-flash-lite",
     "primaryRescueThinkingLevel": "minimal",
     "primaryRescueMaxOutputTokens": 3072,
-    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.2.15",
+    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.2.16",
     "primaryModelFallbackOrder": [
       "gemini-3.6-flash",
       "gemini-3.5-flash-lite"
@@ -252,7 +263,8 @@
     "multiVisitScopeGuard": "interventions are limited to the teachers, department, subjects and visits present in the analyzed sample; broader school-wide targets are narrowed server-side and revalidated in the browser",
     "semanticRouter": "every supported input receives a local structural profile and Gemini semantic verification; setup controls and analyzer selection follow the profile rather than a single universal method",
     "aggregateDistribution": "grouped level distributions use level columns and exclude aggregate rows from totals, then use aggregate values only for consistency checks",
-    "multiSubjectWorkspace": "supports all-subject or one-subject analysis, local top-ten tables, weighted school ranking, standard competition ties, and exclusion of records missing a core subject"
+    "multiSubjectWorkspace": "supports all-subject or one-subject analysis, local top-ten tables, weighted school ranking, standard competition ties, and exclusion of records missing a core subject",
+    "visualizationEngine": "shared intent-first policy selects charts across all analyzers; report and workspace render the same semantic chart contract without modifying deterministic calculations"
   },
   "performance": {
     "scoreContextRows": 24,
@@ -269,7 +281,7 @@
     "databaseChanges": false,
     "newSecretsRequired": false,
     "currentFrontendOperation": "analyze_primary",
-    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.2.15",
+    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.2.16",
     "classificationAndVision": "retained"
   },
   "notYetEnabled": [

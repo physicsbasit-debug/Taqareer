@@ -4,10 +4,11 @@ const path=require('path');
 const assert=require('assert');
 const root=path.join(__dirname,'..');
 const masteryCode=fs.readFileSync(path.join(root,'assets','mastery-metrics.js'),'utf8');
+const visualizationCode=fs.readFileSync(path.join(root,'assets','visualization-policy.js'),'utf8');
 const deepCode=fs.readFileSync(path.join(root,'assets','deep-analysis.js'),'utf8');
 const fixture=JSON.parse(fs.readFileSync(path.join(__dirname,'fixtures','aaaa-scores.json'),'utf8'));
 const sandbox={window:{},console,Intl,Date,Math,Set,Map,structuredClone,Array,Object,String,Number,RegExp,JSON};
-vm.createContext(sandbox);vm.runInContext(masteryCode,sandbox);vm.runInContext(deepCode,sandbox);
+vm.createContext(sandbox);vm.runInContext(masteryCode,sandbox);vm.runInContext(visualizationCode,sandbox);vm.runInContext(deepCode,sandbox);
 const rows=fixture.scores.map((score,index)=>({م:index+1,'درجة عنصر المادة':score}));
 const result=sandbox.window.TaqareerDeepAnalytics.analyze({
   typeId:'assessment_component',headers:['م','درجة عنصر المادة'],rows,

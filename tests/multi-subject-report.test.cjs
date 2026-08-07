@@ -12,7 +12,7 @@ function loadModules() {
     Map, Set, Array, Object, String, Number, RegExp, JSON, Math, structuredClone, Intl, Date,
   };
   vm.createContext(sandbox);
-  for (const file of ['xlsx-lite.js', 'analysis-profile.js', 'display-terms.js', 'mastery-metrics.js', 'deep-analysis.js', 'report-system.js']) {
+  for (const file of ['xlsx-lite.js', 'analysis-profile.js', 'display-terms.js', 'mastery-metrics.js', 'visualization-policy.js', 'deep-analysis.js', 'report-system.js']) {
     vm.runInContext(fs.readFileSync(path.join(root, 'assets', file), 'utf8'), sandbox, { filename: file });
   }
   return sandbox.window;
@@ -51,7 +51,7 @@ test('official report shows grade metadata, school formula and local ranking tab
   assert.match(html, /العشرة الأوائل على مستوى المدرسة \/ الدفعة/);
   assert.match(html, /العشرة الأوائل حسب الدرجة/);
   assert.match(html, /طالب اختبار 136/);
-  assert.match(html, /تقارير v1\.2\.15/);
+  assert.match(html, /تقارير v1\.2\.16/);
 });
 
 test('subject report includes only the selected subject top-ten table and selected-subject metadata', () => {

@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.2.15";
+  const VERSION = "1.2.16";
 
   function masteryEngine() {
     const engine = window.TaqareerMasteryMetrics;
@@ -158,7 +158,8 @@
     return { priority, issue, targetGroup, action, responsibleRole, timeframe, successIndicator, monitoringMethod, contingency, evidenceRefs };
   }
   function chart(id, type, title, description, data, options = {}) {
-    return { id, type, title, description, data, ...options };
+    const raw = { id, type, title, description, data, ...options };
+    return window.TaqareerVisualizationEngine?.selectChart?.(raw) || raw;
   }
 
   function evidenceMapFromMetrics(metrics) {

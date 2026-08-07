@@ -5,7 +5,7 @@ const assert=require('assert');
 const root=path.join(__dirname,'..');
 const sandbox={window:{},console,Intl,Date,Math,Set,Map,structuredClone,Array,Object,String,Number,RegExp,JSON};
 vm.createContext(sandbox);
-for(const file of ['mastery-metrics.js','deep-analysis.js','report-system.js']){
+for(const file of ['mastery-metrics.js','visualization-policy.js','deep-analysis.js','report-system.js']){
   vm.runInContext(fs.readFileSync(path.join(root,'assets',file),'utf8'),sandbox);
 }
 const fixture=JSON.parse(fs.readFileSync(path.join(__dirname,'fixtures','aaaa-scores.json'),'utf8'));
@@ -25,8 +25,9 @@ assert.strictEqual(histogram.data.length,10);
 assert.strictEqual(segments.data.length,4);
 assert.strictEqual(histogram.data.reduce((s,row)=>s+row.count,0),268);
 assert.strictEqual(segments.data.reduce((s,row)=>s+row.count,0),268);
-assert.ok(html.includes('data-chart-id="score-histogram" data-expected-rows="10"'));
-assert.ok(html.includes('data-chart-id="intervention-segments" data-expected-rows="4"'));
+assert.ok(/data-chart-id="score-histogram"[^>]*data-chart-type="histogram"[^>]*data-expected-rows="10"/.test(html));
+assert.ok(/data-chart-id="intervention-segments"[^>]*data-chart-type="stacked100"/.test(html));
+assert.ok(html.includes('class="stack-track"'));
 for(const label of ['24-28','28-32','32-36','36-40','دون الإتقان بفجوة عميقة']) assert.ok(html.includes(label),`missing ${label}`);
 assert.ok(html.includes('chartIntegrity'));
 assert.ok(html.includes('Taqareer chart integrity failed'));

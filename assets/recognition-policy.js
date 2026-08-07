@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.2.15";
+  const VERSION = "1.2.16";
   const ALLOWED_DIRECTIONS = new Set(["lower-is-better", "higher-is-better", "descriptive-only"]);
 
   function normalize(value) {

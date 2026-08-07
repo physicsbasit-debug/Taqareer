@@ -1,9 +1,10 @@
 const fs=require('fs'), vm=require('vm');
 const path=require('path');
 const masteryCode=fs.readFileSync(path.join(__dirname,'..','assets','mastery-metrics.js'),'utf8');
+const visualizationCode=fs.readFileSync(path.join(__dirname,'..','assets','visualization-policy.js'),'utf8');
 const code=fs.readFileSync(path.join(__dirname,'..','assets','deep-analysis.js'),'utf8');
 const sandbox={window:{},console,Intl,Date,Math,Set,Map,structuredClone,Array,Object,String,Number,RegExp,JSON};
-vm.createContext(sandbox);vm.runInContext(masteryCode,sandbox);vm.runInContext(code,sandbox);
+vm.createContext(sandbox);vm.runInContext(masteryCode,sandbox);vm.runInContext(visualizationCode,sandbox);vm.runInContext(code,sandbox);
 const analyze=sandbox.window.TaqareerDeepAnalytics.analyze;
 const tests=[
  ['scores',{typeId:'assessment_component',headers:['م','اسم الطالب','عنصر المادة','درجة عنصر المادة','ملاحظات'],rows:Array.from({length:60},(_,i)=>({'م':i+1,'اسم الطالب':`طالب ${i+1}`,'عنصر المادة':'اختبار','درجة عنصر المادة':(i*7)%41,'ملاحظات':''})),scoreColumn:'درجة عنصر المادة',maxScore:40,thresholdPct:75}],

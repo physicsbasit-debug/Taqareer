@@ -12,7 +12,7 @@ function loadModules() {
     Map, Set, Array, Object, String, Number, RegExp, JSON, Math, structuredClone, Intl, Date,
   };
   vm.createContext(sandbox);
-  for (const file of ['xlsx-lite.js', 'analysis-profile.js', 'mastery-metrics.js', 'deep-analysis.js']) {
+  for (const file of ['xlsx-lite.js', 'analysis-profile.js', 'mastery-metrics.js', 'visualization-policy.js', 'deep-analysis.js']) {
     vm.runInContext(fs.readFileSync(path.join(root, 'assets', file), 'utf8'), sandbox, { filename: file });
   }
   return sandbox.window;

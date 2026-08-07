@@ -12,7 +12,7 @@ function loadModules() {
     Map, Set, Array, Object, String, Number, RegExp, JSON, Math, structuredClone, Intl, Date,
   };
   vm.createContext(sandbox);
-  for (const file of ['xlsx-lite.js', 'analysis-profile.js', 'mastery-metrics.js', 'deep-analysis.js', 'analysis-reconciliation.js', 'report-system.js']) {
+  for (const file of ['xlsx-lite.js', 'analysis-profile.js', 'mastery-metrics.js', 'visualization-policy.js', 'deep-analysis.js', 'analysis-reconciliation.js', 'report-system.js']) {
     vm.runInContext(fs.readFileSync(path.join(root, 'assets', file), 'utf8'), sandbox, { filename: file });
   }
   return sandbox.window;
@@ -111,7 +111,7 @@ test('frontend and Edge recognize the new type, hide score settings semantically
 });
 
 
-test('official report keeps all thirteen subject bars and structured workbook metadata', async () => {
+test('official report keeps all thirteen subject comparison rows and uses semantic composition charts', async () => {
   const { window, sheet } = await readFixture();
   const profile = window.TaqareerAnalysisProfiler.profileTable({ headers: sheet.headers, rows: sheet.rows, sourceMeta: sheet });
   const local = window.TaqareerDeepAnalytics.analyzeEvidence({
@@ -150,7 +150,9 @@ test('official report keeps all thirteen subject bars and structured workbook me
   assert.match(html, /2025\/2026 - الدور الأول/);
   assert.match(html, /المادة<\/span><strong>متعدد المواد/);
   assert.match(html, /data-chart-id="multi-subject-means"[^>]*data-expected-rows="13"/);
-  assert.equal((html.match(/class="bar-row"/g) || []).length >= 35, true);
+  assert.equal((html.match(/class="bar-row"/g) || []).length >= 26, true);
+  assert.match(html, /data-chart-type="stacked100"/);
+  assert.match(html, /class="stack-track"/);
 });
 
 test('score-only variant is analyzed with derived levels without a false score-level consistency claim', () => {

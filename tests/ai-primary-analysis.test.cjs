@@ -191,6 +191,7 @@ test('primary orchestrator sends evidence, not local interpretive prose', () => 
 
 test('local evidence engine strips all interpretive prose from the AI-primary path', () => {
   const mastery = fs.readFileSync(path.join(root, 'assets/mastery-metrics.js'), 'utf8');
+  const visualization = fs.readFileSync(path.join(root, 'assets/visualization-policy.js'), 'utf8');
   const deep = fs.readFileSync(path.join(root, 'assets/deep-analysis.js'), 'utf8');
   const window = {};
   const context = vm.createContext({
@@ -211,6 +212,7 @@ test('local evidence engine strips all interpretive prose from the AI-primary pa
     JSON,
   });
   vm.runInContext(mastery, context, { filename: 'assets/mastery-metrics.js' });
+  vm.runInContext(visualization, context, { filename: 'assets/visualization-policy.js' });
   vm.runInContext(deep, context, { filename: 'assets/deep-analysis.js' });
   const result = window.TaqareerDeepAnalytics.analyzeEvidence({
     typeId: 'assessment_component',
