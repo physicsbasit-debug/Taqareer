@@ -118,7 +118,7 @@
     if (code === "GEMINI_RATE_LIMIT" || /RESOURCE_EXHAUSTED|rate limit|quota|\b429\b/i.test(message)) {
       return "تم بلوغ حد طلبات الذكاء الاصطناعي مؤقتًا. انتظر قليلًا ثم أعد المحاولة.";
     }
-    if (code === "AI_PRIMARY_TIMEOUT") return "استغرق اتصال التحليل الذكي أكثر من المهلة الآمنة رغم تنسيق مهلة الخادم والواجهة. أعد المحاولة؛ لم يعتمد التطبيق نتيجة ناقصة.";
+    if (code === "AI_PRIMARY_TIMEOUT") return "لم تصل استجابة تحليل صالحة ضمن المهلة السريعة المعتمدة. أوقف التطبيق الانتظار بدل إبقائك عالقًا، ولم يعتمد نتيجة ناقصة.";
     return message || "تعذر تنفيذ التحليل الذكي.";
   }
 
@@ -469,7 +469,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "1.2.5",
+      appVersion: "1.2.6",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -1263,7 +1263,7 @@
     if (!window.TaqareerReconciliation?.composePrimary) throw new Error("محرك التحقق من التحليل الذكي غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "1.2.5",
+      appVersion: "1.2.6",
       pipeline: {
         mode: "ai-primary-analysis-v1",
         instruction: "المحرك المحلي يحسب المؤشرات والرسوم فقط. يبني الذكاء الاصطناعي التشخيص والاستنتاجات والتدخلات من الأدلة، ثم تتحقق البوابة من المراجع قبل عرض التقرير."
@@ -1432,9 +1432,9 @@
         ? "يبني المحلل الذكي القراءة التشخيصية من الأدلة."
         : seconds < 14
           ? "يربط الاستنتاجات بالأدلة ويرتب الأولويات."
-          : seconds < 24
+          : seconds < 20
             ? "يصوغ التدخلات ضمن عقد موجز مضبوط."
-            : "يتم التحقق النهائي، وقد يعمل مسار الإنقاذ المختصر عند الحاجة.";
+            : "إذا تعثرت الاستجابة، ينتقل الخادم تلقائيًا إلى نموذج أسرع ضمن المهلة نفسها.";
       setMessage("setupMessage", `${evidenceSummary ? `اكتملت الحسابات: ${evidenceSummary}. ` : "اكتملت الحسابات. "}${stage}`);
     };
     update();
@@ -1854,7 +1854,7 @@
   function exportAnalysis() {
     const payload = {
       app: "تقارير",
-      version: "1.2.5",
+      version: "1.2.6",
       generatedAt: new Date().toISOString(),
       source: state.sourceName,
       sourceMeta: state.sourceMeta,
@@ -1867,7 +1867,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v1.2.5.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v1.2.6.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }

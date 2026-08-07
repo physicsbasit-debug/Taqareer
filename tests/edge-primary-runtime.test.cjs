@@ -174,6 +174,14 @@ async function createRuntime(responses) {
         error.name = 'AbortError';
         throw error;
       }
+      if (item && typeof item === 'object' && item.__bodyAbort) {
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers({ 'content-type': 'application/json', 'x-request-id': `req-${calls}` }),
+          text: async () => { const error = new Error('Aborted while reading body'); error.name = 'AbortError'; throw error; },
+        };
+      }
       const status = item && typeof item === 'object' && Number.isInteger(item.__status) ? item.__status : 200;
       const raw = item && typeof item === 'object' && Object.prototype.hasOwnProperty.call(item, '__body') ? item.__body : item;
       return new Response(JSON.stringify(raw), { status, headers: { 'content-type': 'application/json', 'x-request-id': `req-${calls}` } });
@@ -216,8 +224,8 @@ test('edge primary runtime accepts balanced non-duplicative result in one reques
   assert.equal(body.result.qualityTools.length, 1);
   assert.notEqual(body.result.diagnosticSections[0].analysis, body.result.findings[0].statement);
   assert.equal(body.serverTiming.rescueUsed, false);
-  assert.equal(body.serverTiming.serverDeadlineMs, 72000);
-  assert.equal(body.serverTiming.primaryAttemptTimeoutMs, 30000);
+  assert.equal(body.serverTiming.serverDeadlineMs, 42000);
+  assert.equal(body.serverTiming.primaryAttemptTimeoutMs, 16000);
   assert.equal(body.serverTiming.attemptedModels, 1);
   assert.equal(body.serverTiming.distinctTargetGroups, 2);
   assert.equal(body.result.interventions[1].numericGuard.applied, true);
@@ -296,8 +304,8 @@ test('edge switches immediately to a fallback model after one busy response', as
   assert.equal(body.ok, true);
   assert.equal(runtime.getCalls(), 2);
   const urls = runtime.getUrls();
-  assert.match(urls[0], /gemini-3\.5-flash:generateContent/);
-  assert.match(urls[1], /gemini-3\.6-flash:generateContent/);
+  assert.match(urls[0], /gemini-3\.6-flash:generateContent/);
+  assert.match(urls[1], /gemini-3\.5-flash-lite:generateContent/);
   assert.equal(body.serverTiming.fallbackUsed, true);
   assert.equal(body.serverTiming.fallbackReason, 'transient_capacity');
 });
@@ -311,16 +319,29 @@ test('edge treats a per-model timeout as transient and moves to the next model',
   assert.equal(body.ok, true);
   assert.equal(runtime.getCalls(), 2);
   const urls = runtime.getUrls();
-  assert.match(urls[0], /gemini-3\.5-flash:generateContent/);
-  assert.match(urls[1], /gemini-3\.6-flash:generateContent/);
+  assert.match(urls[0], /gemini-3\.6-flash:generateContent/);
+  assert.match(urls[1], /gemini-3\.5-flash-lite:generateContent/);
   assert.equal(body.serverTiming.fallbackUsed, true);
   assert.equal(body.serverTiming.fallbackReason, 'transient_capacity');
   assert.equal(body.serverTiming.attemptedModels, 2);
 });
 
+test('edge treats an aborted Gemini response body as transient and fails over instead of hanging past the deadline', async () => {
+  const runtime = await createRuntime([{ __bodyAbort: true }, geminiRaw(primaryResult())]);
+  const { status, body } = await invoke(runtime);
+  assert.equal(status, 200);
+  assert.equal(body.ok, true);
+  assert.equal(runtime.getCalls(), 2);
+  const urls = runtime.getUrls();
+  assert.match(urls[0], /gemini-3\.6-flash:generateContent/);
+  assert.match(urls[1], /gemini-3\.5-flash-lite:generateContent/);
+  assert.equal(body.serverTiming.fallbackUsed, true);
+  assert.equal(body.serverTiming.fallbackReason, 'transient_capacity');
+});
+
 test('edge returns an Arabic retryable message when all Gemini models are temporarily busy', async () => {
   const busy = httpError(503, 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.');
-  const runtime = await createRuntime([busy, busy, busy]);
+  const runtime = await createRuntime([busy, busy]);
   const { status, body } = await invoke(runtime);
   assert.equal(status, 503);
   assert.equal(body.ok, false);
@@ -328,7 +349,7 @@ test('edge returns an Arabic retryable message when all Gemini models are tempor
   assert.equal(body.retryable, true);
   assert.match(body.error, /مزدحمة مؤقتًا/);
   assert.doesNotMatch(body.error, /high demand|Spikes in demand|try again later/i);
-  assert.equal(runtime.getCalls(), 3);
+  assert.equal(runtime.getCalls(), 2);
 });
 
 function multiVisitPayload() {

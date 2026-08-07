@@ -3,7 +3,7 @@
 
   const STORAGE_KEY = "taqareer.ai.config.v1";
   const ACCESS_KEY = "taqareer.ai.access-code.v1";
-  const CLIENT_VERSION = "1.2.5";
+  const CLIENT_VERSION = "1.2.6";
   const HEALTH_MAX_AGE_MS = 120000;
   const defaults = window.TAQAREER_CONFIG || {};
   let healthState = {
@@ -272,7 +272,7 @@
 
   async function analyzePrimaryDetailed(payload) {
     await ensureHealthy();
-    return invoke("analyze_primary", payload, { timeoutMs: 85000 });
+    return invoke("analyze_primary", payload, { timeoutMs: 52000 });
   }
 
   // يبقى للتوافق مع نتائج v0.9.7 القديمة، لكنه ليس جزءًا من المسار الحالي.

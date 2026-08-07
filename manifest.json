@@ -1,8 +1,8 @@
 {
   "app": "تقارير",
-  "version": "1.2.5",
-  "phase": "Phase 2-D Fix 4 - Score-Only & Multi-Sheet Workbook Intake",
-  "releaseName": "Reliable Workbook Intake & Subject Selector",
+  "version": "1.2.6",
+  "phase": "Phase 2-D Fix 6 - Fast Bounded Primary AI",
+  "releaseName": "Fast Bounded AI Primary Analysis",
   "buildType": "static-github-pages-plus-supabase-edge-function",
   "supportedInputs": {
     "table": [
@@ -157,40 +157,43 @@
     "multi-source-subject-selector-recovery",
     "dominant-results-sheet-auto-selection",
     "versioned-static-asset-cache-busting",
-    "incomplete-multi-subject-structure-execution-guard"
+    "incomplete-multi-subject-structure-execution-guard",
+    "response-body-timeout-guard",
+    "fast-primary-model-order",
+    "hard-primary-latency-budget",
+    "fast-lite-failover"
   ],
   "runtime": {
     "frontend": "GitHub Pages static site",
     "aiGateway": "Supabase Edge Function",
     "aiProvider": "Google Gemini API",
-    "defaultModel": "gemini-3.5-flash",
+    "defaultModel": "gemini-3.6-flash",
     "classifierModel": "gemini-3.5-flash-lite",
     "enrichmentOperation": "analyze_primary",
     "legacyAnalyzeThinkingBudget": 1024,
     "classificationThinkingBudget": 0,
     "reconciliationContractVersion": "6.6.0",
-    "edgeFunctionVersion": "0.15.2",
+    "edgeFunctionVersion": "0.15.3",
     "fastEnhancementModel": "gemini-3.5-flash-lite",
     "fastEnhancementThinkingBudget": 192,
     "fastEnhancementMaxOutputTokens": 2600,
     "fastEnhancementClientTimeoutMs": 16000,
-    "primaryAnalysisMaxOutputTokens": 8192,
-    "primaryAnalysisClientTimeoutMs": 85000,
+    "primaryAnalysisMaxOutputTokens": 4096,
+    "primaryAnalysisClientTimeoutMs": 52000,
     "primaryAnalysisThinkingLevel": "low",
     "primaryRescueModel": "gemini-3.5-flash-lite",
     "primaryRescueThinkingLevel": "minimal",
-    "primaryRescueMaxOutputTokens": 6144,
-    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.2.5",
+    "primaryRescueMaxOutputTokens": 3072,
+    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.2.6",
     "primaryModelFallbackOrder": [
-      "gemini-3.5-flash",
       "gemini-3.6-flash",
       "gemini-3.5-flash-lite"
     ],
     "transientRetryAttemptsPerModel": 1,
-    "transientRetryBackoff": "exponential-with-jitter",
-    "primaryServerDeadlineMs": 72000,
-    "primaryModelAttemptTimeoutMs": 30000,
-    "primaryRescueAttemptTimeoutMs": 24000,
+    "transientRetryBackoff": "none-on-primary; direct-model-failover",
+    "primaryServerDeadlineMs": 42000,
+    "primaryModelAttemptTimeoutMs": 16000,
+    "primaryRescueAttemptTimeoutMs": 12000,
     "edgeHealthOperation": "health",
     "edgeHealthRequiresGemini": false,
     "edgeHealthCacheMs": 120000,
@@ -199,7 +202,8 @@
     "endpointAutoNormalization": true,
     "corsAllowedOriginNormalization": "URL origin, including GitHub Pages URLs with repository paths",
     "semanticProfileVersion": "2.0.0",
-    "classificationMode": "always-ai-verified-with-local-structural-guard"
+    "classificationMode": "always-ai-verified-with-local-structural-guard",
+    "primaryResponseBodyCoveredByAttemptTimeout": true
   },
   "security": {
     "geminiKeyInBrowser": false,
@@ -253,7 +257,7 @@
     "databaseChanges": false,
     "newSecretsRequired": false,
     "currentFrontendOperation": "analyze_primary",
-    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.2.5",
+    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.2.6",
     "classificationAndVision": "retained"
   },
   "notYetEnabled": [
