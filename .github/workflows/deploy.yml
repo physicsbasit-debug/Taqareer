@@ -63,13 +63,6 @@ jobs:
           cp --dereference index.html manifest.json _site/
           cp -R --dereference assets _site/
 
-          # مجلدات تشغيل اختيارية.
-          for dir in samples docs registry; do
-            if [[ -d "$dir" ]]; then
-              cp -R --dereference "$dir" _site/
-            fi
-          done
-
           # منع Jekyll من تغيير ملفات الموقع الثابت.
           touch _site/.nojekyll
 
