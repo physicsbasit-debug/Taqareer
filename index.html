@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="تقارير - منصة التحليل التربوي الذكي للبيانات والاستمارات التعليمية" />
-  <title>تقارير | منصة التحليل التربوي v1.2.10</title>
-  <link rel="stylesheet" href="assets/styles.css?v=1.2.10" />
+  <meta name="description" content="تقارير - منصة للتحليل التربوي للبيانات والاستمارات التعليمية" />
+  <title>تقارير | منصة التحليل التربوي v1.2.11</title>
+  <link rel="stylesheet" href="assets/styles.css?v=1.2.11" />
 </head>
 <body>
   <div class="app-shell">
@@ -18,29 +18,47 @@
         </div>
       </a>
       <div class="top-actions">
-        <span class="version-badge">نسخة تشغيلية v1.2.10</span>
+        <span class="version-badge version-badge-muted">v1.2.11</span>
         <span id="aiHeaderStatus" class="version-badge">خدمة التحليل غير مربوطة</span>
-        <button id="openAiSettingsTopBtn" class="ghost-button" type="button">إعداد خدمة التحليل</button>
-        <button id="resetTopBtn" class="ghost-button" type="button">بدء تحليل جديد</button>
+        <button id="openAiSettingsTopBtn" class="ghost-button top-action-button" type="button">إعداد خدمة التحليل</button>
+        <button id="resetTopBtn" class="ghost-button top-action-button top-action-primary" type="button">بدء تحليل جديد</button>
       </div>
     </header>
 
     <main>
-      <section class="hero">
+      <section class="hero hero-professional">
         <div class="hero-copy">
-          <span class="eyebrow">Phase 2-D Fix 10 · تخطيط موحد أكثر كثافة دون صفحات شبه فارغة</span>
-          <h2>ارفع الملف، ودع «تقارير» يفهمه ويحلله تربويًا مع بقاء الأدلة والحسابات قابلة للمراجعة.</h2>
-          <p>يفهم التطبيق بنية كل ملف أولًا: وحدة التحليل، مستوى التجميع، المقاييس واتجاهها. وفي كشوف النتائج متعددة المواد يدعم التطبيق نسختين: درجة ومستوى لكل مادة، أو درجات المواد فقط مع اشتقاق المستويات محليًا. كما يختار ورقة النتائج الشاملة تلقائيًا في المصنفات متعددة الأوراق، ويحلل سجل الطالب كاملًا دون طلب عمود وحيد، مع إخفاء الأسماء والجنسية قبل المعالجة الخارجية وبقاء الحسابات المحلية مصدر الحقيقة.</p>
+          <span class="hero-kicker">من البيانات إلى قرار تربوي أوضح</span>
+          <h2>حوّل بياناتك إلى تقرير تربوي واضح</h2>
+          <p>ارفع الملف، وسيتولى «تقارير» فهم بنيته أولًا، ثم بناء الحسابات محليًا وتحويل الأدلة إلى قراءة تربوية قابلة للمراجعة.</p>
+          <div class="hero-support" aria-label="الملفات المدعومة">
+            <span>Excel</span><span>CSV</span><span>Word</span><span>PDF</span><small>قراءة محلية أولًا</small>
+          </div>
         </div>
-        <div class="hero-kpis">
-          <div><strong>رؤية بصرية</strong><span>صور وPDF ممسوح عند تفعيل خدمة التحليل</span></div>
-          <div><strong>تحليل هجين</strong><span>حسابات حتمية وتفسير تربوي عميق</span></div>
-          <div><strong>خصوصية افتراضية</strong><span>إخفاء الحقول الشخصية قبل الإرسال</span></div>
+        <div class="hero-features" aria-label="مزايا تقارير">
+          <article class="hero-feature">
+            <span class="hero-feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5z"/><path d="m8 15 2.6-3 2.2 2.2 2.2-2.6L18 15"/><circle cx="9" cy="9" r="1.2"/></svg>
+            </span>
+            <div><strong>فهم الملفات</strong><span>جداول ومستندات وملفات مصورة عند تفعيل الخدمة</span></div>
+          </article>
+          <article class="hero-feature">
+            <span class="hero-feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false"><path d="M5 19V9M10 19V5M15 19v-7M20 19V8"/><path d="M3 19h19"/></svg>
+            </span>
+            <div><strong>تحليل تربوي</strong><span>حسابات موثقة وقراءة تفسيرية مرتبطة بالأدلة</span></div>
+          </article>
+          <article class="hero-feature">
+            <span class="hero-feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false"><path d="M12 3 5.5 6v5.2c0 4.1 2.6 7.8 6.5 9.8 3.9-2 6.5-5.7 6.5-9.8V6z"/><path d="m9.3 12 1.8 1.8 3.8-4"/></svg>
+            </span>
+            <div><strong>حماية البيانات</strong><span>إخفاء الحقول الشخصية قبل المعالجة الخارجية</span></div>
+          </article>
         </div>
       </section>
 
       <nav class="steps" aria-label="مراحل التحليل">
-        <button class="step active" data-step="1"><span>1</span> إدخال البيانات</button>
+        <button class="step active" data-step="1" aria-current="step"><span>1</span> إدخال البيانات</button>
         <button class="step" data-step="2"><span>2</span> مراجعة الفهم</button>
         <button class="step" data-step="3"><span>3</span> إعداد التحليل</button>
         <button class="step" data-step="4"><span>4</span> النتائج</button>
@@ -309,7 +327,7 @@
       </section>
     </main>
 
-    <footer><span>تقارير · v1.2.10</span><span>التحليل يفسّر، والأرقام تبقى مصدر الحقيقة.</span></footer>
+    <footer><span>تقارير · v1.2.11</span><span>التحليل يفسّر، والأرقام تبقى مصدر الحقيقة.</span></footer>
   </div>
 
   <dialog id="sheetDialog">
@@ -362,18 +380,18 @@
     </form>
   </dialog>
 
-  <script src="assets/runtime-config.js?v=1.2.10"></script>
-  <script src="assets/xlsx-lite.js?v=1.2.10"></script>
-  <script src="assets/document-lite.js?v=1.2.10"></script>
-  <script src="assets/performance-pipeline.js?v=1.2.10"></script>
-  <script src="assets/analysis-profile.js?v=1.2.10"></script>
-  <script src="assets/display-terms.js?v=1.2.10"></script>
-  <script src="assets/ai-client.js?v=1.2.10"></script>
-  <script src="assets/mastery-metrics.js?v=1.2.10"></script>
-  <script src="assets/deep-analysis.js?v=1.2.10"></script>
-  <script src="assets/analysis-reconciliation.js?v=1.2.10"></script>
-  <script src="assets/deep-analysis-orchestrator.js?v=1.2.10"></script>
-  <script src="assets/report-system.js?v=1.2.10"></script>
-  <script src="assets/app.js?v=1.2.10"></script>
+  <script src="assets/runtime-config.js?v=1.2.11"></script>
+  <script src="assets/xlsx-lite.js?v=1.2.11"></script>
+  <script src="assets/document-lite.js?v=1.2.11"></script>
+  <script src="assets/performance-pipeline.js?v=1.2.11"></script>
+  <script src="assets/analysis-profile.js?v=1.2.11"></script>
+  <script src="assets/display-terms.js?v=1.2.11"></script>
+  <script src="assets/ai-client.js?v=1.2.11"></script>
+  <script src="assets/mastery-metrics.js?v=1.2.11"></script>
+  <script src="assets/deep-analysis.js?v=1.2.11"></script>
+  <script src="assets/analysis-reconciliation.js?v=1.2.11"></script>
+  <script src="assets/deep-analysis-orchestrator.js?v=1.2.11"></script>
+  <script src="assets/report-system.js?v=1.2.11"></script>
+  <script src="assets/app.js?v=1.2.11"></script>
 </body>
 </html>
