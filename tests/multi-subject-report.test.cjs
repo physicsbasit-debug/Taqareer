@@ -51,7 +51,7 @@ test('official report shows grade metadata, school formula and local ranking tab
   assert.match(html, /العشرة الأوائل على مستوى المدرسة \/ الدفعة/);
   assert.match(html, /العشرة الأوائل حسب الدرجة/);
   assert.match(html, /طالب اختبار 136/);
-  assert.match(html, /تقارير v1\.2\.6/);
+  assert.match(html, /تقارير v1\.2\.7/);
 });
 
 test('subject report includes only the selected subject top-ten table and selected-subject metadata', () => {
@@ -99,4 +99,21 @@ test('executive subject report keeps only the selected subject ranking table', (
   assert.match(html, />الرياضيات<\/h3>/);
   assert.doesNotMatch(html, /العشرة الأوائل على مستوى المدرسة \/ الدفعة/);
   assert.doesNotMatch(html, />الفيزياء<\/h3>/);
+});
+
+
+test('full multi-subject report compacts ranking appendices and safely splits very long ties', () => {
+  const { window, sheet, analysis } = analysisFixture();
+  const html = window.TaqareerReports.buildReportHtml({
+    analysis, type: { id: 'multi_subject_results', name: 'نتائج طلاب فردية متعددة المواد' },
+    sourceName: 'كشف نتائج الطلاب العاشر.xlsx', sourceMeta: sheet,
+    quality: { completeness: 100 }, recognitionStatus: 'معتمد',
+  }, { autoPrint: false, reportMode: 'full' });
+  const fullPages = (html.match(/class="report-sheet"/g) || []).length;
+  const rankingPages = (html.match(/class="ranking-stack ranking-stack-/g) || []).length;
+  assert.match(html, /المهارات الحياتية - متابعة 1\/3/);
+  assert.match(html, /المهارات الحياتية - متابعة 3\/3/);
+  assert.ok(rankingPages < 13, `expected compact subject ranking pages, got ${rankingPages}`);
+  assert.ok(fullPages < 18, `expected fewer than the v1.2.6 baseline 18 pages, got ${fullPages}`);
+  assert.doesNotMatch(html, /TQR-/);
 });

@@ -176,7 +176,7 @@ test('multi-visit report moves all four charts to print-safe analytical pages an
     sourceMeta: parsed.dataset.meta,
   });
   const sheets = html.split('<section class="report-sheet">').slice(1);
-  assert.equal(sandbox.window.TaqareerReports.VERSION, '1.2.6');
+  assert.equal(sandbox.window.TaqareerReports.VERSION, '1.2.7');
   assert.doesNotMatch(sheets[0], /supervision-level-distribution|supervision-indicator-performance/);
   assert.match(sheets.slice(1).join('\n'), /supervision-level-distribution/);
   assert.match(sheets.slice(1).join('\n'), /supervision-indicator-performance/);
