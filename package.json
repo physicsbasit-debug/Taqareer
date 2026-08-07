@@ -17,5 +17,8 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/physicsbasit-debug/Taqareer.git"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
   }
 }
