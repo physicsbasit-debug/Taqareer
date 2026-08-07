@@ -1,8 +1,8 @@
 {
   "app": "تقارير",
-  "version": "1.2.7",
-  "phase": "Phase 2-D Fix 7 - Compact Neutral Professional Reporting",
-  "releaseName": "Compact Neutral Professional Report Layout",
+  "version": "1.2.8",
+  "phase": "Phase 2-D Fix 8 - Public Terminology & Internal-ID Sanitization",
+  "releaseName": "Professional Public Terminology and Technical Identifier Guard",
   "buildType": "static-github-pages-plus-supabase-edge-function",
   "supportedInputs": {
     "table": [
@@ -58,7 +58,8 @@
     "aiContribution": "Gemini is the primary educational analyst and creates diagnosis, findings, hypotheses, interventions and monitoring from verified evidence; it does not edit local prose templates",
     "reconciliation": "server computes score intervention groups and success indicators, then client independently revalidates them against local counts before display",
     "routingRule": "a semantic profile determines unit of analysis, aggregation, measures, scale direction and required analytical families; known type labels are optional routing hints, not a mandatory template",
-    "reportPrivacyRule": "official reports use neutral professional provenance wording and do not expose AI provider/model labels or random report tokens"
+    "reportPrivacyRule": "official reports use neutral professional provenance wording, map internal analysis identifiers to human Arabic labels, and do not expose provider/model labels or random report tokens",
+    "presentationBoundary": "internal analyzer ids remain available for routing, while report/result presentation resolves them through a centralized public display dictionary"
   },
   "features": [
     "adaptive-analysis-router",
@@ -168,7 +169,10 @@
     "compact-multi-table-ranking-pages",
     "safe-long-tie-ranking-pagination",
     "ranking-page-overflow-guard",
-    "supplemental-chart-page-compaction"
+    "supplemental-chart-page-compaction",
+    "public-terminology-boundary",
+    "internal-identifier-sanitization",
+    "provider-neutral-official-reporting"
   ],
   "runtime": {
     "frontend": "GitHub Pages static site",
@@ -191,7 +195,7 @@
     "primaryRescueModel": "gemini-3.5-flash-lite",
     "primaryRescueThinkingLevel": "minimal",
     "primaryRescueMaxOutputTokens": 3072,
-    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.2.7",
+    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.2.8",
     "primaryModelFallbackOrder": [
       "gemini-3.6-flash",
       "gemini-3.5-flash-lite"
@@ -256,15 +260,15 @@
     "narrativeContextLines": 120,
     "resultsPresentation": "results appear only after the primary AI analysis passes evidence validation",
     "networkRequestsPerAnalysis": "1 normally; one attempt per model with deadline-aware automatic fallback; one rescue path only for invalid/incomplete output",
-    "clientTimeoutMs": 85000,
+    "clientTimeoutMs": 52000,
     "payloadAcceptanceLimitChars": 90000,
-    "latencyStrategy": "Gemini 3.5 Flash with low thinking; one bounded attempt per model, automatic fallback within a 72-second server deadline, and an 85-second client envelope; invalid output uses one minimal-thinking rescue within the same deadline"
+    "latencyStrategy": "Gemini 3.6 Flash with a 16-second attempt, direct fallback to Gemini 3.5 Flash-Lite, one minimal rescue for invalid output, all within a 42-second server deadline and 52-second client envelope"
   },
   "backwardCompatibility": {
     "databaseChanges": false,
     "newSecretsRequired": false,
     "currentFrontendOperation": "analyze_primary",
-    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.2.7",
+    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.2.8",
     "classificationAndVision": "retained"
   },
   "notYetEnabled": [

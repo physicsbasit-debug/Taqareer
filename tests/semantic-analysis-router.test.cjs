@@ -84,7 +84,7 @@ test('frontend routes setup and analysis from the semantic profile instead of on
   assert.match(app, /state\.semanticProfile\?\.requiresScoreSettings/);
   assert.match(app, /analysisProfile: state\.semanticProfile/);
   assert.match(app, /dynamicTypeFromRecognition/);
-  assert.match(app, /أنشأ Gemini نوعًا ومسار تحليل خاصين بالملف/);
+  assert.match(app, /بُني نوع ومسار تحليل خاصان بالملف/);
 });
 
 test('Edge classification returns a semantic analysis profile and is instructed not to force a known type', () => {

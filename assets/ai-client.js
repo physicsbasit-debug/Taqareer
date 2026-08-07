@@ -3,7 +3,7 @@
 
   const STORAGE_KEY = "taqareer.ai.config.v1";
   const ACCESS_KEY = "taqareer.ai.access-code.v1";
-  const CLIENT_VERSION = "1.2.7";
+  const CLIENT_VERSION = "1.2.8";
   const HEALTH_MAX_AGE_MS = 120000;
   const defaults = window.TAQAREER_CONFIG || {};
   let healthState = {
@@ -160,7 +160,7 @@
   async function invoke(operation, payload, options = {}) {
     const config = getConfig();
     if (!config.endpoint || !config.anonKey) {
-      const error = new Error("لم يُضبط رابط وظيفة الذكاء الاصطناعي ومفتاح Supabase العام بعد.");
+      const error = new Error("لم يُضبط رابط خدمة التحليل ومفتاح Supabase العام بعد.");
       error.code = "AI_NOT_CONFIGURED";
       throw error;
     }

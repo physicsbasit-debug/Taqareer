@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.2.7";
+  const VERSION = "1.2.8";
 
   function escapeHtml(value) {
     return String(value ?? "").replace(/[&<>'"]/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" }[char]));
@@ -24,6 +24,9 @@
   }
   function uniqueBy(items,keyFn){const seen=new Set();return items.filter(item=>{const key=keyFn(item);if(!key||seen.has(key))return false;seen.add(key);return true});}
   function flattenStrings(input, output=[]) { if(Array.isArray(input))input.forEach(item=>flattenStrings(item,output));else if(input&&typeof input==="object")Object.values(input).forEach(item=>flattenStrings(item,output));else if(typeof input==="string"&&input.trim())output.push(input.trim());return output; }
+  function displayTerms(){ return window.TaqareerDisplayTerms || null; }
+  function safeAnalysisMethod(value,fallback="تحليل تربوي متخصص"){ return displayTerms()?.analysisMethod?.(value,fallback) || (()=>{const text=String(value??"").trim();return /^[A-Za-z][A-Za-z0-9]*(?:[_-][A-Za-z0-9]+)+$/.test(text)||/^(?:TQR-)/i.test(text)?fallback:(text||fallback);})(); }
+  function safePublicLabel(value,fallback="بيان تحليلي"){ return displayTerms()?.publicLabel?.(value,fallback) || (()=>{const text=String(value??"").trim();return /^[A-Za-z][A-Za-z0-9]*(?:[_-][A-Za-z0-9]+)+$/.test(text)||/^(?:TQR-)/i.test(text)?fallback:(text||fallback);})(); }
   function chunkBalanced(items,maxPerPage){
     if(!items.length) return [];
     const pageCount=Math.ceil(items.length/maxPerPage);
@@ -52,7 +55,15 @@
     };
   }
   function metricValue(item){if(item?.value===null||item?.value===undefined||item?.value==="")return"—";if(item.format==="percent")return`${round(item.value)}%`;return typeof item.value==="number"?round(item.value):String(item.value);}
-  function evidenceLabel(ref,analysis){return analysis?.evidenceMap?.[ref]||(/^row:/.test(ref)?`السجل ${ref.slice(4)}`:/^line:/.test(ref)?`السطر ${ref.slice(5)}`:ref);}
+  function evidenceLabel(ref,analysis){
+    const mapped=analysis?.evidenceMap?.[ref];
+    if(mapped)return mapped;
+    if(/^row:/.test(ref))return `السجل ${ref.slice(4)}`;
+    if(/^line:/.test(ref))return `السطر ${ref.slice(5)}`;
+    if(/^metric:/.test(ref)){const id=String(ref).slice(7),metric=(analysis?.metrics||[]).find(item=>item?.id===id||item?.evidenceRef===ref);return metric?.label?`المؤشر: ${metric.label}`:"مؤشر محسوب";}
+    if(/^chart:/.test(ref))return "رسم تحليلي";
+    return safePublicLabel(ref,"مرجع تحليلي موثق");
+  }
 
   function normalizePlan(item){return{priority:item.priority||"متوسطة",issue:item.issue||"أولوية تحسين",targetGroup:item.targetGroup||"الفئة المستهدفة",action:item.action||"",implementationSteps:Array.isArray(item.implementationSteps)?item.implementationSteps:[],resources:Array.isArray(item.resources)?item.resources:[],responsibleRole:item.responsibleRole||"يحدد لاحقًا",timeframe:item.timeframe||"يحدد لاحقًا",successIndicator:item.successIndicator||"مؤشر قابل للقياس",monitoringMethod:item.monitoringMethod||"متابعة دورية",contingency:item.contingency||"مراجعة التدخل عند ضعف الاستجابة"};}
 
@@ -91,11 +102,11 @@
     }));
     const localProfile=analysis.analysisProfile||{};
     const profile={
-      purpose:localProfile.method||localProfile.purpose||analysis.kind,
-      dataSufficiency:localProfile.dataAdequacy||localProfile.dataSufficiency||"غير محددة",
-      dimensions:localProfile.dimensions||[],
-      decisionUse:localProfile.decisionUse||localProfile.decisionUses||[],
-      assumptions:localProfile.assumptions||[]
+      purpose:safeAnalysisMethod(localProfile.method||localProfile.purpose||analysis.kind,"تحليل تربوي متخصص"),
+      dataSufficiency:safePublicLabel(localProfile.dataAdequacy||localProfile.dataSufficiency||"غير محددة","غير محددة"),
+      dimensions:(localProfile.dimensions||[]).map(item=>safePublicLabel(item,"بعد تحليلي")),
+      decisionUse:(localProfile.decisionUse||localProfile.decisionUses||[]).map(item=>safePublicLabel(item,"استخدام تحليلي")),
+      assumptions:(localProfile.assumptions||[]).map(item=>safePublicLabel(item,"افتراض تحليلي"))
     };
     return{meta,analysis,findings,tools,plan,monitoring,metrics,charts,limitations,diagnosticSections,profile,privateTables:analysis.privateTables||null,aiUsed:Boolean(analysis?._reconciliation?.aiApplied),generatedAt:new Date(),type:context.type,quality:context.quality||{},recognitionStatus:context.recognitionStatus||""};
   }
@@ -128,7 +139,7 @@
   function chartCard(chart,index){const wide=chartWeight(chart)>1,rowCount=chart.type==="bar"&&Array.isArray(chart.data)?chart.data.length:0,dense=rowCount>=7;return `<article class="chart-card${wide?" chart-wide":""}${dense?" chart-dense":""}" data-chart-id="${escapeHtml(chart.id||"")}"${rowCount?` data-expected-rows="${rowCount}"`:""}><header><div><span>الرسم ${index}</span><h3>${escapeHtml(chart.title)}</h3></div></header><p>${escapeHtml(chart.description||"")}</p><div class="chart-body">${renderChart(chart)}</div></article>`;}
   function diagnosticCard(item,index,analysis){const alternatives=item.alternativeExplanations||[],limits=item.limitations||[],requests=item.dataRequests||[];return `<article class="diagnostic-card"><header><span>${index}</span><div><h3>${escapeHtml(item.title||"قراءة تفسيرية")}</h3><small>${escapeHtml(item.source||"تحليل متخصص")} · ثقة ${escapeHtml(item.confidence||"متوسطة")}</small></div></header><p>${escapeHtml(item.analysis||"")}</p>${item.evidenceRefs?.length?`<div class="evidence"><strong>الأدلة</strong>${escapeHtml(item.evidenceRefs.map(ref=>evidenceLabel(ref,analysis)).join("، "))}</div>`:""}${item.implications?.length?`<div class="deep-list"><h4>الآثار العملية</h4><ul>${item.implications.map(value=>`<li>${escapeHtml(value)}</li>`).join("")}</ul></div>`:""}${alternatives.length?`<div class="deep-list"><h4>تفسيرات بديلة محتملة</h4><ul>${alternatives.map(value=>`<li>${escapeHtml(value)}</li>`).join("")}</ul></div>`:""}${limits.length?`<div class="deep-list"><h4>حدود الاستدلال</h4><ul>${limits.map(value=>`<li>${escapeHtml(value)}</li>`).join("")}</ul></div>`:""}${requests.length?`<div class="deep-list"><h4>بيانات مطلوبة للتحقق</h4><ul>${requests.map(value=>`<li>${escapeHtml(value)}</li>`).join("")}</ul></div>`:""}</article>`;}
   function findingCard(item,index){return `<article class="finding-card"><div class="finding-number">${index}</div><div><header><h3>${escapeHtml(item.title)}</h3><span>${escapeHtml(item.confidence||"متوسطة")}</span></header>${item.statement?`<p>${escapeHtml(item.statement)}</p>`:""}<dl><div><dt>الدليل</dt><dd>${escapeHtml(item.evidence||"")}</dd></div><div><dt>الأثر التربوي</dt><dd>${escapeHtml(item.impact||"")}</dd></div><div><dt>الإجراء المرتبط</dt><dd>${escapeHtml(item.action||"")}</dd></div>${item.limitations?.length?`<div><dt>حدود القراءة</dt><dd>${escapeHtml(item.limitations.join("، "))}</dd></div>`:""}</dl></div></article>`;}
-  function toolCard(item){return `<article class="tool-card"><div class="tool-state">مطبقة الآن</div><h3>${escapeHtml(item.name||item.id||"أداة جودة")}</h3><p>${escapeHtml(item.reason||item.interpretation||"")}</p><strong>${escapeHtml(item.interpretation||"")}</strong></article>`;}
+  function toolCard(item){const name=safePublicLabel(item.name,"أداة جودة");return `<article class="tool-card"><div class="tool-state">مطبقة الآن</div><h3>${escapeHtml(name)}</h3><p>${escapeHtml(item.reason||item.interpretation||"")}</p><strong>${escapeHtml(item.interpretation||"")}</strong></article>`;}
   function planCard(item,index){const high=normalize(item.priority).includes("عالي"),steps=item.implementationSteps||[],resources=item.resources||[];return `<article class="plan-card"><header><span class="plan-index">${index}</span><div><small>${escapeHtml(item.priority)}</small><h3>${escapeHtml(item.issue)}</h3></div><b class="priority${high?" high":""}">${escapeHtml(item.targetGroup)}</b></header><p class="plan-action">${escapeHtml(item.action)}</p>${steps.length?`<div class="implementation-steps"><span>خطوات التنفيذ</span><ol>${steps.map(step=>`<li>${escapeHtml(step)}</li>`).join("")}</ol></div>`:""}<div class="plan-grid"><div><span>المسؤول</span><strong>${escapeHtml(item.responsibleRole)}</strong></div><div><span>الإطار الزمني</span><strong>${escapeHtml(item.timeframe)}</strong></div><div><span>مؤشر النجاح</span><strong>${escapeHtml(item.successIndicator)}</strong></div><div><span>المتابعة</span><strong>${escapeHtml(item.monitoringMethod)}</strong></div></div>${resources.length?`<div class="resources"><span>الموارد</span>${escapeHtml(resources.join("، "))}</div>`:""}<div class="contingency"><span>الخطة البديلة</span>${escapeHtml(item.contingency)}</div></article>`;}
   function monitoringTimeline(items){return `<div class="timeline">${items.map((item,index)=>`<article><span>${index+1}</span><div><small>${escapeHtml(item.timing||"")}</small><h3>${escapeHtml(item.stage||"مرحلة متابعة")}</h3><p>${escapeHtml(item.measure||"")}</p><strong>${escapeHtml(item.owner||"")}</strong></div></article>`).join("")}</div>`;}
   function profileBlock(profile){return `<div class="analysis-profile"><div><span>منهج التحليل</span><strong>${escapeHtml(profile.purpose||"—")}</strong></div><div><span>كفاية البيانات</span><strong>${escapeHtml(profile.dataSufficiency||"—")}</strong></div><div><span>الأبعاد</span><strong>${escapeHtml((profile.dimensions||[]).join("، ")||"—")}</strong></div><div><span>الاستخدامات</span><strong>${escapeHtml((profile.decisionUse||[]).join("، ")||"—")}</strong></div></div>`;}

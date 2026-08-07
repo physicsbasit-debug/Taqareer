@@ -12,7 +12,7 @@ function loadModules() {
     Map, Set, Array, Object, String, Number, RegExp, JSON, Math, structuredClone, Intl, Date,
   };
   vm.createContext(sandbox);
-  for (const file of ['xlsx-lite.js', 'analysis-profile.js', 'mastery-metrics.js', 'deep-analysis.js', 'report-system.js']) {
+  for (const file of ['xlsx-lite.js', 'analysis-profile.js', 'display-terms.js', 'mastery-metrics.js', 'deep-analysis.js', 'report-system.js']) {
     vm.runInContext(fs.readFileSync(path.join(root, 'assets', file), 'utf8'), sandbox, { filename: file });
   }
   return sandbox.window;
@@ -51,7 +51,7 @@ test('official report shows grade metadata, school formula and local ranking tab
   assert.match(html, /العشرة الأوائل على مستوى المدرسة \/ الدفعة/);
   assert.match(html, /العشرة الأوائل حسب الدرجة/);
   assert.match(html, /طالب اختبار 136/);
-  assert.match(html, /تقارير v1\.2\.7/);
+  assert.match(html, /تقارير v1\.2\.8/);
 });
 
 test('subject report includes only the selected subject top-ten table and selected-subject metadata', () => {
@@ -116,4 +116,34 @@ test('full multi-subject report compacts ranking appendices and safely splits ve
   assert.ok(rankingPages < 13, `expected compact subject ranking pages, got ${rankingPages}`);
   assert.ok(fullPages < 18, `expected fewer than the v1.2.6 baseline 18 pages, got ${fullPages}`);
   assert.doesNotMatch(html, /TQR-/);
+});
+
+
+test('official report sanitizes internal analysis ids and technical evidence fallbacks', () => {
+  const { window, sheet, analysis } = analysisFixture();
+  analysis.analysisProfile = {
+    ...(analysis.analysisProfile || {}),
+    method: 'multi_subject_individual_analysis',
+    dimensions: ['subject_comparison', 'student_profile_segmentation'],
+    decisionUse: ['ranking_decision_support'],
+  };
+  analysis.diagnosticSections = [{
+    id: 'diagnostic.internal.1',
+    title: 'قراءة اختبارية',
+    analysis: 'قراءة تربوية صالحة للعرض.',
+    source: 'قراءة موثقة بالأدلة',
+    confidence: 'مرتفعة',
+    evidenceRefs: ['metric:missing_internal_metric'],
+    implications: [], alternativeExplanations: [], limitations: [], dataRequests: [],
+  }];
+  analysis.qualityTools = [{ id: 'scope_consistency_guard', conditionsMet: true, reason: 'تحقق بنيوي.', interpretation: 'اكتمل التحقق.' }];
+  const html = window.TaqareerReports.buildReportHtml({
+    analysis, type: { id: 'multi_subject_results', name: 'نتائج طلاب فردية متعددة المواد' },
+    sourceName: 'كشف نتائج الطلاب العاشر.xlsx', sourceMeta: sheet,
+    quality: { completeness: 100 }, recognitionStatus: 'معتمد',
+  }, { autoPrint: false, reportMode: 'full' });
+  assert.match(html, /تحليل نتائج طلاب فردية متعددة المواد/);
+  assert.match(html, /مؤشر محسوب/);
+  assert.match(html, /أداة جودة/);
+  assert.doesNotMatch(html, /multi_subject_individual_analysis|subject_comparison|student_profile_segmentation|ranking_decision_support|missing_internal_metric|scope_consistency_guard/);
 });

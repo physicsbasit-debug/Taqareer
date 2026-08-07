@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="تقارير - منصة التحليل التربوي الذكي للبيانات والاستمارات التعليمية" />
-  <title>تقارير | محرك التحليل التربوي بالذكاء الاصطناعي v1.2.7</title>
-  <link rel="stylesheet" href="assets/styles.css?v=1.2.7" />
+  <title>تقارير | منصة التحليل التربوي v1.2.8</title>
+  <link rel="stylesheet" href="assets/styles.css?v=1.2.8" />
 </head>
 <body>
   <div class="app-shell">
@@ -14,13 +14,13 @@
         <div class="brand-mark" aria-hidden="true">ت</div>
         <div>
           <h1>تقارير</h1>
-          <p>التحليل التربوي الذكي للاستبانات والبيانات التعليمية</p>
+          <p>التحليل التربوي للاستبانات والبيانات التعليمية</p>
         </div>
       </a>
       <div class="top-actions">
-        <span class="version-badge">نسخة تشغيلية v1.2.7</span>
-        <span id="aiHeaderStatus" class="version-badge">الذكاء الاصطناعي غير مربوط</span>
-        <button id="openAiSettingsTopBtn" class="ghost-button" type="button">إعداد الذكاء الاصطناعي</button>
+        <span class="version-badge">نسخة تشغيلية v1.2.8</span>
+        <span id="aiHeaderStatus" class="version-badge">خدمة التحليل غير مربوطة</span>
+        <button id="openAiSettingsTopBtn" class="ghost-button" type="button">إعداد خدمة التحليل</button>
         <button id="resetTopBtn" class="ghost-button" type="button">بدء تحليل جديد</button>
       </div>
     </header>
@@ -28,12 +28,12 @@
     <main>
       <section class="hero">
         <div class="hero-copy">
-          <span class="eyebrow">Phase 2-D Fix 7 · تقرير أكثر كثافة وهوية مهنية محايدة</span>
+          <span class="eyebrow">Phase 2-D Fix 8 · مصطلحات مهنية وحماية من المعرّفات التقنية</span>
           <h2>ارفع الملف، ودع «تقارير» يفهمه ويحلله تربويًا مع بقاء الأدلة والحسابات قابلة للمراجعة.</h2>
-          <p>يفهم التطبيق بنية كل ملف أولًا: وحدة التحليل، مستوى التجميع، المقاييس واتجاهها. وفي كشوف النتائج متعددة المواد يدعم التطبيق نسختين: درجة ومستوى لكل مادة، أو درجات المواد فقط مع اشتقاق المستويات محليًا. كما يختار ورقة النتائج الشاملة تلقائيًا في المصنفات متعددة الأوراق، ويحلل سجل الطالب كاملًا دون طلب عمود وحيد، مع إخفاء الأسماء والجنسية قبل الذكاء الاصطناعي وبقاء الحسابات المحلية مصدر الحقيقة.</p>
+          <p>يفهم التطبيق بنية كل ملف أولًا: وحدة التحليل، مستوى التجميع، المقاييس واتجاهها. وفي كشوف النتائج متعددة المواد يدعم التطبيق نسختين: درجة ومستوى لكل مادة، أو درجات المواد فقط مع اشتقاق المستويات محليًا. كما يختار ورقة النتائج الشاملة تلقائيًا في المصنفات متعددة الأوراق، ويحلل سجل الطالب كاملًا دون طلب عمود وحيد، مع إخفاء الأسماء والجنسية قبل المعالجة الخارجية وبقاء الحسابات المحلية مصدر الحقيقة.</p>
         </div>
         <div class="hero-kpis">
-          <div><strong>رؤية بصرية</strong><span>صور وPDF ممسوح عند ربط الذكاء الاصطناعي</span></div>
+          <div><strong>رؤية بصرية</strong><span>صور وPDF ممسوح عند تفعيل خدمة التحليل</span></div>
           <div><strong>تحليل هجين</strong><span>حسابات حتمية وتفسير تربوي عميق</span></div>
           <div><strong>خصوصية افتراضية</strong><span>إخفاء الحقول الشخصية قبل الإرسال</span></div>
         </div>
@@ -52,7 +52,7 @@
             <span class="eyebrow">الخطوة الأولى</span>
             <h3>اختر طريقة إدخال البيانات</h3>
           </div>
-          <span class="subtle">تُقرأ الملفات محليًا أولًا، ولا يُرسل محتوى إلى الذكاء الاصطناعي إلا بعد تفعيله</span>
+          <span class="subtle">تُقرأ الملفات محليًا أولًا، ولا يُرسل محتوى إلى خدمة التحليل الخارجية إلا بعد تفعيلها</span>
         </div>
 
         <div class="input-tabs" role="tablist" aria-label="طرق الإدخال">
@@ -66,7 +66,7 @@
             <input id="fileInput" type="file" accept=".csv,.tsv,.txt,.xlsx,.xlsm,.xls,.pdf,.doc,.docx,.png,.jpg,.jpeg,.webp" />
             <div class="upload-symbol" aria-hidden="true">↑</div>
             <strong>اختر ملف البيانات أو المستند</strong>
-            <span>يُقرأ الآن: CSV وTSV وTXT وXLSX وXLSM وDOCX وPDF النصي. الصور وPDF الممسوح تُقرأ بصريًا عند ربط الذكاء الاصطناعي، مع مسار يدوي احتياطي.</span>
+            <span>يُقرأ الآن: CSV وTSV وTXT وXLSX وXLSM وDOCX وPDF النصي. الصور وPDF الممسوح تُقرأ بصريًا عند تفعيل خدمة التحليل، مع مسار يدوي احتياطي.</span>
           </label>
           <div class="format-grid">
             <div class="format-card ready"><strong>CSV / TSV</strong><span>قراءة وتحليل فعليان</span></div>
@@ -171,7 +171,7 @@
           </article>
 
           <article id="multiSubjectWorkspaceCard" class="card hidden">
-            <div class="card-heading-inline"><div><h4>مساحة تحليل النتائج متعددة المواد</h4><p>اختر تحليلًا شاملًا للمواد أو ركّز على مادة واحدة. الحساب والترتيب محليان، والأسماء لا تُرسل إلى الذكاء الاصطناعي.</p></div><span class="mode-pill">محرك ترتيب موثوق</span></div>
+            <div class="card-heading-inline"><div><h4>مساحة تحليل النتائج متعددة المواد</h4><p>اختر تحليلًا شاملًا للمواد أو ركّز على مادة واحدة. الحساب والترتيب محليان، والأسماء لا تغادر المتصفح ضمن حزمة التحليل.</p></div><span class="mode-pill">محرك ترتيب موثوق</span></div>
             <div class="form-grid multi-subject-workspace-grid">
               <label><span>نطاق التحليل</span><select id="multiSubjectScopeSelect"><option value="all">تحليل شامل لجميع المواد</option><option value="subject">تحليل مادة محددة</option></select></label>
               <label id="multiSubjectSubjectLabel" class="hidden"><span>المادة</span><select id="multiSubjectSubjectSelect"></select></label>
@@ -185,7 +185,7 @@
             <h4>مراجعة النص السردي</h4>
             <p class="muted-copy">عدّل أخطاء الاستخراج الواضحة فقط. سيُحلل النص كما يظهر هنا.</p>
             <textarea id="narrativeTextReview" class="narrative-review" rows="16" placeholder="النص المستخرج من التقرير..."></textarea>
-            <div class="soft-note">تُحسب المؤشرات والأدلة محليًا، ثم يبني الذكاء الاصطناعي التشخيص والاستنتاجات والتدخلات من الصفر. لا تُعرض قوالب محلية بديلة بوصفها تحليلًا عميقًا.</div>
+            <div class="soft-note">تُحسب المؤشرات والأدلة محليًا، ثم تبني خدمة التحليل التشخيص والاستنتاجات والتدخلات من الأدلة. لا تُعرض قوالب محلية بديلة بوصفها تحليلًا عميقًا.</div>
           </article>
 
           <article class="card">
@@ -202,7 +202,7 @@
               <button id="openAiSettingsBtn" class="secondary compact" type="button">إعداد الاتصال واختباره</button>
             </div>
             <ul class="clean-list"><li>قراءة الصور وملفات PDF الممسوحة.</li><li>فهم نوع النموذج وهدفه حتى عند ظهور نوع جديد.</li><li>ربط الاستنتاجات بمراجع صفوف أو أسطر أو مؤشرات.</li><li>إنشاء تشخيص واستنتاجات وفرضيات وتدخلات مخصصة للسياق.</li></ul>
-            <div class="soft-note">لا يوضع مفتاح Gemini داخل GitHub Pages. يُحفظ في أسرار وظيفة Supabase، بينما يحتفظ المتصفح فقط برابط الوظيفة والمفتاح العام الآمن.</div>
+            <div class="soft-note">لا توضع مفاتيح الخدمة الخاصة داخل GitHub Pages. تُحفظ أسرار مزود التحليل في وظيفة Supabase الخادمية، بينما يحتفظ المتصفح فقط برابط الوظيفة والمفتاح العام الآمن.</div>
           </article>
 
           <article class="card deterministic-card">
@@ -224,7 +224,7 @@
             <span class="eyebrow">الخطوة الرابعة</span>
             <h3>تحليل تربوي عميق قابل للمراجعة</h3>
           </div>
-          <span id="analysisModeChip" class="success-chip">تحليل ذكاء اصطناعي موثق</span>
+          <span id="analysisModeChip" class="success-chip">تحليل تربوي موثق</span>
         </div>
 
         <div id="aiResultNotice" class="ai-result-notice hidden"></div>
@@ -262,7 +262,7 @@
         <div id="findings" class="finding-list"></div>
 
         <section id="rankingResultsSection" class="result-section hidden">
-          <div class="section-title-row"><div><span class="eyebrow">ترتيب محلي محمي</span><h4>الأوائل ونطاق التحليل</h4></div><span>لا تُرسل الأسماء إلى Gemini</span></div>
+          <div class="section-title-row"><div><span class="eyebrow">ترتيب محلي محمي</span><h4>الأوائل ونطاق التحليل</h4></div><span>الأسماء محفوظة محليًا ولا تغادر المتصفح</span></div>
           <div id="rankingResultsContent" class="ranking-results"></div>
         </section>
 
@@ -302,14 +302,14 @@
       <section class="status-section">
         <div><span class="eyebrow light">شفافية التطوير</span><h3>ما يعمل الآن وما يأتي لاحقًا</h3></div>
         <div class="status-grid">
-          <div><strong>يعمل فعليًا</strong><span>الجداول وWord وPDF النصي، والتحليل الرقمي والسردي، والقراءة البصرية والتحليل العميق عند ربط وظيفة الذكاء الاصطناعي.</span></div>
-          <div><strong>لا يزوّر العمق</strong><span>إذا تعذر التحليل الذكي، يعرض التطبيق الخطأ بوضوح ولا يستبدله بقوالب محلية منمقة توحي بتحليل لم يحدث.</span></div>
+          <div><strong>يعمل فعليًا</strong><span>الجداول وWord وPDF النصي، والتحليل الرقمي والسردي، والقراءة البصرية والتحليل العميق عند ربط خدمة التحليل.</span></div>
+          <div><strong>لا يزوّر العمق</strong><span>إذا تعذرت خدمة التحليل، يعرض التطبيق الخطأ بوضوح ولا يستبدله بقوالب محلية منمقة توحي بتحليل لم يحدث.</span></div>
           <div><strong>القادم</strong><span>حفظ المشاريع، المقارنات الزمنية، تصدير Word، اعتماد الاستنتاجات، وحسابات المستخدمين والصلاحيات.</span></div>
         </div>
       </section>
     </main>
 
-    <footer><span>تقارير · v1.2.7</span><span>الذكاء الاصطناعي يحلل، والأرقام لا تفاوض الواقع.</span></footer>
+    <footer><span>تقارير · v1.2.8</span><span>التحليل يفسّر، والأرقام تبقى مصدر الحقيقة.</span></footer>
   </div>
 
   <dialog id="sheetDialog">
@@ -338,15 +338,15 @@
 
   <dialog id="aiSettingsDialog">
     <form method="dialog" class="dialog-card ai-settings-card">
-      <h3>إعداد الذكاء الاصطناعي</h3>
-      <p>هذه إعدادات ربط وظيفة Supabase. لا تضع مفتاح Gemini هنا؛ مكانه في أسرار وظيفة Supabase الخادمية.</p>
+      <h3>إعداد خدمة التحليل</h3>
+      <p>هذه إعدادات ربط وظيفة Supabase للتحليل. يبقى مفتاح مزود التحليل في أسرار الوظيفة الخادمية ولا يُحفظ داخل المتصفح.</p>
       <label class="field-label" for="aiEndpointInput">رابط وظيفة التحليل</label>
       <input id="aiEndpointInput" type="url" dir="ltr" placeholder="https://PROJECT.supabase.co/functions/v1/analyze-educational-form" />
       <label class="field-label" for="aiAnonKeyInput">Supabase anon / publishable key</label>
       <input id="aiAnonKeyInput" type="password" dir="ltr" autocomplete="off" placeholder="eyJ..." />
       <label class="field-label" for="aiAccessCodeInput">رمز الوصول المدرسي</label>
       <input id="aiAccessCodeInput" type="password" autocomplete="off" placeholder="الرمز الذي ضبطته في أسرار Supabase" />
-      <label class="switch-row settings-switch"><input id="aiEnabledInput" type="checkbox" checked /><span>تفعيل الذكاء الاصطناعي بعد الحفظ</span></label>
+      <label class="switch-row settings-switch"><input id="aiEnabledInput" type="checkbox" checked /><span>تفعيل خدمة التحليل بعد الحفظ</span></label>
       <div id="aiSettingsMessage" class="inline-message hidden"></div>
       <div class="soft-note">يحفظ رابط الوظيفة والمفتاح العام في هذا المتصفح. رمز الوصول يبقى للجلسة الحالية فقط.</div>
       <div class="actions"><button id="clearAiSettingsBtn" class="secondary" type="button">حذف الإعدادات</button><button class="secondary" value="cancel">إلغاء</button><button id="saveAiSettingsBtn" class="primary" type="button">حفظ واختبار</button></div>
@@ -362,17 +362,18 @@
     </form>
   </dialog>
 
-  <script src="assets/runtime-config.js?v=1.2.7"></script>
-  <script src="assets/xlsx-lite.js?v=1.2.7"></script>
-  <script src="assets/document-lite.js?v=1.2.7"></script>
-  <script src="assets/performance-pipeline.js?v=1.2.7"></script>
-  <script src="assets/analysis-profile.js?v=1.2.7"></script>
-  <script src="assets/ai-client.js?v=1.2.7"></script>
-  <script src="assets/mastery-metrics.js?v=1.2.7"></script>
-  <script src="assets/deep-analysis.js?v=1.2.7"></script>
-  <script src="assets/analysis-reconciliation.js?v=1.2.7"></script>
-  <script src="assets/deep-analysis-orchestrator.js?v=1.2.7"></script>
-  <script src="assets/report-system.js?v=1.2.7"></script>
-  <script src="assets/app.js?v=1.2.7"></script>
+  <script src="assets/runtime-config.js?v=1.2.8"></script>
+  <script src="assets/xlsx-lite.js?v=1.2.8"></script>
+  <script src="assets/document-lite.js?v=1.2.8"></script>
+  <script src="assets/performance-pipeline.js?v=1.2.8"></script>
+  <script src="assets/analysis-profile.js?v=1.2.8"></script>
+  <script src="assets/display-terms.js?v=1.2.8"></script>
+  <script src="assets/ai-client.js?v=1.2.8"></script>
+  <script src="assets/mastery-metrics.js?v=1.2.8"></script>
+  <script src="assets/deep-analysis.js?v=1.2.8"></script>
+  <script src="assets/analysis-reconciliation.js?v=1.2.8"></script>
+  <script src="assets/deep-analysis-orchestrator.js?v=1.2.8"></script>
+  <script src="assets/report-system.js?v=1.2.8"></script>
+  <script src="assets/app.js?v=1.2.8"></script>
 </body>
 </html>

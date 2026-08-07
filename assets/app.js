@@ -93,6 +93,14 @@
     return String(value ?? "").trim().replace(/[إأآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").replace(/\s+/g, " ").toLowerCase();
   }
 
+  function displayTerms() { return window.TaqareerDisplayTerms || null; }
+  function publicAnalysisMethod(value, fallback = "تحليل تربوي متخصص") {
+    return displayTerms()?.analysisMethod?.(value, fallback) || String(value || fallback);
+  }
+  function publicDisplayLabel(value, fallback = "بيان تحليلي") {
+    return displayTerms()?.publicLabel?.(value, fallback) || String(value || fallback);
+  }
+
   function showPanel(number) {
     panels.forEach(n => $("panel-" + n).classList.toggle("active-panel", n === number));
     document.querySelectorAll(".step").forEach(btn => btn.classList.toggle("active", Number(btn.dataset.step) === number));
@@ -109,17 +117,17 @@
     const message = String(error?.message || "");
     if (code === "AI_OFFLINE") return "الجهاز غير متصل بالإنترنت حاليًا. لم يُرسل التحليل إلى الخادم. تحقق من الاتصال ثم أعد المحاولة.";
     if (code === "AI_NETWORK_FETCH_FAILED" || /failed to fetch|networkerror|load failed|network request failed/i.test(message)) {
-      return "تعذر الوصول إلى وظيفة Supabase. فحص التطبيق الرابط قبل التحليل، لكن الاتصال انقطع أو حُجبت الاستجابة. افتح إعداد الذكاء الاصطناعي واضغط «حفظ واختبار»؛ لن يعتمد التطبيق نتيجة ناقصة.";
+      return "تعذر الوصول إلى وظيفة Supabase. فحص التطبيق الرابط قبل التحليل، لكن الاتصال انقطع أو حُجبت الاستجابة. افتح إعداد خدمة التحليل واضغط «حفظ واختبار»؛ لن يعتمد التطبيق نتيجة ناقصة.";
     }
     if (code === "AI_ENDPOINT_INVALID") return message || "رابط وظيفة Supabase غير صالح.";
     if (code === "GEMINI_TRANSIENT" || /high demand|spikes in demand|service unavailable|overload(?:ed)?|\b503\b/i.test(message)) {
-      return "خدمة التحليل الذكي مزدحمة مؤقتًا. حاول التطبيق تلقائيًا إعادة الطلب واستخدام نموذج بديل، لكن الخدمة لم تستجب الآن. أعد المحاولة بعد قليل.";
+      return "خدمة التحليل مزدحمة مؤقتًا. حاول التطبيق تلقائيًا إعادة الطلب واستخدام مسار بديل، لكن الخدمة لم تستجب الآن. أعد المحاولة بعد قليل.";
     }
     if (code === "GEMINI_RATE_LIMIT" || /RESOURCE_EXHAUSTED|rate limit|quota|\b429\b/i.test(message)) {
-      return "تم بلوغ حد طلبات الذكاء الاصطناعي مؤقتًا. انتظر قليلًا ثم أعد المحاولة.";
+      return "تم بلوغ حد طلبات خدمة التحليل مؤقتًا. انتظر قليلًا ثم أعد المحاولة.";
     }
     if (code === "AI_PRIMARY_TIMEOUT") return "لم تصل استجابة تحليل صالحة ضمن المهلة السريعة المعتمدة. أوقف التطبيق الانتظار بدل إبقائك عالقًا، ولم يعتمد نتيجة ناقصة.";
-    return message || "تعذر تنفيذ التحليل الذكي.";
+    return message || "تعذر تنفيذ التحليل التربوي.";
   }
 
   function perfApi() { return window.TaqareerPerformance || null; }
@@ -147,24 +155,24 @@
     const mode = $("aiModeToggle");
     if (mode) mode.checked = enabled;
 
-    let text = "الذكاء الاصطناعي غير مربوط";
-    let cardText = "يتطلب التحليل التربوي ربط وظيفة Supabase؛ لن يعرض التطبيق قوالب محلية بديلة على أنها تحليل عميق.";
+    let text = "خدمة التحليل غير مربوطة";
+    let cardText = "يتطلب التحليل التربوي ربط خدمة Supabase؛ لن يعرض التطبيق قوالب محلية بديلة على أنها تحليل عميق.";
     let liveClass = false;
     if (configured && !enabled) {
-      text = "الذكاء الاصطناعي متوقف";
-      cardText = "إعداد الاتصال محفوظ، لكن المحلل الذكي متوقف من مفتاح التشغيل.";
+      text = "خدمة التحليل متوقفة";
+      cardText = "إعداد الاتصال محفوظ، لكن خدمة التحليل متوقفة من مفتاح التشغيل.";
     } else if (configured && enabled && health.status === "checking") {
-      text = "جارٍ فحص اتصال الذكاء";
+      text = "جارٍ فحص خدمة التحليل";
       cardText = "يفحص التطبيق وظيفة Supabase فعليًا قبل إعلان الجاهزية.";
     } else if (configured && enabled && health.status === "live") {
-      text = "ذكاء اصطناعي حي جاهز";
+      text = "خدمة التحليل جاهزة";
       liveClass = true;
-      cardText = `اتصال Supabase مؤكد${health.edgeVersion ? ` · Edge ${health.edgeVersion}` : ""}. الحسابات تُبنى محليًا ثم يبدأ التحليل الذكي من الأدلة.`;
+      cardText = `اتصال Supabase مؤكد${health.edgeVersion ? ` · Edge ${health.edgeVersion}` : ""}. الحسابات تُبنى محليًا ثم يبدأ التحليل التربوي من الأدلة.`;
     } else if (configured && enabled && health.status === "failed") {
-      text = "تعذر اتصال الذكاء";
-      cardText = "إعداد الربط محفوظ، لكن فحص الاتصال الحي فشل. افتح إعداد الذكاء واضغط «حفظ واختبار» قبل إعادة التحليل.";
+      text = "تعذر اتصال خدمة التحليل";
+      cardText = "إعداد الربط محفوظ، لكن فحص الاتصال الحي فشل. افتح إعداد خدمة التحليل واضغط «حفظ واختبار» قبل إعادة التحليل.";
     } else if (configured && enabled) {
-      text = "ربط الذكاء محفوظ";
+      text = "ربط خدمة التحليل محفوظ";
       cardText = "إعداد الربط محفوظ، وسيُفحص اتصال Supabase قبل بدء التحليل.";
     }
 
@@ -174,7 +182,7 @@
     }
     if (card) card.textContent = cardText;
     const runButton = $("runAnalysisBtn");
-    if (runButton) runButton.textContent = "تنفيذ التحليل الذكي";
+    if (runButton) runButton.textContent = "تنفيذ التحليل التربوي";
   }
 
   async function verifyAiConnectionOnLoad() {
@@ -469,7 +477,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "1.2.7",
+      appVersion: "1.2.8",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -489,7 +497,7 @@
     // كل ملف يمر بتحقق دلالي من Gemini عند توفر الاتصال؛ الملف المحلي البنيوي يبقى حارسًا للأعمدة والحسابات.
     const shouldVerify = aiReady();
     if (!shouldVerify || !window.TaqareerAI?.classify) return;
-    state.recognitionStatus = "جارٍ التحقق دلاليًا بواسطة Gemini…";
+    state.recognitionStatus = "جارٍ التحقق الدلالي من بنية الملف…";
     renderReview();
     try {
       const payload = buildRecognitionPayload();
@@ -529,10 +537,10 @@
       }
       state.quality = assessQuality(state.headers, state.rows, state.type, state.sourceMeta, state.semanticProfile);
       state.recognitionStatus = adoptedDynamic
-        ? `تحقق دلالي تكيفي: أنشأ Gemini نوعًا ومسار تحليل خاصين بالملف${cached ? " · من الذاكرة المؤقتة" : ""}`
+        ? `تحقق دلالي تكيفي: بُني نوع ومسار تحليل خاصان بالملف${cached ? " · من الذاكرة المؤقتة" : ""}`
         : known
-          ? `تحقق دلالي هجين: ملف البنية + Gemini${adoptKnown ? " · تم اعتماد مسار التحليل" : " · المسار المحلي متسق"}${cached ? " · من الذاكرة المؤقتة" : ""}`
-          : "تحقق Gemini بنى ملفًا دلاليًا لنوع جديد بدل إجباره على قالب معروف";
+          ? `تحقق دلالي هجين: ملف البنية + التحقق الخارجي${adoptKnown ? " · تم اعتماد مسار التحليل" : " · المسار المحلي متسق"}${cached ? " · من الذاكرة المؤقتة" : ""}`
+          : "التحقق الدلالي بنى ملفًا لنوع جديد بدل إجباره على قالب معروف";
       state.quality.info = state.quality.info.filter(item => item.title !== "تحقق دلالي من النوع");
       state.quality.info.unshift({
         title: "تحقق دلالي من النوع",
@@ -579,7 +587,7 @@
     if (state.semanticProfile) {
       state.quality.info.unshift({
         title: "ملف دلالي لبنية البيانات",
-        detail: `${state.semanticProfile.rationale || "تم تحديد وحدة التحليل والمقاييس."} مسار الحساب: ${state.semanticProfile.analyzerId || state.type.id}.`
+        detail: `${state.semanticProfile.rationale || "تم تحديد وحدة التحليل والمقاييس."} مسار الحساب: ${publicAnalysisMethod(state.semanticProfile.analyzerId || state.type.id)}.`
       });
     }
     if (sourceMeta?.headerRow) {
@@ -740,14 +748,14 @@
       const lines = narrative.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
       datasets.push({
         id: "ai-vision-narrative",
-        name: "النص السردي المستخرج بالذكاء الاصطناعي",
+        name: "النص السردي المستخرج تلقائيًا",
         headers: ["م", "القسم", "النص"],
         rows: lines.map((line, index) => ({ "م": index + 1, "القسم": "نص مستخرج", "النص": line })),
         rawText: narrative,
         meta: { sourceType: "ai-vision", mode: "narrative", extractionMode: "ai-vision" }
       });
     }
-    if (!datasets.length) throw new Error("لم يرجع الذكاء الاصطناعي نصًا أو جدولًا صالحًا للمراجعة.");
+    if (!datasets.length) throw new Error("لم تُرجع خدمة التحليل نصًا أو جدولًا صالحًا للمراجعة.");
     state.pendingSource = {
       name: fileName,
       kind: sourceKind,
@@ -765,7 +773,7 @@
   }
 
   async function extractVisualWithAi(fileName, images, sourceKind = "image") {
-    if (!aiReady()) throw new Error("الذكاء الاصطناعي الحي غير مربوط بعد.");
+    if (!aiReady()) throw new Error("خدمة التحليل غير مربوطة بعد.");
     setMessage("inputMessage", `جارٍ قراءة ${sourceKind === "pdf" ? "صفحات PDF" : "الصورة"} بصريًا وتحويلها إلى محتوى منظم…`);
     const payload = {
       fileName,
@@ -836,7 +844,7 @@
       }
       openManualExtraction(
         file.name,
-        "تظهر الصورة للمراجعة. اربط الذكاء الاصطناعي للقراءة التلقائية، أو الصق النص أو الجدول يدويًا الآن.",
+        "تظهر الصورة للمراجعة. اربط خدمة التحليل للقراءة التلقائية، أو الصق النص أو الجدول يدويًا الآن.",
         "image",
         preview.dataUrl
       );
@@ -1067,8 +1075,8 @@
       program_evaluation: ["فصل التنفيذ عن النتائج والأثر", "نموذج منطق البرنامج وتحليل فجوات الأهداف", "باريتو الاختناقات ودورة PDCA", "قرار الاستمرار أو التعديل وخطة قياس الاستدامة"],
       behavior_attendance: ["باريتو أنواع الحالات والغياب", "الاتجاه الزمني والحالات المتكررة", "مؤشرات إنذار مبكر مع حماية الخصوصية", "تدخل وقائي وفردي وقياس أثر"],
       unknown: narrativeMode
-        ? ["تحليل بنيوي للنص والأقسام", "تحقق دلالي عبر Gemini لتحديد النوع", "بناء عقد تحليل جديد بدل فرض قالب معروف", "تحديد الأدلة والأدوات والحدود المناسبة للنوع"]
-        : ["ملف تعريف للحقول الرقمية والفئوية", "تحقق دلالي عبر Gemini لتحديد الهدف", "بناء خطة تحليل متخصصة جديدة", "حفظ النوع لاحقًا في السجل الديناميكي"]
+        ? ["تحليل بنيوي للنص والأقسام", "تحقق دلالي خارجي لتحديد النوع", "بناء عقد تحليل جديد بدل فرض قالب معروف", "تحديد الأدلة والأدوات والحدود المناسبة للنوع"]
+        : ["ملف تعريف للحقول الرقمية والفئوية", "تحقق دلالي خارجي لتحديد الهدف", "بناء خطة تحليل متخصصة جديدة", "حفظ النوع لاحقًا في السجل الديناميكي"]
     };
 
     const semanticFamilies = Array.isArray(state.semanticProfile?.analysisFamilies) ? state.semanticProfile.analysisFamilies : [];
@@ -1263,7 +1271,7 @@
     if (!window.TaqareerReconciliation?.composePrimary) throw new Error("محرك التحقق من التحليل الذكي غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "1.2.7",
+      appVersion: "1.2.8",
       pipeline: {
         mode: "ai-primary-analysis-v1",
         instruction: "المحرك المحلي يحسب المؤشرات والرسوم فقط. يبني الذكاء الاصطناعي التشخيص والاستنتاجات والتدخلات من الأدلة، ثم تتحقق البوابة من المراجع قبل عرض التقرير."
@@ -1497,7 +1505,7 @@
 
     try {
       if (!aiReady()) {
-        setMessage("setupMessage", "التحليل التربوي في هذه النسخة يعتمد على الذكاء الاصطناعي بوصفه المحلل الأساسي. اربط وظيفة Supabase وفعّلها أولًا.", true);
+        setMessage("setupMessage", "التحليل التربوي في هذه النسخة يعتمد على خدمة التحليل الخادمية. اربط وظيفة Supabase وفعّلها أولًا.", true);
         return;
       }
       const totalTimer = perfApi()?.startSpan?.("الزمن الكلي");
@@ -1573,7 +1581,7 @@
     } finally {
       if (stopPrimaryTicker) stopPrimaryTicker();
       runButton.disabled = false;
-      runButton.textContent = "تنفيذ التحليل الذكي";
+      runButton.textContent = "تنفيذ التحليل التربوي";
       updateAiStatusUi();
     }
   }
@@ -1678,15 +1686,15 @@
     const items = [];
     if (local) items.push(`<span><strong>الحسابات والأدلة</strong>${formatDuration(local.durationMs)}</span>`);
     if (state.performance.cacheHit) {
-      items.push(`<span><strong>التحليل الذكي</strong>مستعاد من الذاكرة</span>`);
+      items.push(`<span><strong>التحليل التفسيري</strong>مستعاد من الذاكرة</span>`);
     } else if (gemini) {
-      items.push(`<span><strong>التحليل الذكي</strong>${formatDuration(gemini.durationMs)}</span>`);
+      items.push(`<span><strong>التحليل التفسيري</strong>${formatDuration(gemini.durationMs)}</span>`);
     }
     const server = state.performance.aiServerTiming || {};
     if (server.acceptedDiagnosticSections !== undefined) {
       items.push(`<span><strong>بنية التحليل</strong>${server.acceptedDiagnosticSections || 0} قراءات · ${server.acceptedFindings || 0} استنتاجات · ${server.acceptedInterventions || 0} تدخلات</span>`);
     }
-    if (state.performance.payloadChars) items.push(`<span><strong>حمولة الذكاء</strong>${Math.max(1, Math.round(state.performance.payloadChars / 1024))} كيلوبايت</span>`);
+    if (state.performance.payloadChars) items.push(`<span><strong>حمولة الخدمة</strong>${Math.max(1, Math.round(state.performance.payloadChars / 1024))} كيلوبايت</span>`);
     panel.innerHTML = items.join("");
     panel.classList.toggle("hidden", !items.length);
   }
@@ -1748,9 +1756,9 @@
     const profileDimensions = profile.dimensions || [];
     const decisionUses = profile.decisionUse || profile.decisionUses || [];
     const profileCards = [
-      { title:"عائلة التحليل", value:profile.method || profile.purpose || a.kind, items:profileDimensions },
-      { title:"كفاية البيانات", value:profile.dataAdequacy || profile.dataSufficiency || "غير محددة", items:profile.assumptions || [] },
-      { title:"القرارات التي يدعمها", value:`${decisionUses.length} استخدامات`, items:decisionUses },
+      { title:"عائلة التحليل", value:publicAnalysisMethod(profile.method || profile.purpose || a.kind), items:profileDimensions.map(item=>publicDisplayLabel(item,"بعد تحليلي")) },
+      { title:"كفاية البيانات", value:publicDisplayLabel(profile.dataAdequacy || profile.dataSufficiency || "غير محددة","غير محددة"), items:(profile.assumptions || []).map(item=>publicDisplayLabel(item,"افتراض تحليلي")) },
+      { title:"القرارات التي يدعمها", value:`${decisionUses.length} استخدامات`, items:decisionUses.map(item=>publicDisplayLabel(item,"استخدام تحليلي")) },
       { title:"نطاق التحليل", value:state.type.name, items:[`المصدر: ${state.sourceName}`,`الثقة في النوع: ${state.confidence}%`,`طريقة التصنيف: ${state.recognitionStatus}`] }
     ];
     $("diagnosticProfileSection").classList.toggle("hidden", !profileCards.length);
@@ -1761,7 +1769,7 @@
     $("diagnosticSectionsGrid").innerHTML = diagnosticSections.map(section => {
       const evidence = humanizeEvidenceRefs(section.evidenceRefs || []);
       const implications = Array.isArray(section.implications) ? section.implications : [];
-      const source = "تحليل ذكاء اصطناعي موثق";
+      const source = "تحليل تربوي موثق";
       const alternatives = Array.isArray(section.alternativeExplanations) ? section.alternativeExplanations : [];
       const requests = Array.isArray(section.dataRequests) ? section.dataRequests : [];
       return `<article class="diagnostic-section-card"><div class="diagnostic-section-meta"><span>${source}</span><span>ثقة ${escapeHtml(section.confidence || "متوسطة")}</span></div><h5>${escapeHtml(section.title || "قراءة تفسيرية")}</h5><p>${escapeHtml(section.analysis || "")}</p>${evidence && evidence !== "لم يحدد مرجع دليل واضح." ? `<div class="soft-note">الدليل: ${escapeHtml(evidence)}</div>` : ""}${implications.length ? `<h6>الآثار العملية</h6><ul>${implications.map(item=>`<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}${alternatives.length ? `<h6>تفسيرات بديلة محتملة</h6><ul>${alternatives.map(item=>`<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}${requests.length ? `<h6>بيانات مطلوبة للتحقق</h6><ul>${requests.map(item=>`<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}</article>`;
@@ -1769,7 +1777,7 @@
 
     // التحسين الخارجي جزء تلقائي من مسار التحليل ولا يظهر للمستخدم كمرحلة مستقلة.
     // تبقى واجهة النتائج هادئة: لا رسائل انتظار، لا أسماء مزودين، ولا أزرار إعادة.
-    $("analysisModeChip").textContent = "تحليل ذكاء اصطناعي أصيل";
+    $("analysisModeChip").textContent = "تحليل تربوي مكتمل";
     $("analysisModeChip").className = "success-chip";
     const notice = $("aiResultNotice");
     notice.innerHTML = "";
@@ -1782,7 +1790,7 @@
 
     const findings = (a.findings || []).slice(0, 18);
     $("findings").innerHTML = findings.map((f,i)=>{
-      const sourceLabel="تحليل ذكاء اصطناعي موثق";
+      const sourceLabel="تحليل تربوي موثق";
       const severity=f.severity||"medium";
       const limitations=f.limitations||[];
       const limitationHtml=limitations.length?`<h5>الحدود</h5><p>${limitations.map(escapeHtml).join("، ")}</p>`:"";
@@ -1796,7 +1804,7 @@
 
     const tools=(a.qualityTools||[]).filter(tool=>tool.conditionsMet!==false).slice(0,12);
     $("qualityToolsSection").classList.toggle("hidden",!tools.length);
-    $("qualityToolsGrid").innerHTML=tools.map(tool=>`<article class="quality-tool-card"><strong>${escapeHtml(tool.name)}</strong><p>${escapeHtml(tool.reason||"")}</p><span>مطبقة فعليًا</span>${tool.interpretation?`<div class="tool-output">${escapeHtml(tool.interpretation)}</div>`:""}</article>`).join("");
+    $("qualityToolsGrid").innerHTML=tools.map(tool=>`<article class="quality-tool-card"><strong>${escapeHtml(publicDisplayLabel(tool.name,"أداة جودة"))}</strong><p>${escapeHtml(tool.reason||"")}</p><span>مطبقة فعليًا</span>${tool.interpretation?`<div class="tool-output">${escapeHtml(tool.interpretation)}</div>`:""}</article>`).join("");
 
     const plans=(a.improvementPlan||[]).slice(0,10);
     $("improvementPlanSection").classList.toggle("hidden",!plans.length);
@@ -1828,7 +1836,7 @@
 
   function openOfficialReport(reportMode = "full") {
     if (!state.reconciledAnalysis?._reconciliation?.aiPrimary) {
-      alert("لا يوجد تحليل ذكاء اصطناعي مكتمل لإنشاء التقرير الرسمي.");
+      alert("لا يوجد تحليل تربوي مكتمل لإنشاء التقرير الرسمي.");
       return;
     }
     try {
@@ -1854,7 +1862,7 @@
   function exportAnalysis() {
     const payload = {
       app: "تقارير",
-      version: "1.2.7",
+      version: "1.2.8",
       generatedAt: new Date().toISOString(),
       source: state.sourceName,
       sourceMeta: state.sourceMeta,
@@ -1867,7 +1875,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v1.2.7.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v1.2.8.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }

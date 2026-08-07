@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.2.7";
+  const VERSION = "1.2.8";
   const CONTRACT_VERSION = "6.6.0";
 
   const SCORE_TYPES = new Set(["student_results", "single_subject", "assessment_component", "level_distribution", "multi_subject_results", "cross_subject"]);
@@ -536,7 +536,15 @@
 
   function requirePrimaryText(value, label) {
     const text = trimText(value, 2400);
-    if (!text) throw new Error(`نتيجة التحليل الذكي تفتقد ${label}.`);
+    if (!text) throw new Error(`نتيجة التحليل الأساسية تفتقد ${label}.`);
+    return text;
+  }
+
+  function publicAnalysisMethod(value) {
+    const fallback = "تحليل تربوي مبني على حزمة أدلة محققة";
+    if (window.TaqareerDisplayTerms?.analysisMethod) return window.TaqareerDisplayTerms.analysisMethod(value, fallback);
+    const text = trimText(value, 900);
+    if (!text || /^[A-Za-z][A-Za-z0-9]*(?:[_-][A-Za-z0-9]+)+$/.test(text) || /Gemini|الذكاء\s*الاصطناعي|ذكاء\s*اصطناعي/i.test(text)) return fallback;
     return text;
   }
 
@@ -703,7 +711,7 @@
 
   function composePrimary(localEvidence, primaryResult, options = {}) {
     const result = canonicalize(localEvidence || {});
-    if (!primaryResult || typeof primaryResult !== "object") throw new Error("لم تصل نتيجة التحليل الذكي الأساسي.");
+    if (!primaryResult || typeof primaryResult !== "object") throw new Error("لم تصل نتيجة التحليل الأساسية.");
     const allowedEvidence = new Set((options.availableEvidenceRefs || []).map(String));
     const executive = primaryResult.executive && typeof primaryResult.executive === "object" ? primaryResult.executive : {};
     const profile = primaryResult.analysisProfile && typeof primaryResult.analysisProfile === "object" ? primaryResult.analysisProfile : {};
@@ -714,7 +722,7 @@
     result.executiveConfidence = ["مرتفعة", "متوسطة", "منخفضة"].includes(executive.confidence) ? executive.confidence : "متوسطة";
     result.executiveEvidenceRefs = cleanPrimaryRefs(executive.evidenceRefs, allowedEvidence, 10);
     result.analysisProfile = {
-      method: trimText(profile.method, 900) || "تحليل تربوي مولد بالذكاء الاصطناعي من حزمة أدلة محققة",
+      method: publicAnalysisMethod(profile.method),
       dataAdequacy: trimText(profile.dataAdequacy, 700) || "كفاية البيانات غير محددة",
       dimensions: clampItems(profile.dimensions, 10, 420),
       decisionUse: clampItems(profile.decisionUses, 10, 420),
