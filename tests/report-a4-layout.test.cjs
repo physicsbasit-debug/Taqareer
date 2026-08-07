@@ -50,3 +50,15 @@ test('automatic printing waits for measured flow pagination and toolbar states t
   assert.match(source, /dataset\.flowPagination==="ready"/);
   assert.match(source, /printWhenReady/);
 });
+
+test('flow paginator is whole-first and only fragments reusable grids after a whole block fails', () => {
+  const start = source.indexOf('function appendContainer');
+  const end = source.indexOf('source.forEach', start);
+  const block = source.slice(start, end);
+  const wholeTry = block.indexOf('container.cloneNode(true)');
+  const splitCall = block.indexOf('splitContainer(container,section,heading)');
+  assert.ok(wholeTry >= 0, 'whole container attempt is missing');
+  assert.ok(splitCall > wholeTry, 'container is split before the whole block is attempted');
+  assert.match(source, /const maxBottom=Math\.max\(\.\.\.children\.map\(node=>node\.getBoundingClientRect\(\)\.bottom\)\)/);
+  assert.doesNotMatch(source, /content\.scrollHeight>content\.clientHeight/);
+});
