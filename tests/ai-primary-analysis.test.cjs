@@ -250,7 +250,8 @@ test('frontend waits for primary AI analysis before showing results', () => {
   assert.ok(aiAwait >= 0);
   assert.ok(aiRender > aiAwait);
   assert.match(run, /if \(descriptiveOnly\)[\s\S]*renderResults\(\)/);
-  assert.match(run, /لم يعرض التطبيق قوالب محلية بديلة/);
+  assert.match(run, /الحسابات والأدلة والملف ما زالت محفوظة/);
+  assert.doesNotMatch(run, /openManualExtraction\(/);
   assert.doesNotMatch(run, /canonicalize\?\.\(state\.analysis\)/);
 });
 

@@ -15,7 +15,7 @@ test('primary AI request has a bounded latency budget and compact output', () =>
   assert.match(edge, /thinkingConfig: \{ thinkingLevel \}/);
   assert.match(edge, /primaryRequestBody\(payload, primaryRescueInstructions\(\), "minimal", 3072\)/);
   assert.match(edge, /rescueUsed = true/);
-  assert.match(client, /analyze_primary", payload, \{ timeoutMs: 52000 \}/);
+  assert.match(client, /analyze_primary", payload, \{ timeoutMs: 52000, networkRetry: true \}/);
   assert.match(edge, /PRIMARY_ANALYSIS_DEADLINE_MS = 42_000/);
   assert.match(edge, /PRIMARY_MODEL_ATTEMPT_TIMEOUT_MS = 16_000/);
   assert.match(edge, /PRIMARY_RESCUE_ATTEMPT_TIMEOUT_MS = 12_000/);

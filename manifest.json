@@ -1,8 +1,8 @@
 {
   "app": "تقارير",
-  "version": "1.2.19",
-  "phase": "Phase 2-D Fix 16 - Global Visualization Engine",
-  "releaseName": "Semantic Visualization Policy and Multi-Chart Rendering",
+  "version": "1.2.20",
+  "phase": "Phase 2-D Fix 20 - Resilient AI Recovery",
+  "releaseName": "Non-blocking AI Failure Recovery and Explicit Manual Fallback",
   "buildType": "static-github-pages-plus-supabase-edge-function",
   "supportedInputs": {
     "table": [

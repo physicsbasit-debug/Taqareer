@@ -82,7 +82,7 @@
     aiSegments: { results: {}, failures: {}, statuses: {}, taskResults: {}, taskFailures: {}, taskStatuses: {}, taskPlan: [], failedTaskIds: [], recovery: null },
     performance: { spans: [], cacheHit: false, payloadChars: 0, aiUsage: null, aiModel: "", aiServerTiming: null, segmentTimings: {} },
     localRecognition: null, aiRecognition: null, recognitionConflict: null, semanticProfile: null, recognitionStatus: "محلي", recognitionRequestId: 0, analysisRequestId: 0,
-    sampleMaxScore: null, pendingSource: null, sourceMeta: null, pendingManualFileName: "", pendingVisualPreview: null,
+    sampleMaxScore: null, pendingSource: null, sourceMeta: null, pendingManualFileName: "", pendingVisualPreview: null, inputRecovery: null,
     multiSubjectOptions: { mode: "all", subject: "", includeSubjectTopTen: true, includeSchoolRanking: true },
     scaleSemantics: null,
     previewExpanded: false
@@ -285,6 +285,67 @@
     }
     if (code === "AI_PRIMARY_TIMEOUT") return "لم تصل استجابة تحليل صالحة ضمن المهلة السريعة المعتمدة. أوقف التطبيق الانتظار بدل إبقائك عالقًا، ولم يعتمد نتيجة ناقصة.";
     return message || "تعذر تنفيذ التحليل التربوي.";
+  }
+
+  function isRetryableAiError(error) {
+    const code = String(error?.code || "");
+    return Boolean(error?.retryable) || ["AI_OFFLINE", "AI_NETWORK_FETCH_FAILED", "GEMINI_TRANSIENT", "GEMINI_RATE_LIMIT", "AI_PRIMARY_TIMEOUT"].includes(code);
+  }
+
+  function clearInputRecovery() {
+    state.inputRecovery = null;
+    const actions = $("inputRecoveryActions");
+    if (actions) actions.classList.add("hidden");
+    const retry = $("retryInputBtn");
+    if (retry) retry.disabled = false;
+  }
+
+  function showInputRecovery({ file, sourceType, reason, previewDataUrl = "" }) {
+    state.inputRecovery = { file, sourceType, reason: String(reason || "تعذر إكمال القراءة الآلية."), previewDataUrl };
+    setMessage("inputMessage", `${friendlyAiError({ message: reason })} الملف محفوظ في هذه الجلسة؛ أعد القراءة دون رفعه من جديد، أو استخدم الإدخال اليدوي فقط إذا رغبت.` , true);
+    const actions = $("inputRecoveryActions");
+    if (actions) actions.classList.remove("hidden");
+    const retry = $("retryInputBtn");
+    if (retry) retry.disabled = !aiReady();
+  }
+
+  async function retryInputRecovery() {
+    const recovery = state.inputRecovery;
+    if (!recovery?.file) return;
+    if (!aiReady()) {
+      setMessage("inputMessage", "القراءة البصرية تحتاج خدمة التحليل. فعّل الخدمة ثم أعد المحاولة؛ لن يطلب منك التطبيق إعادة رفع الملف.", true);
+      return;
+    }
+    const button = $("retryInputBtn");
+    if (button) { button.disabled = true; button.textContent = "جارٍ إعادة القراءة…"; }
+    try {
+      if (recovery.sourceType === "pdf") {
+        const rendered = await window.TaqareerDocuments.renderPdfPages(recovery.file, 3);
+        await extractVisualWithAi(recovery.file.name, rendered.images, "pdf");
+      } else {
+        const preview = recovery.previewDataUrl ? { dataUrl: recovery.previewDataUrl } : await window.TaqareerDocuments.imagePreview(recovery.file);
+        await extractVisualWithAi(recovery.file.name, [{ label: recovery.file.name, dataUrl: preview.dataUrl }], "image");
+      }
+      clearInputRecovery();
+      clearMessage("inputMessage");
+    } catch (error) {
+      const message = friendlyAiError(error);
+      state.inputRecovery.reason = message;
+      setMessage("inputMessage", `${message} الملف ما زال محفوظًا؛ يمكنك إعادة المحاولة لاحقًا دون رفعه من جديد.`, true);
+    } finally {
+      if (button) { button.disabled = !aiReady(); button.textContent = "إعادة القراءة الآلية"; }
+    }
+  }
+
+  function openInputManualFallback() {
+    const recovery = state.inputRecovery;
+    if (!recovery?.file) return;
+    openManualExtraction(
+      recovery.file.name,
+      `${recovery.reason || "تعذرت القراءة الآلية."} الإدخال اليدوي اختياري ولا يفتح تلقائيًا.`,
+      recovery.sourceType || "manual",
+      recovery.previewDataUrl || ""
+    );
   }
 
   function perfApi() { return window.TaqareerPerformance || null; }
@@ -677,7 +738,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "1.2.19",
+      appVersion: "1.2.20",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -1047,10 +1108,18 @@
             const rendered = await window.TaqareerDocuments.renderPdfPages(file, 3);
             await extractVisualWithAi(file.name, rendered.images, "pdf");
           } catch (visionError) {
-            openManualExtraction(file.name, visionError.message || err.message || "تعذر استخراج PDF آليًا.", "pdf");
+            showInputRecovery({
+              file,
+              sourceType: "pdf",
+              reason: visionError.message || err.message || "تعذر استخراج PDF آليًا."
+            });
           }
         } else {
-          openManualExtraction(file.name, err.message || "تعذر استخراج PDF آليًا.", "pdf");
+          showInputRecovery({
+            file,
+            sourceType: "pdf",
+            reason: err.message || "تعذر استخراج PDF آليًا."
+          });
         }
       } else {
         setMessage("inputMessage", err.message || `تعذر قراءة ${label}.`, true);
@@ -1060,7 +1129,7 @@
 
   function openManualExtraction(fileName, reason, sourceType = "image", previewDataUrl = "") {
     state.pendingManualFileName = fileName;
-    $("manualDialogTitle").textContent = sourceType === "image" ? "مراجعة محتوى الصورة" : "استخراج يدوي احتياطي";
+    $("manualDialogTitle").textContent = sourceType === "image" ? "إدخال يدوي للصورة عند الحاجة" : "إدخال يدوي عند الحاجة";
     $("manualDialogReason").textContent = reason;
     $("manualTextInput").value = "";
     $("manualImagePreview").src = previewDataUrl || "";
@@ -1081,16 +1150,21 @@
           await extractVisualWithAi(file.name, [{ label: file.name, dataUrl: preview.dataUrl }], "image");
           return;
         } catch (aiError) {
-          openManualExtraction(file.name, `تعذرت القراءة البصرية: ${aiError.message}. يمكنك متابعة العمل يدويًا.`, "image", preview.dataUrl);
+          showInputRecovery({
+            file,
+            sourceType: "image",
+            reason: aiError.message || "تعذرت القراءة البصرية للصورة.",
+            previewDataUrl: preview.dataUrl
+          });
           return;
         }
       }
-      openManualExtraction(
-        file.name,
-        "تظهر الصورة للمراجعة. اربط خدمة التحليل للقراءة التلقائية، أو الصق النص أو الجدول يدويًا الآن.",
-        "image",
-        preview.dataUrl
-      );
+      showInputRecovery({
+        file,
+        sourceType: "image",
+        reason: "الصورة تحتاج قراءة بصرية آلية، وخدمة التحليل غير مفعلة حاليًا.",
+        previewDataUrl: preview.dataUrl
+      });
     } catch (err) {
       setMessage("inputMessage", err.message || "تعذر فتح الصورة.", true);
     }
@@ -1539,7 +1613,7 @@
     if (!window.TaqareerReconciliation?.composePrimary) throw new Error("محرك التحقق من التحليل الذكي غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "1.2.19",
+      appVersion: "1.2.20",
       pipeline: {
         mode: "ai-primary-analysis-v1",
         instruction: "المحرك المحلي يحسب المؤشرات والرسوم فقط. يبني الذكاء الاصطناعي التشخيص والاستنتاجات والتدخلات من الأدلة، ثم تتحقق البوابة من المراجع قبل عرض التقرير."
@@ -1866,7 +1940,11 @@
       state.aiResult = null;
       state.reconciledAnalysis = null;
       state.aiUsed = false;
-      setMessage("setupMessage", `${friendlyAiError(error)} لم يعرض التطبيق قوالب محلية بديلة على أنها تحليل عميق.`, true);
+      state.aiError = friendlyAiError(error);
+      const recoveryHint = isRetryableAiError(error)
+        ? "الحسابات والأدلة والملف ما زالت محفوظة. أعد الضغط على «تنفيذ التحليل التربوي» بعد لحظات؛ لا حاجة لإعادة رفع الملف أو إدخال أي نص يدويًا."
+        : "الحسابات والأدلة والملف ما زالت محفوظة. يمكنك إعادة تشغيل التحليل مباشرة؛ لن يطلب منك التطبيق إدخال المحتوى يدويًا بسبب فشل التحليل الخارجي.";
+      setMessage("setupMessage", `${state.aiError} ${recoveryHint}`, true);
     } finally {
       if (stopPrimaryTicker) stopPrimaryTicker();
       runButton.disabled = false;
@@ -2216,7 +2294,7 @@
   function exportAnalysis() {
     const payload = {
       app: "تقارير",
-      version: "1.2.19",
+      version: "1.2.20",
       generatedAt: new Date().toISOString(),
       source: state.sourceName,
       sourceMeta: state.sourceMeta,
@@ -2229,7 +2307,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v1.2.19.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v1.2.20.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
@@ -2245,11 +2323,13 @@
       performance: { spans: [], cacheHit: false, payloadChars: 0, aiUsage: null, aiModel: "", aiServerTiming: null, segmentTimings: {} },
       localRecognition: null, aiRecognition: null, semanticProfile: null, recognitionStatus: "محلي", recognitionRequestId: state.recognitionRequestId + 1,
       analysisRequestId: state.analysisRequestId + 1,
-      sampleMaxScore: null, pendingSource: null, sourceMeta: null, pendingManualFileName: "", pendingVisualPreview: null,
+      sampleMaxScore: null, pendingSource: null, sourceMeta: null, pendingManualFileName: "", pendingVisualPreview: null, inputRecovery: null,
       multiSubjectOptions: { mode: "all", subject: "", includeSubjectTopTen: true, includeSchoolRanking: true },
       scaleSemantics: null,
-      previewExpanded: false
+      previewExpanded: false,
+      inputRecovery: null
     });
+    clearInputRecovery();
     $("fileInput").value = ""; $("pasteInput").value = ""; $("manualTextInput").value = "";
     if ($("multiSubjectScopeSelect")) $("multiSubjectScopeSelect").value = "all";
     if ($("includeSubjectTopTenInput")) $("includeSubjectTopTenInput").checked = true;
@@ -2278,8 +2358,9 @@
       state.pendingManualFileName = "";
       $("manualTextInput").value = "";
       $("manualImagePreview").removeAttribute("src");
-      clearMessage("inputMessage");
     });
+    $("retryInputBtn")?.addEventListener("click", retryInputRecovery);
+    $("manualFallbackBtn")?.addEventListener("click", openInputManualFallback);
 
     $("backToInputBtn").addEventListener("click",()=>showPanel(1));
     $("togglePreviewColumnsBtn").addEventListener("click", () => { state.previewExpanded = !state.previewExpanded; renderReview(); });

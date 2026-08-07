@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="تقارير - منصة للتحليل التربوي للبيانات والاستمارات التعليمية" />
-  <title>تقارير | منصة التحليل التربوي v1.2.19</title>
-  <link rel="stylesheet" href="assets/styles.css?v=1.2.19" />
+  <title>تقارير | منصة التحليل التربوي v1.2.20</title>
+  <link rel="stylesheet" href="assets/styles.css?v=1.2.20" />
 </head>
 <body>
   <div class="app-shell">
@@ -18,7 +18,7 @@
         </div>
       </a>
       <div class="top-actions">
-        <span class="version-badge version-badge-muted">v1.2.19</span>
+        <span class="version-badge version-badge-muted">v1.2.20</span>
         <span id="aiHeaderStatus" class="version-badge">خدمة التحليل غير مربوطة</span>
         <button id="openAiSettingsTopBtn" class="ghost-button top-action-button" type="button">إعداد خدمة التحليل</button>
         <button id="resetTopBtn" class="ghost-button top-action-button top-action-primary" type="button">بدء تحليل جديد</button>
@@ -84,14 +84,14 @@
             <input id="fileInput" type="file" accept=".csv,.tsv,.txt,.xlsx,.xlsm,.xls,.pdf,.doc,.docx,.png,.jpg,.jpeg,.webp" />
             <div class="upload-symbol" aria-hidden="true">↑</div>
             <strong>اختر ملف البيانات أو المستند</strong>
-            <span>يُقرأ الآن: CSV وTSV وTXT وXLSX وXLSM وDOCX وPDF النصي. الصور وPDF الممسوح تُقرأ بصريًا عند تفعيل خدمة التحليل، مع مسار يدوي احتياطي.</span>
+            <span>يُقرأ الآن: CSV وTSV وTXT وXLSX وXLSM وDOCX وPDF النصي. الصور وPDF الممسوح تُقرأ بصريًا عند تفعيل خدمة التحليل، مع إدخال يدوي اختياري عند الحاجة.</span>
           </label>
           <div class="format-grid">
             <div class="format-card ready"><strong>CSV / TSV</strong><span>قراءة وتحليل فعليان</span></div>
             <div class="format-card ready"><strong>Excel XLSX</strong><span>اختيار الورقة وصف العناوين</span></div>
             <div class="format-card ready"><strong>Word DOCX</strong><span>قراءة الجداول والنص محليًا</span></div>
             <div class="format-card ready"><strong>PDF نصي</strong><span>استخراج عبر PDF.js عند الاتصال</span></div>
-            <div class="format-card ai-ready"><strong>الصور</strong><span>قراءة بصرية ذكية أو مسار يدوي</span></div>
+            <div class="format-card ai-ready"><strong>الصور</strong><span>قراءة بصرية ذكية مع إعادة محاولة محفوظة</span></div>
             <div class="format-card ai-ready"><strong>PDF ممسوح</strong><span>تحويل أول الصفحات إلى صور وتحليلها</span></div>
           </div>
         </div>
@@ -110,6 +110,10 @@
         </div>
 
         <div id="inputMessage" class="inline-message hidden" role="status"></div>
+        <div id="inputRecoveryActions" class="actions input-recovery-actions hidden" aria-live="polite">
+          <button id="retryInputBtn" class="primary" type="button">إعادة القراءة الآلية</button>
+          <button id="manualFallbackBtn" class="secondary" type="button">إدخال يدوي عند الحاجة</button>
+        </div>
       </section>
 
       <section id="panel-2" class="panel">
@@ -348,7 +352,7 @@
 
     </main>
 
-    <footer class="app-footer"><span>تقارير · v1.2.19</span><span>الحسابات المحلية مصدر الحقيقة، والقراءة التربوية قابلة للمراجعة.</span></footer>
+    <footer class="app-footer"><span>تقارير · v1.2.20</span><span>الحسابات المحلية مصدر الحقيقة، والقراءة التربوية قابلة للمراجعة.</span></footer>
   </div>
 
   <dialog id="sheetDialog">
@@ -370,7 +374,7 @@
       <div id="manualImageWrap" class="manual-preview hidden"><img id="manualImagePreview" alt="معاينة الصورة المرفوعة" /></div>
       <label class="field-label" for="manualTextInput">النص أو الجدول</label>
       <textarea id="manualTextInput" rows="13" placeholder="الصق النص، أو جدولًا مفصولًا بعلامات تبويب أو فواصل..."></textarea>
-      <div class="soft-note">لا يُعتمد المحتوى إلا بعد معاينتك. هذا المسار يمنع توقف العمل عندما يكون الملف ممسوحًا ضوئيًا أو لا يحتوي طبقة نصية.</div>
+      <div class="soft-note">لا يُعتمد المحتوى إلا بعد معاينتك. يُستخدم الإدخال اليدوي فقط إذا اخترته صراحةً بعد تعذر القراءة الآلية؛ لا يفتح تلقائيًا بسبب تعثر الخدمة.</div>
       <div class="actions"><button id="cancelManualBtn" class="secondary" value="cancel">إلغاء</button><button id="applyManualBtn" class="primary" value="default">استخدام المحتوى</button></div>
     </form>
   </dialog>
@@ -401,20 +405,20 @@
     </form>
   </dialog>
 
-  <script src="assets/runtime-config.js?v=1.2.19"></script>
-  <script src="assets/xlsx-lite.js?v=1.2.19"></script>
-  <script src="assets/document-lite.js?v=1.2.19"></script>
-  <script src="assets/performance-pipeline.js?v=1.2.19"></script>
-  <script src="assets/analysis-profile.js?v=1.2.19"></script>
-  <script src="assets/recognition-policy.js?v=1.2.19"></script>
-  <script src="assets/display-terms.js?v=1.2.19"></script>
-  <script src="assets/ai-client.js?v=1.2.19"></script>
-  <script src="assets/mastery-metrics.js?v=1.2.19"></script>
-  <script src="assets/visualization-policy.js?v=1.2.19"></script>
-  <script src="assets/deep-analysis.js?v=1.2.19"></script>
-  <script src="assets/analysis-reconciliation.js?v=1.2.19"></script>
-  <script src="assets/deep-analysis-orchestrator.js?v=1.2.19"></script>
-  <script src="assets/report-system.js?v=1.2.19"></script>
-  <script src="assets/app.js?v=1.2.19"></script>
+  <script src="assets/runtime-config.js?v=1.2.20"></script>
+  <script src="assets/xlsx-lite.js?v=1.2.20"></script>
+  <script src="assets/document-lite.js?v=1.2.20"></script>
+  <script src="assets/performance-pipeline.js?v=1.2.20"></script>
+  <script src="assets/analysis-profile.js?v=1.2.20"></script>
+  <script src="assets/recognition-policy.js?v=1.2.20"></script>
+  <script src="assets/display-terms.js?v=1.2.20"></script>
+  <script src="assets/ai-client.js?v=1.2.20"></script>
+  <script src="assets/mastery-metrics.js?v=1.2.20"></script>
+  <script src="assets/visualization-policy.js?v=1.2.20"></script>
+  <script src="assets/deep-analysis.js?v=1.2.20"></script>
+  <script src="assets/analysis-reconciliation.js?v=1.2.20"></script>
+  <script src="assets/deep-analysis-orchestrator.js?v=1.2.20"></script>
+  <script src="assets/report-system.js?v=1.2.20"></script>
+  <script src="assets/app.js?v=1.2.20"></script>
 </body>
 </html>
