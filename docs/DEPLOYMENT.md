@@ -1,17 +1,39 @@
-# رفع تقارير v0.7.0
+# نشر تقارير
 
-## الواجهة
+## GitHub Pages
 
-ارفع محتويات حزمة `changed_files_only` فوق جذر المستودع ووافق على الاستبدال. الحزمة لا تحتوي `.github` أو `.nojekyll` أو النسخ المرئية الاحتياطية، لذلك يبقى Workflow الحالي دون تغيير.
+المصدر هو الفرع `main`. Workflow النشر في `.github/workflows/deploy.yml` يبني Artifact عامًا من ملفات التشغيل فقط:
 
-## وظيفة Supabase
+- `index.html`
+- `manifest.json`
+- `assets/`
+- `.nojekyll` داخل Artifact فقط
 
-يجب استبدال كود وظيفة `analyze-educational-form` بالكود المرفق وإعادة نشرها؛ لأن عقد التحليل الذكي توسع ليشمل التحليل المتخصص العميق، أقسام التشخيص، أدوات الجودة، خطة التدخل والمتابعة وطلبات البيانات.
+لا تُنشر `docs/` أو `samples/` أو `registry/` أو `tests/` أو `supabase/` إلى الموقع العام.
 
-لا يلزم:
+## Supabase Edge
 
-- SQL.
-- Storage.
-- سر جديد.
-- تعديل Workflow الخاص بـGitHub Pages.
-- إعادة إنشاء مشروع Supabase.
+المصدر التشغيلي الحالي هو:
+
+```text
+supabase/functions/analyze-educational-form/index.ts
+```
+
+الأسرار تبقى في Supabase ولا توضع في GitHub Pages أو ملفات الواجهة. لا توجد حاجة للاحتفاظ بنسخ `SUPABASE_FUNCTION_GEMINI_V*.txt` في جذر المستودع؛ Git يحتفظ بالتاريخ.
+
+## فحص الإصدار
+
+قبل الرفع:
+
+```bash
+npm ci
+npm run check
+```
+
+## صيانة المستودع
+
+الملف `scripts/repository-hygiene.cjs` يمنع رجوع مخلفات الحزم القديمة. ويمكن تشغيل التنظيف المقيد يدويًا عند الحاجة:
+
+```bash
+node scripts/repository-hygiene.cjs --clean
+```
