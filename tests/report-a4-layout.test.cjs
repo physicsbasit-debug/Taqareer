@@ -62,3 +62,18 @@ test('flow paginator is whole-first and only fragments reusable grids after a wh
   assert.match(source, /const maxBottom=Math\.max\(\.\.\.children\.map\(node=>node\.getBoundingClientRect\(\)\.bottom\)\)/);
   assert.doesNotMatch(source, /content\.scrollHeight>content\.clientHeight/);
 });
+
+test('cross-section flow uses remaining A4 space without shrinking report fonts', () => {
+  assert.match(source, /function tryCrossSectionAppend\(sheet,nodes,section\)/);
+  assert.match(source, /function isSectionTransition\(sheet,section\)/);
+  assert.match(source, /dataset\.crossSectionBridge="1"/);
+  assert.match(source, /cross-section-bridge/);
+  const start = source.indexOf('function tryCrossSectionAppend');
+  const end = source.indexOf('function paginatePackableRun', start);
+  const bridge = source.slice(start, end);
+  assert.doesNotMatch(bridge, /student_work|survey|scores|supervision|multi_subject/);
+  const cssStart = source.indexOf('.report-sheet-flow-packed.cross-section-bridge');
+  const cssEnd = source.indexOf('.report-sheet-flow-packed .diagnostic-card', cssStart);
+  const css = source.slice(cssStart, cssEnd);
+  assert.doesNotMatch(css, /font-size/);
+});
