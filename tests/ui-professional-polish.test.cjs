@@ -12,13 +12,13 @@ test('public workspace hides development clutter and exposes compact review cont
   const app = read('assets/app.js');
   const css = read('assets/styles.css');
 
-  assert.match(index, /v1\.2\.21/);
+  assert.match(index, /v1\.2\.22/);
   assert.match(index, /id="togglePreviewColumnsBtn"/);
   assert.match(index, /id="qualityDetails"/);
   assert.match(index, /خدمة التحليل التربوي/);
   assert.match(index, /تنزيل بيانات التحليل/);
   assert.doesNotMatch(index, /شفافية التطوير|ما يعمل الآن وما يأتي لاحقًا|قلب التحليل الذكي|تنبيهات وحدود التحليل الذكي|تصدير JSON/);
-  assert.doesNotMatch(index, /Edge 0\.15\.3/);
+  assert.doesNotMatch(index, /Edge 0\.15\.4/);
 
   assert.match(app, /document\.body\.dataset\.activeStep/);
   assert.match(app, /reviewHeaders\(\)/);

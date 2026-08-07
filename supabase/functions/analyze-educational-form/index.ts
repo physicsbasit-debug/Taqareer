@@ -1,4 +1,4 @@
-const EDGE_VERSION = "0.15.3";
+const EDGE_VERSION = "0.15.4";
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 const DEFAULT_MODEL = "gemini-3.6-flash";
 const DEFAULT_FAST_MODEL = "gemini-3.5-flash-lite";
@@ -6,7 +6,7 @@ const DEFAULT_ANALYSIS_MODEL = "gemini-3.6-flash";
 const FAST_MODEL_FALLBACKS = Object.freeze(["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.6-flash"]);
 const GENERAL_MODEL_FALLBACKS = Object.freeze(["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"]);
 const PRIMARY_MODEL_FALLBACKS = Object.freeze(["gemini-3.6-flash", "gemini-3.5-flash-lite"]);
-const PRIMARY_RESCUE_MODELS = Object.freeze(["gemini-3.5-flash-lite", "gemini-3.6-flash"]);
+const PRIMARY_RESCUE_MODELS = Object.freeze(["gemini-3.5-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"]);
 const MAX_REQUEST_BYTES = 9_000_000;
 const MAX_IMAGE_COUNT = 4;
 const MAX_IMAGE_DATA_URL_LENGTH = 2_800_000;
@@ -722,10 +722,27 @@ function primaryAnalysisInstructions(): string {
 22) أعد JSON فقط وفق المخطط، بلا مقدمات أو شرح خارجه.`;
 }
 
-function primaryRescueInstructions(): string {
+function primaryRescueInstructions(rejectionReason = ""): string {
+  const reason = cleanString(rejectionReason, 520);
   return `${primaryAnalysisInstructions()}
 
-وضع إنقاذ محافظ على الجودة: أخرج وحدتي analysisUnits مختلفتين، وتدخلين لفئتين أو قضيتين مختلفتين، وثلاث مراحل متابعة بالضبط. يمكن أن تكون methodChecks فارغة. لا تتجاوز 250 حرفًا في diagnosticAnalysis و130 حرفًا في decisionFinding و110 أحرف في الأثر أو الإجراء و280 حرفًا في الملخص التنفيذي. حافظ على العمق عبر الربط بين الأدلة، لا عبر الإطالة.`;
+وضع إصلاح عقد موجّه: الاستجابة السابقة وصلت من Gemini لكنها رُفضت بعد التحقق الدلالي. أصلح سبب الرفض المحدد أدناه بدل إعادة بناء تحليل عشوائي من الصفر.
+سبب الرفض السابق: ${reason || "لم تحقق الاستجابة السابقة عقد الجودة بالكامل."}
+ستجد داخل payload.repairContext نسخة من المرشح السابق. احتفظ بالأجزاء الصحيحة منه، وصحح فقط ما يلزم لتحقيق العقد.
+أخرج وحدتي analysisUnits مختلفتين على الأقل، وتدخلين لفئتين أو قضيتين مختلفتين، وثلاث مراحل متابعة بالضبط. يمكن أن تكون methodChecks فارغة. استخدم evidenceRefs الموجودة حرفيًا في availableEvidenceRefs فقط. لا تتجاوز 250 حرفًا في diagnosticAnalysis و130 حرفًا في decisionFinding و110 أحرف في الأثر أو الإجراء و280 حرفًا في الملخص التنفيذي. حافظ على العمق عبر الربط بين الأدلة، لا عبر الإطالة.`;
+}
+
+function buildPrimaryRepairPayload(payload: JsonRecord, rejectedText: string, rejectionReason: string): JsonRecord {
+  let previousCandidate: JsonRecord = {};
+  try { previousCandidate = parseJsonObject(rejectedText); } catch { previousCandidate = {}; }
+  return {
+    ...payload,
+    repairContext: {
+      mode: "contract_repair",
+      rejectionReason: cleanString(rejectionReason, 520),
+      previousCandidate,
+    },
+  };
 }
 
 function cleanString(value: unknown, limit = 1200): string {
@@ -1368,14 +1385,17 @@ async function analyzePrimary(payload: JsonRecord): Promise<JsonRecord> {
   const firstFinishReason = candidate.finishReason;
   const firstThoughtTokens = usageCount(response.raw, "thoughtsTokenCount");
   const firstCandidateTokens = usageCount(response.raw, "candidatesTokenCount");
+  const firstValidationError = checked.error instanceof Error ? checked.error.message : "";
   let rescueUsed = false;
+  let rescueValidationError = "";
 
   if (!checked.result) {
     rescueUsed = true;
     const rescueModels = uniqueModelCandidates(PRIMARY_RESCUE_MODELS[0], PRIMARY_RESCUE_MODELS);
+    const repairPayload = buildPrimaryRepairPayload(payload, candidate.text, firstValidationError);
     response = await geminiRequestWithFallback(
       rescueModels,
-      primaryRequestBody(payload, primaryRescueInstructions(), "minimal", 3072),
+      primaryRequestBody(repairPayload, primaryRescueInstructions(firstValidationError), "minimal", 3072),
       1,
       {
         attemptTimeoutMs: PRIMARY_RESCUE_ATTEMPT_TIMEOUT_MS,
@@ -1385,14 +1405,15 @@ async function analyzePrimary(payload: JsonRecord): Promise<JsonRecord> {
     );
     candidate = candidateResult(response.raw);
     checked = tryValidatePrimaryCandidate(candidate.text, payload, "rescue");
+    rescueValidationError = checked.error instanceof Error ? checked.error.message : "";
   }
 
   if (!checked.result) {
     const detail = checked.error instanceof Error ? checked.error.message : "نتيجة غير مكتملة";
     if (candidate.finishReason === "MAX_TOKENS") {
-      throw new Error(`استنفد Gemini حد الإخراج حتى بعد تقييد التفكير ومسار الإنقاذ: ${detail}`);
+      throw new Error(`استنفد Gemini حد الإخراج حتى بعد إصلاح العقد: ${detail}`);
     }
-    throw checked.error instanceof Error ? checked.error : new Error(detail);
+    throw new Error(`فشل إصلاح عقد التحليل بعد استجابة Gemini: ${detail}`);
   }
 
   const result = checked.result;
@@ -1413,6 +1434,9 @@ async function analyzePrimary(payload: JsonRecord): Promise<JsonRecord> {
       thinkingLevel: rescueUsed ? "minimal" : "low",
       maxOutputTokens: rescueUsed ? 3072 : 4096,
       rescueUsed,
+      firstValidationError: cleanString(firstValidationError, 520),
+      rescueValidationError: cleanString(rescueValidationError, 520),
+      repairContextUsed: rescueUsed,
       fallbackUsed: response.fallbackUsed,
       fallbackReason: response.fallbackReason || "",
       attemptedModels: response.attemptedModels || 1,
@@ -1443,6 +1467,7 @@ function errorInfo(message: string): { status: number; errorCode: string; retrya
   if (/api key|مفتاح.*غير صالح|GEMINI_API_KEY|model.*not found|النموذج.*غير/i.test(message)) return { status: 502, errorCode: "GEMINI_CONFIGURATION", retryable: false };
   if (/429|rate limit|quota|RESOURCE_EXHAUSTED/i.test(message)) return { status: 429, errorCode: "GEMINI_RATE_LIMIT", retryable: true };
   if (/حد الإخراج|MAX_TOKENS|استنفد Gemini/i.test(message)) return { status: 502, errorCode: "GEMINI_OUTPUT_EXHAUSTED", retryable: false };
+  if (/فشل إصلاح عقد التحليل|لم يبلغ عمق القرار|لم ينتج المحلل الذكي ملخصًا|التدخلات الذكية لم تقدم تمايزًا|كررت الشرح التشخيصي/i.test(message)) return { status: 502, errorCode: "GEMINI_CONTRACT_REJECTED", retryable: true };
   if (/high demand|spikes in demand|temporar(?:y|ily)|timeout|مهلة التحليل الذكي|مهلة استجابة نموذج|تعذر الاتصال|unavailable|overload|503|500|504/i.test(message)) return { status: 503, errorCode: "GEMINI_TRANSIENT", retryable: true };
   return { status: 500, errorCode: "GEMINI_RESPONSE", retryable: false };
 }
@@ -1459,6 +1484,9 @@ function publicErrorMessage(info: { errorCode: string }, rawMessage: string): st
   }
   if (info.errorCode === "GEMINI_OUTPUT_EXHAUSTED") {
     return "لم يكتمل عقد التحليل الذكي ضمن حد الإخراج المعتمد.";
+  }
+  if (info.errorCode === "GEMINI_CONTRACT_REJECTED") {
+    return "وصلت استجابة التحليل، لكن حتى مسار إصلاح العقد لم يحقق معايير الجودة كاملة. بقيت الحسابات والأدلة محفوظة ويمكن إعادة المحاولة مباشرة.";
   }
   if (info.errorCode === "REQUEST_NOT_RETRYABLE") return rawMessage;
   return "تعذر إكمال التحليل الذكي الآن. لم يعتمد التطبيق نتيجة ناقصة.";

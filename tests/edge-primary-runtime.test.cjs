@@ -151,6 +151,7 @@ async function createRuntime(responses) {
   let handler = null;
   let calls = 0;
   const urls = [];
+  const requestBodies = [];
   const context = vm.createContext({
     console,
     Request,
@@ -167,6 +168,7 @@ async function createRuntime(responses) {
     clearTimeout,
     fetch: async (url, options = {}) => {
       urls.push(String(url));
+      requestBodies.push(String(options.body || ""));
       const item = responses[Math.min(calls, responses.length - 1)];
       calls += 1;
       if (item && typeof item === 'object' && item.__abort) {
@@ -193,7 +195,7 @@ async function createRuntime(responses) {
   });
   vm.runInContext(transpiled.outputText, context, { filename: 'edge-runtime.js' });
   assert.equal(typeof handler, 'function');
-  return { handler, getCalls: () => calls, getUrls: () => urls.slice() };
+  return { handler, getCalls: () => calls, getUrls: () => urls.slice(), getRequestBodies: () => requestBodies.slice() };
 }
 
 function httpError(status, message) {
@@ -295,6 +297,31 @@ test('edge runtime rescues an incomplete first response without returning to loc
   assert.equal(body.result.validation.validationMode, 'rescue');
 });
 
+
+
+test('edge rescue repairs the rejected candidate with its exact validation reason', async () => {
+  const incomplete = primaryResult();
+  incomplete.analysisUnits = incomplete.analysisUnits.slice(0, 1);
+  incomplete.methodChecks = [];
+  const runtime = await createRuntime([
+    geminiRaw(incomplete, 'STOP'),
+    geminiRaw(rescueResult(), 'STOP'),
+  ]);
+  const { status, body } = await invoke(runtime);
+  assert.equal(status, 200);
+  assert.equal(body.ok, true);
+  assert.equal(body.serverTiming.rescueUsed, true);
+  assert.equal(body.serverTiming.repairContextUsed, true);
+  assert.match(body.serverTiming.firstValidationError, /عمق القرار المتوازن/);
+  const urls = runtime.getUrls();
+  assert.match(urls[1], /gemini-3\.5-flash:generateContent/);
+  const secondBody = JSON.parse(runtime.getRequestBodies()[1]);
+  const repairPayload = JSON.parse(secondBody.contents[0].parts[0].text);
+  assert.equal(repairPayload.repairContext.mode, 'contract_repair');
+  assert.match(repairPayload.repairContext.rejectionReason, /عمق القرار المتوازن/);
+  assert.equal(Array.isArray(repairPayload.repairContext.previousCandidate.analysisUnits), true);
+  assert.equal(repairPayload.repairContext.previousCandidate.analysisUnits.length, 1);
+});
 
 test('edge switches immediately to a fallback model after one busy response', async () => {
   const busy = httpError(503, 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.');

@@ -13,14 +13,14 @@ test('primary AI request has a bounded latency budget and compact output', () =>
   assert.match(edge, /DEFAULT_ANALYSIS_MODEL = "gemini-3\.6-flash"/);
   assert.match(edge, /primaryRequestBody\(payload, primaryAnalysisInstructions\(\), "low", 4096\)/);
   assert.match(edge, /thinkingConfig: \{ thinkingLevel \}/);
-  assert.match(edge, /primaryRequestBody\(payload, primaryRescueInstructions\(\), "minimal", 3072\)/);
+  assert.match(edge, /primaryRequestBody\(repairPayload, primaryRescueInstructions\(firstValidationError\), "minimal", 3072\)/);
   assert.match(edge, /rescueUsed = true/);
   assert.match(client, /analyze_primary", payload, \{ timeoutMs: 52000, networkRetry: true \}/);
   assert.match(edge, /PRIMARY_ANALYSIS_DEADLINE_MS = 42_000/);
   assert.match(edge, /PRIMARY_MODEL_ATTEMPT_TIMEOUT_MS = 16_000/);
   assert.match(edge, /PRIMARY_RESCUE_ATTEMPT_TIMEOUT_MS = 12_000/);
   assert.match(edge, /primaryAnalysisInstructions\(\), "low", 4096\),[\s\S]*?1,[\s\S]*?attemptTimeoutMs: PRIMARY_MODEL_ATTEMPT_TIMEOUT_MS/);
-  assert.match(edge, /primaryRescueInstructions\(\), "minimal", 3072\),[\s\S]*?1,[\s\S]*?attemptTimeoutMs: PRIMARY_RESCUE_ATTEMPT_TIMEOUT_MS/);
+  assert.match(edge, /primaryRescueInstructions\(firstValidationError\), "minimal", 3072\),[\s\S]*?1,[\s\S]*?attemptTimeoutMs: PRIMARY_RESCUE_ATTEMPT_TIMEOUT_MS/);
   assert.match(client, /timeoutError\.retryable = true/);
   assert.match(edge, /rawText = await response\.text\(\);[\s\S]*?finally \{[\s\S]*?clearTimeout\(timeoutId\)/);
   assert.match(edge, /PRIMARY_MODEL_FALLBACKS = Object\.freeze\(\["gemini-3\.6-flash", "gemini-3\.5-flash-lite"\]\)/);

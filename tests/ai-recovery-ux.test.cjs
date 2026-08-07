@@ -48,3 +48,12 @@ test('primary analysis retries transport failures without changing the semantic 
   const client = read('assets/ai-client.js');
   assert.match(client, /invoke\("analyze_primary", payload, \{ timeoutMs: 52000, networkRetry: true \}\)/);
 });
+
+
+test('contract rejection is repaired server-side before surfacing a retryable error', () => {
+  const edge = read('supabase/functions/analyze-educational-form/index.ts');
+  assert.match(edge, /buildPrimaryRepairPayload/);
+  assert.match(edge, /repairContext/);
+  assert.match(edge, /GEMINI_CONTRACT_REJECTED/);
+  assert.match(edge, /PRIMARY_RESCUE_MODELS = Object\.freeze\(\["gemini-3\.5-flash", "gemini-3\.6-flash", "gemini-3\.5-flash-lite"\]\)/);
+});
