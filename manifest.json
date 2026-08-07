@@ -1,6 +1,6 @@
 {
   "app": "تقارير",
-  "version": "1.2.16",
+  "version": "1.2.17",
   "phase": "Phase 2-D Fix 16 - Global Visualization Engine",
   "releaseName": "Semantic Visualization Policy and Multi-Chart Rendering",
   "buildType": "static-github-pages-plus-supabase-edge-function",
@@ -69,7 +69,7 @@
     "deep-descriptive-statistics",
     "mastery-metrics-single-source-of-truth",
     "chart-completeness-guard",
-    "print-safe-a4-and-letter-reporting",
+    "true-a4-reporting-with-measured-page-packing",
     "canonical-deterministic-analysis-contract",
     "stable-target-identifiers",
     "server-side-target-validation",
@@ -207,7 +207,7 @@
     "primaryRescueModel": "gemini-3.5-flash-lite",
     "primaryRescueThinkingLevel": "minimal",
     "primaryRescueMaxOutputTokens": 3072,
-    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.2.16",
+    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.2.17",
     "primaryModelFallbackOrder": [
       "gemini-3.6-flash",
       "gemini-3.5-flash-lite"
@@ -281,7 +281,7 @@
     "databaseChanges": false,
     "newSecretsRequired": false,
     "currentFrontendOperation": "analyze_primary",
-    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.2.16",
+    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.2.17",
     "classificationAndVision": "retained"
   },
   "notYetEnabled": [
