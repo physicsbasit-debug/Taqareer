@@ -51,7 +51,7 @@ test('official report shows grade metadata, school formula and local ranking tab
   assert.match(html, /العشرة الأوائل على مستوى المدرسة \/ الدفعة/);
   assert.match(html, /العشرة الأوائل حسب الدرجة/);
   assert.match(html, /طالب اختبار 136/);
-  assert.match(html, /تقارير v1\.2\.25/);
+  assert.match(html, /تقارير v1\.2\.26/);
 });
 
 test('subject report includes only the selected subject top-ten table and selected-subject metadata', () => {

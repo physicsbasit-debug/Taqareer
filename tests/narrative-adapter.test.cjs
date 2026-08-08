@@ -13,6 +13,7 @@ vm.createContext(sandbox);
 vm.runInContext(fs.readFileSync(path.join(root, 'assets', 'document-lite.js'), 'utf8'), sandbox, { filename: 'document-lite.js' });
 const docs = sandbox.window.TaqareerDocuments._test;
 const appSource = fs.readFileSync(path.join(root, 'assets', 'app.js'), 'utf8');
+const setupPolicySource = fs.readFileSync(path.join(root, 'assets', 'setup-policy.js'), 'utf8');
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 
 function line(text, lineIndex) {
@@ -62,10 +63,10 @@ test('aggregated supervision PDF is normalized into narrative sections with stru
 test('narrative setup uses narrative evidence instead of score statistics and labels semantic families explicitly', () => {
   assert.match(html, /id="deterministicEvidenceTitle"/);
   assert.match(html, /id="deterministicEvidenceList"/);
-  assert.match(appSource, /الأدلة البنيوية والسردية/);
-  assert.match(appSource, /عدّ العبارات وربط كل عبارة بالقسم/);
-  assert.match(appSource, /consistency_analysis:\s*"فحص الاتساق والتباين السياقي بين الأقسام"/);
-  assert.match(appSource, /recommendation_quality:\s*"فحص جودة الدعم والتوصيات وقابليتها للتنفيذ والقياس"/);
+  assert.match(setupPolicySource, /الأدلة البنيوية والسردية/);
+  assert.match(setupPolicySource, /عدّ العبارات وربط كل عبارة بالقسم/);
+  assert.match(setupPolicySource, /consistency_analysis:\s*"فحص الاتساق والتباين السياقي بين الأقسام"/);
+  assert.match(setupPolicySource, /recommendation_quality:\s*"فحص جودة الدعم والتوصيات وقابليتها للتنفيذ والقياس"/);
   const setupStart = appSource.indexOf('function renderSetup()');
   const setupEnd = appSource.indexOf('function parseNumber', setupStart);
   const setup = appSource.slice(setupStart, setupEnd);

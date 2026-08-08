@@ -767,7 +767,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "1.2.25",
+      appVersion: "1.2.26",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -1408,21 +1408,22 @@
     const evidenceTitle = $("deterministicEvidenceTitle");
     const evidenceList = $("deterministicEvidenceList");
     if (evidenceTitle && evidenceList) {
-      evidenceTitle.textContent = narrativeMode ? "الأدلة البنيوية والسردية" : "الحسابات والأدلة";
-      const evidenceItems = narrativeMode
-        ? [
-            "عدّ العبارات وربط كل عبارة بالقسم الذي وردت فيه دون تحويل النص إلى جدول درجات.",
-            "فحص حضور أقسام الإجادة والتطوير والدعم والمداولة والتوصيات واتساقها السياقي.",
-            "كشف التكرار الموضوعي والتباين السياقي دون اعتباره تناقضًا مؤكدًا ما لم تتطابق الزيارة والمعلم والزمن.",
-            "إسناد الاستنتاجات إلى أسطر وأقسام ثابتة، وفحص قابلية الدعم والتوصيات للتنفيذ والقياس."
-          ]
-        : [
-            "العد والمتوسط والوسيط والمدى.",
-            "فحص الاكتمال والتكرار والقيم غير الصالحة.",
-            "نسبة الإتقان عند تأكيد الدرجة الكلية.",
-            "إسناد القراءة التفسيرية بأرقام ورسوم ومراجع أدلة ثابتة لا تتغير أثناء التحليل."
-          ];
-      evidenceList.innerHTML = evidenceItems.map(item => `<li>${escapeHtml(item)}</li>`).join("");
+      const evidencePolicy = window.TaqareerSetupPolicy?.evidencePolicy?.({
+        typeId: state.type.id,
+        semanticProfile: state.semanticProfile || {},
+        narrativeMode,
+        requiresScoreSettings
+      }) || {
+        title: "الحسابات والأدلة المناسبة للبنية",
+        items: [
+          "اختيار الحسابات الملائمة لطبيعة الحقول ووحدة التحليل.",
+          "فحص جودة البيانات التحليلية الفعلية قبل التفسير.",
+          "عدم تطبيق معيار أو اتجاه مقياس إلا عند وجود ما يبرره.",
+          "إسناد القراءة التفسيرية إلى مراجع أدلة ثابتة قابلة للمراجعة."
+        ]
+      };
+      evidenceTitle.textContent = evidencePolicy.title;
+      evidenceList.innerHTML = evidencePolicy.items.map(item => `<li>${escapeHtml(item)}</li>`).join("");
     }
 
     const nums = numericColumns();
@@ -1469,26 +1470,12 @@
     };
 
     const semanticFamilies = Array.isArray(state.semanticProfile?.analysisFamilies) ? state.semanticProfile.analysisFamilies : [];
-    const familyLabels = {
-      distribution_analysis: "تحليل توزيع الفئات ومركز التوزيع",
-      group_comparison: "مقارنة المجموعات وترتيب الأولوية",
-      concentration_analysis: "قياس التركّز والتفاوت بين المستويات",
-      aggregate_consistency_check: "مطابقة المجاميع والنسب مع الصف الإجمالي",
-      subject_comparison: "مقارنة المواد وترتيب الأداء والأولوية",
-      student_profile_segmentation: "فصل التعثر متعدد المواد عن التعثر التخصصي",
-      score_level_consistency: "فحص اتساق الدرجة الرقمية مع المستوى الحرفي",
-      cross_subject_relationships: "تحليل العلاقات الوصفية بين المواد",
-      enrollment_status_summary: "تلخيص حالات القيد أو النتيجة دون تفسير سببي",
-      comparative_analysis: "مقارنة المقاييس أو الفئات وفق بنية الملف",
-      indicator_analysis: "تحليل المؤشرات وترتيب الفجوات",
-      narrative_evidence: "تحليل الأدلة السردية وقوة الاستدلال",
-      consistency_analysis: "فحص الاتساق والتباين السياقي بين الأقسام",
-      recommendation_quality: "فحص جودة الدعم والتوصيات وقابليتها للتنفيذ والقياس",
-      adaptive_profile_analysis: "بناء تحليل تكيفي وفق ملف البنية الدلالي"
-    };
-    const selectedPlan = semanticFamilies.length
-      ? semanticFamilies.map(item => familyLabels[item] || publicDisplayLabel(item, "مسار تحليلي")).slice(0, 4)
-      : (plans[state.type.id] || plans.unknown);
+    const fallbackPlan = plans[state.type.id] || plans.unknown;
+    const selectedPlan = window.TaqareerSetupPolicy?.resolvePlan?.({
+      semanticFamilies,
+      fallbackPlan,
+      maxItems: 4
+    }) || fallbackPlan.slice(0, 4);
     $("analysisPlan").innerHTML = selectedPlan.map(x => `<li>${escapeHtml(x)}</li>`).join("");
     updateAiStatusUi();
   }
@@ -1663,7 +1650,7 @@
     if (!window.TaqareerReconciliation?.composePrimary) throw new Error("محرك التحقق من التحليل الذكي غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "1.2.25",
+      appVersion: "1.2.26",
       pipeline: {
         mode: "ai-primary-analysis-v1",
         instruction: "المحرك المحلي يحسب المؤشرات والرسوم فقط. يبني الذكاء الاصطناعي التشخيص والاستنتاجات والتدخلات من الأدلة، ثم تتحقق البوابة من المراجع قبل عرض التقرير."
@@ -2344,7 +2331,7 @@
   function exportAnalysis() {
     const payload = {
       app: "تقارير",
-      version: "1.2.25",
+      version: "1.2.26",
       generatedAt: new Date().toISOString(),
       source: state.sourceName,
       sourceMeta: state.sourceMeta,
@@ -2357,7 +2344,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v1.2.25.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v1.2.26.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }

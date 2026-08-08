@@ -100,10 +100,11 @@ test('multi-subject analysis preserves enrollment statuses and avoids using nati
 
 test('frontend and Edge recognize the new type, hide score settings semantically, and mask nationality', () => {
   const app = fs.readFileSync(path.join(root, 'assets', 'app.js'), 'utf8');
+  const setupPolicy = fs.readFileSync(path.join(root, 'assets', 'setup-policy.js'), 'utf8');
   const edge = fs.readFileSync(path.join(root, 'supabase', 'functions', 'analyze-educational-form', 'index.ts'), 'utf8');
   assert.match(app, /id: "multi_subject_results"/);
   assert.match(app, /sourceMeta\?\.specializedType === "multi_subject_results"/);
-  assert.match(app, /student_profile_segmentation/);
+  assert.match(setupPolicy, /student_profile_segmentation/);
   assert.match(app, /الجنسيه\|الجنسية/);
   assert.match(edge, /multi_subject_results/);
   assert.match(edge, /سجل نتائج فردي متعدد المواد/);
