@@ -77,3 +77,10 @@ test('cross-section flow uses remaining A4 space without shrinking report fonts'
   const css = source.slice(cssStart, cssEnd);
   assert.doesNotMatch(css, /font-size/);
 });
+
+test('short analytical charts use compact measured cards so the next section can share remaining A4 space', () => {
+  assert.match(source, /compact=!wide&&rowCount>0&&rowCount<=4/);
+  assert.match(source, /chart-card\.chart-compact\{min-height:58mm\}/);
+  assert.match(source, /analytical-charts:not\(:has\(\.chart-wide\)\) \.chart-card\.chart-compact\{min-height:64mm\}/);
+  assert.match(source, /cross-section-bridge \.analytical-charts:not\(:has\(\.chart-wide\)\) \.chart-card\.chart-compact\{min-height:54mm\}/);
+});

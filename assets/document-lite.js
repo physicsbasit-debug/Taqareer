@@ -812,6 +812,159 @@
     };
   }
 
+  function canonicalPdfSubject(value) {
+    const raw = cleanMetadataValue(value);
+    const normalized = normalize(raw);
+    const known = [
+      [/(?:الاحياء|الحياء)/, "الأحياء"],
+      [/الكيمياء/, "الكيمياء"],
+      [/الفيزياء/, "الفيزياء"],
+      [/العلوم/, "العلوم"],
+      [/الرياضيات/, "الرياضيات"],
+      [/(?:اللغه العربيه|اللغة العربية)/, "اللغة العربية"],
+      [/(?:اللغه الانجليزيه|اللغة الإنجليزية)/, "اللغة الإنجليزية"],
+      [/الدراسات/, "الدراسات الاجتماعية"],
+      [/(?:التربيه الاسلاميه|التربية الإسلامية)/, "التربية الإسلامية"],
+    ];
+    const hit = known.find(([pattern]) => pattern.test(normalized));
+    return hit ? hit[1] : raw;
+  }
+
+  function extractAggregatedNarrativeSchool(lines) {
+    for (const line of lines || []) {
+      const text = normalizeDigits(lineTextValue(line));
+      if (!/(?:للبنين|للبنات)/.test(normalize(text)) || !/الصفوف/.test(normalize(text))) continue;
+      const range = text.match(/[()（）]?\s*(\d{1,2})\s*[-–—/]\s*(\d{1,2})\s*[()（）]?/);
+      let school = cleanMetadataValue(text
+        .replace(/الصفوف/g, "")
+        .replace(/[()（）]?\s*\d{1,2}\s*[-–—/]\s*\d{1,2}\s*[()（）]?/g, "")
+        .replace(/^[:：|\s]+|[:：|\s]+$/g, ""));
+      const grade = range ? [Number(range[1]), Number(range[2])].sort((a, b) => a - b).join("-") : "";
+      if (grade && school) school = `${school} (${grade})`;
+      return { school, grade };
+    }
+    const school = extractSchoolFromPdfPages([{ lines }]);
+    return { school, grade: extractGradeFromSchool(school) };
+  }
+
+  function extractAggregatedNarrativeMetadata(pageRecords) {
+    const lines = (pageRecords || []).flatMap(page => page.lines || []);
+    const textLines = lines.map(lineTextValue).filter(Boolean);
+    const title = cleanMetadataValue(textLines.find(text => /التقرير التجميعي.*(?:الزياره|الزيارة).*(?:الاشرافيه|الإشرافية|الشرافيه)/.test(normalize(text))) || "");
+    const schoolInfo = extractAggregatedNarrativeSchool(lines);
+    const yearCandidates = textLines.flatMap(text => [...normalizeDigits(text).matchAll(/20\d{2}\s*[\/-]\s*20\d{2}/g)].map(match => match[0]));
+    const academicRaw = yearCandidates.find(value => {
+      const match = value.match(/(20\d{2})\s*[\/-]\s*(20\d{2})/);
+      return match && Math.abs(Number(match[1]) - Number(match[2])) === 1;
+    }) || "";
+    const academic = normalizeAcademicYear(academicRaw);
+    const dateCandidates = textLines.flatMap(text => [...normalizeDigits(text).matchAll(/20\d{2}\s*[\/-]\s*\d{1,2}\s*[\/-]\s*\d{1,2}/g)].map(match => match[0]));
+    const reportDate = dateCandidates.find(value => {
+      const match = value.match(/20\d{2}\s*[\/-]\s*(\d{1,2})\s*[\/-]\s*(\d{1,2})/);
+      return match && Number(match[1]) >= 1 && Number(match[1]) <= 12 && Number(match[2]) >= 1 && Number(match[2]) <= 31;
+    })?.replace(/\s+/g, "") || "";
+    const subject = canonicalPdfSubject(extractSubjectFromTitle(title));
+    const region = cleanMetadataValue(textLines.find(text => /محافظه\s+جنوب\s+الباطنه|محافظة\s+جنوب\s+الباطنة/.test(normalize(text))) || "");
+    const schoolCode = normalizeDigits(valueFromLabeledLine(lines, /رمز المدرسه/, value => /^\d{3,8}$/.test(normalizeDigits(value))) || (pageText(lines).match(/رمز\s*المدرس[ةه]\s*[:：]?\s*(\d{3,8})/i)?.[1] || ""));
+    return {
+      title,
+      school: schoolInfo.school,
+      subject,
+      grade: schoolInfo.grade,
+      academicYear: academic.value,
+      academicYearRaw: academic.raw,
+      reportDate,
+      region,
+      schoolCode,
+      directorate: cleanMetadataValue(textLines.find(text => /المديريه.*للتعليم|المديرية.*للتعليم/.test(normalize(text))) || ""),
+      ministry: cleanMetadataValue(textLines.find(text => /وزاره التعليم|وزارة التعليم/.test(normalize(text))) || ""),
+      aggregatedReport: true,
+    };
+  }
+
+  const AGGREGATED_NARRATIVE_SECTIONS = Object.freeze([
+    { id: "strengths", label: "جوانب الإجادة", pattern: /جوانب.*(?:الاجاده|الجاده).*ادلتها/ },
+    { id: "development", label: "جوانب التطوير", pattern: /الجوانب.*تحتاج.*تطوير/ },
+    { id: "support", label: "الدعم المقدم", pattern: /^الدعم المقدم$/ },
+    { id: "discussion", label: "المداولة الإشرافية", pattern: /مداوله اشرافيه|مداولة إشرافية/ },
+    { id: "recommendations", label: "التوصيات", pattern: /^التوصيات$/ },
+  ]);
+
+  function aggregatedNarrativeSection(text) {
+    const value = normalize(text);
+    return AGGREGATED_NARRATIVE_SECTIONS.find(section => section.pattern.test(value)) || null;
+  }
+
+  function buildAggregatedNarrativeRows(pageRecords) {
+    const rows = [];
+    let current = null;
+    let serial = 0;
+    for (const page of pageRecords || []) {
+      for (const line of page.lines || []) {
+        const text = lineTextValue(line);
+        if (!text) continue;
+        const section = aggregatedNarrativeSection(text);
+        if (section) { current = section; continue; }
+        if (!current) continue;
+        const normalized = normalize(text);
+        if (/^(?:سلطنه عمان|وزاره التعليم|المديريه.*للتعليم|المنطقه|المدرسه|رمز المدرسه|العام الدراس|الساعه|التاريخ|رقم الصفحه)/.test(normalized)) continue;
+        if (/التقرير التجميعي.*(?:الزياره|الزيارة)/.test(normalized)) continue;
+        if (/(?:طبع|بع) بواسطه/.test(normalized)) {
+          const previous = rows.at(-1);
+          if (previous && previous["الصفحة"] === page.pageNumber && /^[\u0600-\u06FF]+(?:\s+[\u0600-\u06FF]+){1,5}$/.test(String(previous["النص"] || "").trim()) && String(previous["النص"] || "").trim().length <= 80) {
+            rows.pop();
+            serial -= 1;
+          }
+          current = null;
+          continue;
+        }
+        if (/^[\d:：\s\/\-صم]+$/.test(normalizeDigits(text))) continue;
+        if (text.length < 4) continue;
+        rows.push({ "م": ++serial, "القسم": current.label, "النص": text, "الصفحة": page.pageNumber });
+      }
+    }
+    return rows;
+  }
+
+  function detectAggregatedSupervisionNarrativePdf(pageRecords) {
+    const allText = normalize((pageRecords || []).map(page => pageText(page.lines || [])).join("\n"));
+    const sectionHits = AGGREGATED_NARRATIVE_SECTIONS.filter(section => section.pattern.test(allText)).length;
+    if (!/التقرير التجميعي/.test(allText) || !/(?:الزياره|الزيارة).*(?:الاشرافيه|الإشرافية|الشرافيه)/.test(allText) || sectionHits < 3) return null;
+    const rows = buildAggregatedNarrativeRows(pageRecords);
+    if (rows.length < 3) return null;
+    const metadata = extractAggregatedNarrativeMetadata(pageRecords);
+    const sourceWarnings = [];
+    if (metadata.academicYearRaw && metadata.academicYearRaw !== metadata.academicYear) {
+      sourceWarnings.push(`تم توحيد اتجاه العام الدراسي من ${metadata.academicYearRaw} إلى ${metadata.academicYear} للعرض.`);
+    }
+    const rawText = (pageRecords || []).map(page => pageText(page.lines || [])).filter(Boolean).join("\n");
+    return {
+      dataset: {
+        id: "pdf-supervision-narrative",
+        name: "تقرير إشرافي سردي منظم",
+        headers: ["م", "القسم", "النص", "الصفحة"],
+        rows,
+        rawText,
+        meta: {
+          sourceType: "pdf",
+          mode: "narrative",
+          specializedType: "supervision_narrative",
+          reportTitle: metadata.title,
+          metadata: { ...metadata, title: metadata.title },
+          sourceWarnings,
+          documentContext: {
+            aggregatedReport: true,
+            entityScope: "aggregated-multiple-visits-or-teachers",
+            contradictionPolicy: "contextual-variation-until-record-identity-is-proven",
+          },
+          narrativeSections: [...new Set(rows.map(row => row["القسم"]))],
+          pageCount: pageRecords.length,
+        },
+      },
+      warnings: sourceWarnings,
+    };
+  }
+
   function detectPdfPageReportTitle(lines, headerRow = 1) {
     const beforeHeader = (lines || []).slice(0, Math.max(0, Number(headerRow || 1) - 1))
       .map(line => String(line?.text || "").trim())
@@ -908,7 +1061,12 @@
     }
 
     const specialized = detectMultiVisitSupervisionPdf(pageRecords);
-    const datasets = specialized ? [specialized.dataset, ...mergeCompatiblePdfTables(pageDatasets)] : mergeCompatiblePdfTables(pageDatasets);
+    const narrativeSpecialized = specialized ? null : detectAggregatedSupervisionNarrativePdf(pageRecords);
+    const datasets = specialized
+      ? [specialized.dataset, ...mergeCompatiblePdfTables(pageDatasets)]
+      : narrativeSpecialized
+        ? [narrativeSpecialized.dataset, ...mergeCompatiblePdfTables(pageDatasets)]
+        : mergeCompatiblePdfTables(pageDatasets);
     const narrativeRows = allLines.map((line, index) => ({
       "م": index + 1,
       "الصفحة": line.page,
@@ -920,14 +1078,14 @@
       headers: ["م", "الصفحة", "النص"],
       rows: narrativeRows,
       rawText: allLines.map(line => line.text).join("\n"),
-      meta: { sourceType: "pdf", mode: "narrative", pageCount: pdf.numPages, textItemCount: totalItems }
+      meta: { sourceType: "pdf", mode: "narrative", pageCount: pdf.numPages, textItemCount: totalItems, metadata: narrativeSpecialized?.dataset?.meta?.metadata || {} }
     });
 
     return {
       name: file.name,
       kind: "pdf",
       datasets,
-      preferredDatasetId: specialized?.dataset?.id || "",
+      preferredDatasetId: specialized?.dataset?.id || narrativeSpecialized?.dataset?.id || "",
       warnings: [
         ...(totalItems < 20 ? ["طبقة النص محدودة؛ راجع المعاينة قبل اعتماد التحليل."] : []),
         ...(specialized?.warnings || []),
@@ -996,7 +1154,7 @@
     constants: { PDF_MODULE_URL, PDF_WORKER_URL },
     _test: {
       matrixToTable, pruneGeneratedEmptyColumns, groupPdfItemsIntoLines, detectPdfPageReportTitle, paragraphRows, parseWordBody, parseWordMetadata, parseWordMetadataTokens, storyTextTokens,
-      detectMultiVisitSupervisionPdf, parseSupervisionRatings, parseSupervisionNarrative, parseVisitPage,
+      detectMultiVisitSupervisionPdf, detectAggregatedSupervisionNarrativePdf, extractAggregatedNarrativeMetadata, buildAggregatedNarrativeRows, parseSupervisionRatings, parseSupervisionNarrative, parseVisitPage,
       supervisionVisitRows, indicators: SUPERVISION_VISIT_INDICATORS, scale: SUPERVISION_SCALE,
     }
   };

@@ -651,6 +651,35 @@
     if (!headers.length) blockers.push({ title: "لا توجد عناوين أعمدة", detail: "لا يمكن فهم بنية البيانات دون عناوين." });
     if (!rows.length) blockers.push({ title: "لا توجد سجلات", detail: "الملف لا يحتوي بيانات بعد صف العناوين." });
 
+    const narrativeQuality = sourceMeta?.mode === "narrative" || type?.id === "supervision_narrative" || semanticProfile?.dataNature === "narrative";
+    if (narrativeQuality) {
+      const textHeader = findHeader(headers, ["النص", "المحتوى", "العبارة"]);
+      const sectionHeader = findHeader(headers, ["القسم", "المحور", "النوع"]);
+      const narrativeRows = textHeader ? rows.filter(row => String(row[textHeader] ?? "").trim()) : [];
+      if (!textHeader) blockers.push({ title: "لم يُحدد حقل النص السردي", detail: "يحتاج التقرير السردي إلى حقل نص واضح قبل التحليل." });
+      if (textHeader && !narrativeRows.length) blockers.push({ title: "لا توجد عبارات سردية قابلة للتحليل", detail: "لم يعثر التطبيق على نصوص فعلية داخل التقرير." });
+
+      const sections = new Set(sectionHeader ? narrativeRows.map(row => String(row[sectionHeader] ?? "").trim()).filter(Boolean) : []);
+      const expectedSections = type?.id === "supervision_narrative"
+        ? ["جوانب الإجادة", "جوانب التطوير", "الدعم المقدم", "المداولة الإشرافية", "التوصيات"]
+        : [];
+      const foundExpected = expectedSections.filter(label => [...sections].some(value => normalize(value) === normalize(label)));
+      const completeness = expectedSections.length ? Math.round((foundExpected.length / expectedSections.length) * 1000) / 10 : (narrativeRows.length ? 100 : 0);
+
+      if (expectedSections.length) {
+        if (foundExpected.length >= 3) info.push({ title: "اكتملت بنية التقرير السردي", detail: `تم فصل ${foundExpected.length} من ${expectedSections.length} أقسام إشرافية رئيسية وربط كل عبارة بقسمها.` });
+        else warnings.push({ title: "بنية سردية جزئية", detail: `تم التعرف على ${foundExpected.length} من ${expectedSections.length} أقسام إشرافية متوقعة. سيقتصر التحليل على الأقسام الموجودة.` });
+      }
+      const metadata = sourceMeta?.metadata || {};
+      const metadataItems = [metadata.school, metadata.subject, metadata.grade, metadata.academicYear].filter(Boolean);
+      if (metadataItems.length) info.unshift({ title: "تم فصل بيانات الترويسة عن النص", detail: metadataItems.join(" · ") });
+      if (sourceMeta?.documentContext?.aggregatedReport || metadata.aggregatedReport) {
+        info.push({ title: "تقرير تجميعي متعدد السياقات", detail: "يعامل اختلاف العبارات كتباين سياقي حتى يثبت أنها تخص المعلم والزيارة والزمن نفسها." });
+      }
+      for (const warning of sourceMeta?.sourceWarnings || []) warnings.push({ title: "تنبيه استخراج PDF", detail: String(warning) });
+      return { blockers, warnings, info, completeness, basisHeaders: textHeader ? [textHeader] : [], missingRequirements: [] };
+    }
+
     const requirements = REQUIRED_FIELDS[type?.id] || [];
     const requiredHeaders = requirements.map(aliases => findHeader(headers, aliases)).filter(Boolean);
     const activeHeaders = headers.filter(header => rows.some(row => String(row[header] ?? "").trim() !== ""));
@@ -738,7 +767,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "1.2.23",
+      appVersion: "1.2.24",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -1376,6 +1405,25 @@
     if (narrativeMode) {
       $("narrativeTextReview").value = state.narrativeText || state.rows.map(row => row["النص"] ?? Object.values(row).join(" ")).join("\n");
     }
+    const evidenceTitle = $("deterministicEvidenceTitle");
+    const evidenceList = $("deterministicEvidenceList");
+    if (evidenceTitle && evidenceList) {
+      evidenceTitle.textContent = narrativeMode ? "الأدلة البنيوية والسردية" : "الحسابات والأدلة";
+      const evidenceItems = narrativeMode
+        ? [
+            "عدّ العبارات وربط كل عبارة بالقسم الذي وردت فيه دون تحويل النص إلى جدول درجات.",
+            "فحص حضور أقسام الإجادة والتطوير والدعم والمداولة والتوصيات واتساقها السياقي.",
+            "كشف التكرار الموضوعي والتباين السياقي دون اعتباره تناقضًا مؤكدًا ما لم تتطابق الزيارة والمعلم والزمن.",
+            "إسناد الاستنتاجات إلى أسطر وأقسام ثابتة، وفحص قابلية الدعم والتوصيات للتنفيذ والقياس."
+          ]
+        : [
+            "العد والمتوسط والوسيط والمدى.",
+            "فحص الاكتمال والتكرار والقيم غير الصالحة.",
+            "نسبة الإتقان عند تأكيد الدرجة الكلية.",
+            "إسناد القراءة التفسيرية بأرقام ورسوم ومراجع أدلة ثابتة لا تتغير أثناء التحليل."
+          ];
+      evidenceList.innerHTML = evidenceItems.map(item => `<li>${escapeHtml(item)}</li>`).join("");
+    }
 
     const nums = numericColumns();
     const scoreSelect = $("scoreColumnSelect");
@@ -1434,6 +1482,8 @@
       comparative_analysis: "مقارنة المقاييس أو الفئات وفق بنية الملف",
       indicator_analysis: "تحليل المؤشرات وترتيب الفجوات",
       narrative_evidence: "تحليل الأدلة السردية وقوة الاستدلال",
+      consistency_analysis: "فحص الاتساق والتباين السياقي بين الأقسام",
+      recommendation_quality: "فحص جودة الدعم والتوصيات وقابليتها للتنفيذ والقياس",
       adaptive_profile_analysis: "بناء تحليل تكيفي وفق ملف البنية الدلالي"
     };
     const selectedPlan = semanticFamilies.length
@@ -1613,7 +1663,7 @@
     if (!window.TaqareerReconciliation?.composePrimary) throw new Error("محرك التحقق من التحليل الذكي غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "1.2.23",
+      appVersion: "1.2.24",
       pipeline: {
         mode: "ai-primary-analysis-v1",
         instruction: "المحرك المحلي يحسب المؤشرات والرسوم فقط. يبني الذكاء الاصطناعي التشخيص والاستنتاجات والتدخلات من الأدلة، ثم تتحقق البوابة من المراجع قبل عرض التقرير."
@@ -2294,7 +2344,7 @@
   function exportAnalysis() {
     const payload = {
       app: "تقارير",
-      version: "1.2.23",
+      version: "1.2.24",
       generatedAt: new Date().toISOString(),
       source: state.sourceName,
       sourceMeta: state.sourceMeta,
@@ -2307,7 +2357,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v1.2.23.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v1.2.24.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
