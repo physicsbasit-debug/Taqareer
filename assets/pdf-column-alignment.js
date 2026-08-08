@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.0.0";
+  const VERSION = "1.1.0";
 
   function normalize(value) {
     return String(value ?? "")
@@ -144,10 +144,15 @@
     return { score, hardFailure, roles: roleScores, issues };
   }
 
+  function scoreValues(values = [], columns = []) {
+    return candidateScore((values || []).map(clean), columns || []);
+  }
+
   window.TaqareerPdfColumnAlignment = {
     VERSION,
     alignCells,
     validateRows,
+    scoreValues,
     _test: { normalize, normalizeDigits, clean, parseNumber, isPlaceholder, isLevelToken, isEnrollmentToken, valueRoleScore, candidateScore },
   };
 })();

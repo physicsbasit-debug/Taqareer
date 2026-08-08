@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "2.2.0";
+  const VERSION = "2.3.0";
   const HIGH_CONFIDENCE = 0.85;
   const REVIEW_CONFIDENCE = 0.60;
 
@@ -33,6 +33,19 @@
   function lineCells(line) {
     const cells = Array.isArray(line?.cells) ? line.cells : [];
     return cells.map(clean).filter(Boolean);
+  }
+  function lineCellEntries(line) {
+    const cells = Array.isArray(line?.cells) ? line.cells : [];
+    const boxes = Array.isArray(line?.cellBoxes) ? line.cellBoxes : [];
+    return cells.map((value, index) => {
+      const box = boxes[index] || null;
+      return {
+        text: clean(value),
+        x0: Number.isFinite(Number(box?.x0)) ? Number(box.x0) : NaN,
+        x1: Number.isFinite(Number(box?.x1)) ? Number(box.x1) : NaN,
+        center: Number.isFinite(Number(box?.center)) ? Number(box.center) : NaN,
+      };
+    }).filter(entry => entry.text);
   }
 
   function provenance(pageNumber, line, confidence = 1) {
@@ -130,8 +143,10 @@
   }
 
   function inferHeaderSpec(line) {
-    const rawCells = lineCells(line).filter(cell => !/^[\s:：|\-–—/]+$/.test(cell));
-    const columns = rawCells.map((cell, sourceIndex) => {
+    const rawEntries = lineCellEntries(line).filter(entry => !/^[\s:：|\-–—/]+$/.test(entry.text));
+    const rawCells = rawEntries.map(entry => entry.text);
+    const columns = rawEntries.map((entry, sourceIndex) => {
+      const cell = entry.text;
       const matches = tableHeaderMatches(cell);
       const match = matches[0] || null;
       return {
@@ -140,6 +155,9 @@
         role: match?.key || "unknown",
         header: match?.canonical || cell,
         matched: Boolean(match),
+        x0: entry.x0,
+        x1: entry.x1,
+        center: entry.center,
       };
     });
     const knownRoles = [...new Set(columns.filter(column => column.matched).map(column => column.role))];
@@ -243,24 +261,92 @@
     return row;
   }
 
+  function geometryAlignedValues(line, headerSpec) {
+    const columns = Array.isArray(headerSpec?.columns) ? headerSpec.columns : [];
+    const items = Array.isArray(line?.items) ? line.items.filter(item => clean(item?.str)) : [];
+    if (!columns.length || !items.length || columns.some(column => !Number.isFinite(Number(column?.center)))) return null;
+
+    const buckets = columns.map(() => []);
+    const centers = columns.map(column => Number(column.center));
+    for (const item of items) {
+      const x = Number(item?.x);
+      const width = Math.abs(Number(item?.width) || 0);
+      if (!Number.isFinite(x)) continue;
+      const center = x + width / 2;
+      let bestIndex = 0;
+      let bestDistance = Infinity;
+      centers.forEach((candidate, index) => {
+        const distance = Math.abs(center - candidate);
+        if (distance < bestDistance) { bestDistance = distance; bestIndex = index; }
+      });
+      buckets[bestIndex].push({ ...item, x, width });
+    }
+
+    const rtl = Boolean(line?.rtl);
+    return buckets.map(bucket => {
+      if (!bucket.length) return "";
+      const ordered = [...bucket].sort((a, b) => rtl ? b.x - a.x : a.x - b.x);
+      return clean(ordered.map(item => item.str).join(" "));
+    });
+  }
+
+  function continuationCandidate(row, headerSpec) {
+    const roles = headerSpec?.roles || [];
+    const serialIndex = roles.indexOf("serial");
+    if (serialIndex < 0 || !row) return false;
+    const serial = clean(row[headerSpec.headers[serialIndex]]);
+    if (/^\d+$/.test(normalizeDigits(serial))) return false;
+    const nonEmpty = headerSpec.headers
+      .map((header, index) => ({ role: roles[index] || "unknown", value: clean(row[header]) }))
+      .filter(item => item.value);
+    return nonEmpty.length > 0 && nonEmpty.every(item => ["student", "nationality", "notes", "second_round", "unknown"].includes(item.role));
+  }
+
+  function mergeContinuationRow(previous, continuation, headerSpec) {
+    if (!previous || !continuation) return previous;
+    const roles = headerSpec?.roles || [];
+    headerSpec.headers.forEach((header, index) => {
+      const role = roles[index] || "unknown";
+      const value = clean(continuation[header]);
+      if (!value || !["student", "nationality", "notes", "second_round", "unknown"].includes(role)) return;
+      const current = clean(previous[header]);
+      previous[header] = current ? `${current} ${value}` : value;
+    });
+    return previous;
+  }
+
   function rowFromCells(line, headerSpec) {
     const headers = headerSpec.headers || [];
     const cells = lineCells(line);
-    if (!headers.length || !cells.length) return null;
+    if (!headers.length || (!cells.length && !(line?.items || []).length)) return null;
 
     if (headerSpec.roles?.includes("item") && headerSpec.roles.some(role => ["mean", "score", "value"].includes(role))) {
       const specialized = rowFromDimensionMeasure(line, headerSpec);
       if (specialized) return specialized;
     }
 
-    if (cells.length < Math.min(2, headers.length)) return null;
-    const alignment = window.TaqareerPdfColumnAlignment?.alignCells
-      ? window.TaqareerPdfColumnAlignment.alignCells(cells, headerSpec.columns || [])
-      : { values: cells, orientation: "source", score: 0.75 };
-    const values = alignment.values || cells;
-    if (values.length !== headers.length) return null;
-    const row = Object.fromEntries(headers.map((header, index) => [header, values[index] ?? ""]));
-    Object.defineProperty(row, "__alignment", { value: alignment, enumerable: false, configurable: true });
+    const aligner = window.TaqareerPdfColumnAlignment;
+    let best = null;
+    if (cells.length === headers.length) {
+      const aligned = aligner?.alignCells
+        ? aligner.alignCells(cells, headerSpec.columns || [])
+        : { values: cells, orientation: "source", score: 0.75, alternateScore: 0 };
+      if ((aligned.values || []).length === headers.length) best = aligned;
+    }
+
+    const geometryValues = geometryAlignedValues(line, headerSpec);
+    if (geometryValues && geometryValues.length === headers.length) {
+      const geometryScore = aligner?.scoreValues
+        ? aligner.scoreValues(geometryValues, headerSpec.columns || [])
+        : geometryValues.filter(Boolean).length / Math.max(1, headers.length);
+      if (!best || geometryScore > Number(best.score || 0) + 0.03 || cells.length !== headers.length) {
+        best = { values: geometryValues, orientation: "geometry", score: geometryScore, alternateScore: Number(best?.score || 0) };
+      }
+    }
+
+    if (!best || (best.values || []).length !== headers.length) return null;
+    const row = Object.fromEntries(headers.map((header, index) => [header, best.values[index] ?? ""]));
+    Object.defineProperty(row, "__alignment", { value: best, enumerable: false, configurable: true });
     return row;
   }
 
@@ -290,6 +376,7 @@
         const headerSpec = inferHeaderSpec(lines[index]);
         if (!headerSpec) continue;
         const rows = [];
+        const serialIndex = (headerSpec.roles || []).indexOf("serial");
         let misses = 0;
         let endIndex = index;
         for (let cursor = index + 1; cursor < lines.length; cursor += 1) {
@@ -305,7 +392,15 @@
             continue;
           }
           const row = rowFromCells(line, headerSpec);
-          if (rowIsPlausible(row, headerSpec)) {
+          if (serialIndex >= 0 && continuationCandidate(row, headerSpec) && rows.length) {
+            mergeContinuationRow(rows.at(-1), row, headerSpec);
+            misses = 0;
+            endIndex = cursor;
+            continue;
+          }
+          const serialValue = serialIndex >= 0 && row ? normalizeDigits(clean(row[headerSpec.headers[serialIndex]])) : "";
+          const serialValid = serialIndex < 0 || /^\d+$/.test(serialValue);
+          if (serialValid && rowIsPlausible(row, headerSpec)) {
             rows.push(row);
             misses = 0;
             endIndex = cursor;
@@ -421,6 +516,75 @@
     return "";
   }
 
+  function metadataValueAfterLabel(pageRecords, labelPattern) {
+    for (const page of pageRecords || []) {
+      for (const line of page.lines || []) {
+        const entries = lineCellEntries(line);
+        for (let index = 0; index < entries.length; index += 1) {
+          const raw = entries[index].text;
+          const n = normalize(raw);
+          const inline = raw.match(/^[^:：]{1,30}[:：]\s*(.+)$/);
+          if (labelPattern.test(n) && inline?.[1]) {
+            const value = clean(inline[1]);
+            if (value && !metadataLabel(value)) return { value, item: { pageNumber: page.pageNumber, line } };
+          }
+          if (!labelPattern.test(n)) continue;
+          for (let offset = 1; offset <= 2; offset += 1) {
+            const candidate = clean(entries[index + offset]?.text || "").replace(/^[:：]\s*/, "");
+            if (!candidate || /^[\s:：|\-–—/]+$/.test(candidate) || metadataLabel(candidate)) continue;
+            return { value: candidate, item: { pageNumber: page.pageNumber, line } };
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  function sameHeaderSignature(table, line) {
+    const spec = inferHeaderSpec(line);
+    if (!spec) return false;
+    return (spec.headers || []).map(normalize).join("|") === (table.headers || []).map(normalize).join("|");
+  }
+
+  function withPaginationContract(table, pageRecords) {
+    const expectedPages = (pageRecords || [])
+      .filter(page => (page.lines || []).some(line => sameHeaderSignature(table, line)))
+      .map(page => Number(page.pageNumber))
+      .filter(Number.isFinite);
+    const parsedPages = [...new Set((table.pages || []).map(Number).filter(Number.isFinite))].sort((a, b) => a - b);
+    const missingPages = expectedPages.filter(page => !parsedPages.includes(page));
+    const roles = table.roles || table.structure?.columnRoles?.map(item => item.role) || [];
+    const serialIndex = roles.indexOf("serial");
+    let serial = null;
+    if (serialIndex >= 0) {
+      const header = table.headers?.[serialIndex];
+      const values = (table.rows || []).map(row => Number(normalizeDigits(clean(row?.[header])))).filter(Number.isInteger);
+      const unique = [...new Set(values)];
+      const sorted = [...unique].sort((a, b) => a - b);
+      const gaps = [];
+      for (let index = 1; index < sorted.length; index += 1) {
+        if (sorted[index] > sorted[index - 1] + 1) gaps.push([sorted[index - 1] + 1, sorted[index] - 1]);
+      }
+      serial = {
+        first: sorted[0] ?? null,
+        last: sorted.at(-1) ?? null,
+        observedCount: values.length,
+        uniqueCount: unique.length,
+        duplicateCount: Math.max(0, values.length - unique.length),
+        gaps,
+      };
+    }
+    const coverageRatio = expectedPages.length ? parsedPages.filter(page => expectedPages.includes(page)).length / expectedPages.length : 1;
+    const pagination = { expectedPages, parsedPages, missingPages, coverageRatio, serial };
+    const incompleteRepeatedTable = expectedPages.length >= 2 && missingPages.length > 0;
+    return {
+      ...table,
+      status: incompleteRepeatedTable ? "unresolved" : table.status,
+      confidence: incompleteRepeatedTable ? Math.min(Number(table.confidence || 0), 0.59) : table.confidence,
+      structure: { ...(table.structure || {}), pagination },
+    };
+  }
+
   function findMetadata(pageRecords) {
     const entries = [];
     const lines = (pageRecords || []).flatMap(page => (page.lines || []).map(line => ({ pageNumber: page.pageNumber, line })));
@@ -439,11 +603,20 @@
     }
 
     const schoolItem = lines.find(item => /(?:للبنين|للبنات)/.test(normalize(lineText(item.line))) && (/الصفوف/.test(normalize(lineText(item.line))) || gradeRangeFromText(lineText(item.line))));
+    let schoolGradeRange = "";
     if (schoolItem) {
       const school = schoolFromText(lineText(schoolItem.line));
-      const grade = gradeRangeFromText(lineText(schoolItem.line));
-      if (school) add("school", grade ? `${school} (${grade})` : school, schoolItem, 0.97);
-      if (grade) add("grade", grade, schoolItem, 0.98);
+      schoolGradeRange = gradeRangeFromText(lineText(schoolItem.line));
+      if (school) add("school", schoolGradeRange ? `${school} (${schoolGradeRange})` : school, schoolItem, 0.97);
+      if (schoolGradeRange) add("schoolGradeRange", schoolGradeRange, schoolItem, 0.98);
+    }
+
+    const explicitGrade = metadataValueAfterLabel(pageRecords, /^الصف$/);
+    if (explicitGrade?.value) {
+      add("analyzedGrade", explicitGrade.value, explicitGrade.item, 0.98);
+      add("grade", explicitGrade.value, explicitGrade.item, 0.98);
+    } else if (schoolGradeRange) {
+      add("grade", schoolGradeRange, schoolItem, 0.96);
     }
 
     const academic = academicYearFromText(text);
@@ -476,9 +649,10 @@
     if (directorateItem) add("directorate", lineText(directorateItem.line), directorateItem, 0.95);
 
     let title = entries.find(entry => entry.key === "title")?.value || "";
-    const subject = subjectFromPageRecords(pageRecords, title);
-    if (subject && titleItem) {
-      add("subject", subject, titleItem, 0.93);
+    const explicitSubject = metadataValueAfterLabel(pageRecords, /^الماد[هة]$/);
+    const subject = clean(explicitSubject?.value || subjectFromPageRecords(pageRecords, title));
+    if (subject) {
+      add("subject", subject, explicitSubject?.item || titleItem || lines[0], explicitSubject ? 0.98 : 0.93);
       if (title && !normalize(title).includes(normalize(subject))) {
         const titleEntry = entries.find(entry => entry.key === "title");
         if (titleEntry) titleEntry.value = clean(`${title} ${subject}`);
@@ -686,7 +860,8 @@
       : [];
     const flatTables = discoverTables(safePages, blockIndex)
       .filter(table => !hierarchicalTables.some(structured => tablesOverlap(structured, table)));
-    const tables = mergeCompatibleTables([...hierarchicalTables, ...flatTables]);
+    const tables = mergeCompatibleTables([...hierarchicalTables, ...flatTables])
+      .map(table => withPaginationContract(table, safePages));
     const sections = buildSections(safePages, blockIndex, tables);
     const unresolved = blocks.filter(block => block.type === "unknown" && block.confidence < REVIEW_CONFIDENCE);
     const noise = blocks.filter(block => ["footer", "noise", "repeated_header"].includes(block.type));
@@ -780,6 +955,11 @@
       schoolFromText,
       subjectFromTitle,
       subjectFromPageRecords,
+      metadataValueAfterLabel,
+      geometryAlignedValues,
+      continuationCandidate,
+      mergeContinuationRow,
+      withPaginationContract,
       tablesOverlap,
       isNoiseText,
     },

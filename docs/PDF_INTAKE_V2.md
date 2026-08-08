@@ -1,3 +1,11 @@
+# تحديث v2.3.0 — هندسة الأعمدة واكتمال الصفحات
+
+- كل سطر PDF يحتفظ الآن بـ `cellBoxes` (x0/x1/center) إضافة إلى النص.
+- إذا لم يطابق تقسيم الفراغات عدد الأعمدة، تعاد إسقاط عناصر النص الخام على مراكز أعمدة رأس الجدول.
+- الجداول المتكررة عبر الصفحات تحمل `structure.pagination` وفيها `expectedPages`, `parsedPages`, `missingPages`, `coverageRatio` وإحصاء تسلسل عند وجود عمود رقم.
+- وجود رأس جدول متكرر في صفحة مفقودة يمنع اعتماد الجدول الجزئي.
+- `metadata.grade` يفضل الصف المحلل الصريح، بينما يحتفظ `metadata.schoolGradeRange` بنطاق صفوف المدرسة.
+
 # Document Intake v2 — PDF Canonical Structure Contract
 
 ## الهدف

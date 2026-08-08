@@ -411,14 +411,23 @@
         }
         if (index === asc.length - 1 && current.length) cells.push(current);
       });
-      let cellTexts = cells.map(cell => {
+      let cellEntries = cells.map(cell => {
         const ordered = rtl ? [...cell].sort((a, b) => b.x - a.x) : cell;
-        return ordered.map(item => item.str).join(" ").replace(/\s+/g, " ").trim();
+        const text = ordered.map(item => item.str).join(" ").replace(/\s+/g, " ").trim();
+        if (!text) return null;
+        const x0 = Math.min(...cell.map(item => item.x));
+        const x1 = Math.max(...cell.map(item => item.x + item.width));
+        return { text, x0, x1, center: (x0 + x1) / 2 };
       }).filter(Boolean);
-      if (rtl) cellTexts = cellTexts.reverse();
+      if (rtl) cellEntries = cellEntries.reverse();
+      const cellTexts = cellEntries.map(entry => entry.text);
       const lineText = (rtl ? [...usable].sort((a, b) => b.x - a.x) : asc)
         .map(item => item.str).join(" ").replace(/\s+/g, " ").trim();
-      return { lineIndex: lineIndex + 1, y: group.y, rtl, text: lineText, cells: cellTexts, items: usable };
+      return {
+        lineIndex: lineIndex + 1, y: group.y, rtl, text: lineText, cells: cellTexts,
+        cellBoxes: cellEntries.map(entry => ({ ...entry })),
+        items: usable
+      };
     }).filter(line => line.text);
   }
 
@@ -1090,6 +1099,15 @@
     const canonicalDatasets = canonicalDocument && intakeEngine?.datasetsFromCanonical
       ? intakeEngine.datasetsFromCanonical(canonicalDocument)
       : [];
+    const paginationIncomplete = Boolean(canonicalDocument?.tables?.some(table => Array.isArray(table?.structure?.pagination?.missingPages) && table.structure.pagination.missingPages.length));
+    if (paginationIncomplete && !canonicalDatasets.length) {
+      const incomplete = canonicalDocument.tables.find(table => Array.isArray(table?.structure?.pagination?.missingPages) && table.structure.pagination.missingPages.length);
+      const missing = incomplete?.structure?.pagination?.missingPages || [];
+      const error = new Error(`اكتشف التطبيق جدولًا متعدد الصفحات، لكن لم تكتمل قراءة الصفحات ${missing.join("، ")}. أوقف التحليل حتى لا يعتمد نتيجة جزئية.`);
+      error.code = "PDF_TABLE_INCOMPLETE";
+      error.details = { missingPages: missing, expectedPages: incomplete?.structure?.pagination?.expectedPages || [], parsedPages: incomplete?.structure?.pagination?.parsedPages || [] };
+      throw error;
+    }
     const legacyMergedTables = mergeCompatiblePdfTables(legacyPageDatasets);
     const shadowComparison = comparePdfIntakeTables(canonicalDatasets, legacyMergedTables);
     for (const dataset of canonicalDatasets) {

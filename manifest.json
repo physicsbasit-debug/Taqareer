@@ -1,8 +1,8 @@
 {
   "app": "تقارير",
-  "version": "1.2.28",
-  "phase": "Phase 2-D Fix 21 - Cross-Section A4 Flow",
-  "releaseName": "Cross-Section A4 Flow and Safe Whitespace Recovery",
+  "version": "1.2.29",
+  "phase": "Phase 2-D Fix 29 - Full-Document PDF Geometry",
+  "releaseName": "Full-Document PDF Geometry and Pagination Contract",
   "buildType": "static-github-pages-plus-supabase-edge-function",
   "supportedInputs": {
     "table": [
@@ -65,6 +65,10 @@
   },
   "features": [
     "adaptive-analysis-router",
+    "full-document-pdf-pagination-contract",
+    "pdf-geometric-column-lanes",
+    "pdf-repeated-header-page-coverage-guard",
+    "explicit-analyzed-grade-metadata",
     "specialized-form-analyzers",
     "deep-descriptive-statistics",
     "mastery-metrics-single-source-of-truth",
