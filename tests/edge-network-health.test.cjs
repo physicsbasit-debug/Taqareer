@@ -66,10 +66,10 @@ test('health operation verifies Edge connectivity without calling Gemini', async
   assert.equal(response.status, 200);
   assert.equal(body.ok, true);
   assert.equal(body.operation, 'health');
-  assert.equal(body.edgeVersion, '0.15.4');
+  assert.equal(body.edgeVersion, '0.15.5');
   assert.equal(body.aiKeyConfigured, true);
   assert.equal(body.provider, 'supabase-edge');
-  assert.equal(response.headers.get('x-taqareer-edge-version'), '0.15.4');
+  assert.equal(response.headers.get('x-taqareer-edge-version'), '0.15.5');
   assert.equal(runtime.getGeminiCalls(), 0);
 });
 

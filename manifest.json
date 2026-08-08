@@ -1,6 +1,6 @@
 {
   "app": "تقارير",
-  "version": "1.2.22",
+  "version": "1.2.23",
   "phase": "Phase 2-D Fix 21 - Cross-Section A4 Flow",
   "releaseName": "Cross-Section A4 Flow and Safe Whitespace Recovery",
   "buildType": "static-github-pages-plus-supabase-edge-function",
@@ -196,7 +196,7 @@
     "legacyAnalyzeThinkingBudget": 1024,
     "classificationThinkingBudget": 0,
     "reconciliationContractVersion": "6.6.0",
-    "edgeFunctionVersion": "0.15.4",
+    "edgeFunctionVersion": "0.15.5",
     "fastEnhancementModel": "gemini-3.5-flash-lite",
     "fastEnhancementThinkingBudget": 192,
     "fastEnhancementMaxOutputTokens": 2600,

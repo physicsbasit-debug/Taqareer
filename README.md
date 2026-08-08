@@ -4,9 +4,9 @@
 
 ## الحالة التشغيلية الحالية
 
-- التطبيق: `v1.2.22`
+- التطبيق: `v1.2.23`
 - تخطيط التقرير: Cross-Section A4 Flow يستغل المساحة المتبقية بين الأقسام دون تصغير الخط أو كسر البطاقات.
-- Supabase Edge: `V0.15.4`
+- Supabase Edge: `V0.15.5`
 - عقد التحليل: `6.6.0`
 - Semantic Profile: `2.1.0`
 - المصدر التشغيلي لوظيفة التحليل: `supabase/functions/analyze-educational-form/index.ts`

@@ -1,19 +1,21 @@
-const EDGE_VERSION = "0.15.4";
+const EDGE_VERSION = "0.15.5";
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 const DEFAULT_MODEL = "gemini-3.6-flash";
 const DEFAULT_FAST_MODEL = "gemini-3.5-flash-lite";
 const DEFAULT_ANALYSIS_MODEL = "gemini-3.6-flash";
 const FAST_MODEL_FALLBACKS = Object.freeze(["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.6-flash"]);
 const GENERAL_MODEL_FALLBACKS = Object.freeze(["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"]);
-const PRIMARY_MODEL_FALLBACKS = Object.freeze(["gemini-3.6-flash", "gemini-3.5-flash-lite"]);
-const PRIMARY_RESCUE_MODELS = Object.freeze(["gemini-3.5-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"]);
+const PRIMARY_REASONING_MODELS = Object.freeze(["gemini-3.6-flash", "gemini-3.5-flash"]);
+const PRIMARY_ACTION_MODELS = Object.freeze(["gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.5-flash"]);
+const PRIMARY_REPAIR_MODELS = Object.freeze(["gemini-3.5-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"]);
 const MAX_REQUEST_BYTES = 9_000_000;
 const MAX_IMAGE_COUNT = 4;
 const MAX_IMAGE_DATA_URL_LENGTH = 2_800_000;
-const PRIMARY_ANALYSIS_DEADLINE_MS = 42_000;
-const PRIMARY_MODEL_ATTEMPT_TIMEOUT_MS = 16_000;
-const PRIMARY_RESCUE_ATTEMPT_TIMEOUT_MS = 12_000;
-const PRIMARY_MIN_REMAINING_MS = 3_000;
+const PRIMARY_ANALYSIS_DEADLINE_MS = 45_000;
+const PRIMARY_REASONING_ATTEMPT_TIMEOUT_MS = 15_000;
+const PRIMARY_ACTION_ATTEMPT_TIMEOUT_MS = 13_000;
+const PRIMARY_REPAIR_ATTEMPT_TIMEOUT_MS = 11_000;
+const PRIMARY_MIN_REMAINING_MS = 2_500;
 
 type JsonRecord = Record<string, unknown>;
 
@@ -259,6 +261,36 @@ const PRIMARY_ANALYSIS_SCHEMA: JsonRecord = {
     },
   },
   required: ["contractVersion", "analysisProfile", "executive", "analysisUnits", "interventions", "methodChecks", "monitoringPlan", "additionalCautions", "missingDataRequests", "suggestedNewType"],
+};
+
+const PRIMARY_SCHEMA_PROPERTIES = PRIMARY_ANALYSIS_SCHEMA.properties as JsonRecord;
+
+// v0.15.5: لا نطلب العقد الضخم كاملًا في استجابة Gemini واحدة.
+// نقسمه إلى reasoning + action، ثم نركبه ونمرره على الحارس الكامل نفسه.
+const PRIMARY_REASONING_SCHEMA: JsonRecord = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    contractVersion: PRIMARY_SCHEMA_PROPERTIES.contractVersion,
+    analysisProfile: PRIMARY_SCHEMA_PROPERTIES.analysisProfile,
+    executive: PRIMARY_SCHEMA_PROPERTIES.executive,
+    analysisUnits: PRIMARY_SCHEMA_PROPERTIES.analysisUnits,
+    methodChecks: PRIMARY_SCHEMA_PROPERTIES.methodChecks,
+    additionalCautions: PRIMARY_SCHEMA_PROPERTIES.additionalCautions,
+    missingDataRequests: PRIMARY_SCHEMA_PROPERTIES.missingDataRequests,
+    suggestedNewType: PRIMARY_SCHEMA_PROPERTIES.suggestedNewType,
+  },
+  required: ["contractVersion", "analysisProfile", "executive", "analysisUnits", "methodChecks", "additionalCautions", "missingDataRequests", "suggestedNewType"],
+};
+
+const PRIMARY_ACTION_SCHEMA: JsonRecord = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    interventions: PRIMARY_SCHEMA_PROPERTIES.interventions,
+    monitoringPlan: PRIMARY_SCHEMA_PROPERTIES.monitoringPlan,
+  },
+  required: ["interventions", "monitoringPlan"],
 };
 
 function normalizeOrigin(value: string): string {
@@ -739,6 +771,60 @@ function buildPrimaryRepairPayload(payload: JsonRecord, rejectedText: string, re
     ...payload,
     repairContext: {
       mode: "contract_repair",
+      rejectionReason: cleanString(rejectionReason, 520),
+      previousCandidate,
+    },
+  };
+}
+
+function primaryReasoningInstructions(): string {
+  return `${primaryAnalysisInstructions()}
+
+مهمة هذا المقطع فقط: reasoning.
+- أخرج contractVersion وanalysisProfile وexecutive وanalysisUnits وmethodChecks وadditionalCautions وmissingDataRequests وsuggestedNewType فقط.
+- لا تخرج interventions ولا monitoringPlan في هذا المقطع.
+- فضّل 3 وحدات تحليل عندما تسمح الأدلة، ويمكن الاكتفاء بوحدتين فقط إذا كانت الأدلة محدودة.
+- methodChecks أداة إثراء وليست حشوًا؛ يمكن أن تكون مصفوفة فارغة عندما لا تضيف قيمة قرارية.
+- أعد JSON خامًا فقط وفق مخطط reasoning المرسل.`;
+}
+
+function primaryActionInstructions(): string {
+  return `أنت مسؤول تحويل الأدلة التربوية إلى تدخلات قابلة للتنفيذ والمتابعة في تطبيق «تقارير».
+
+قواعد إلزامية:
+1) أخرج تدخلين أو ثلاثة لقضايا أو فئات مختلفة فعلًا، لا نسخًا من نفس التدخل.
+2) كل intervention يحدد issue وtargetGroup وaction وخطوات تنفيذ ومسؤولًا وزمنًا ومؤشر نجاح وطريقة متابعة وبديلًا مختصرًا.
+3) استخدم evidenceRefs الموجودة حرفيًا في availableEvidenceRefs فقط.
+4) في ملفات الدرجات استخدم targetGroupIds من evidenceAnalysis.interventionMathContext.groups فقط، واستخدم successMetric المنظمة؛ الخادم يملك الحساب النهائي ويصحح الهدف رقميًا.
+5) في الأنواع غير الدرجية اجعل targetGroupIds فارغة وsuccessMetric.mode = custom وtargetValue = 0 وtargetSegmentId فارغًا.
+6) لا تحول الارتباط إلى سبب، ولا تسمِّ مهارة لا تدعمها البيانات.
+7) أخرج monitoringPlan من ثلاث مراحل بالضبط: خط أساس، متابعة مرحلية، قياس أثر نهائي.
+8) اجعل التدخلات مختصرة وعملية؛ بحد أقصى 3 خطوات لكل تدخل.
+9) لا تستخدم أسماء أشخاص ولا بيانات شخصية.
+10) أعد JSON خامًا فقط بالمفتاحين interventions وmonitoringPlan وفق المخطط.`;
+}
+
+function primarySegmentRepairInstructions(segment: "reasoning" | "action", rejectionReason = ""): string {
+  const reason = cleanString(rejectionReason, 520);
+  const base = segment === "reasoning" ? primaryReasoningInstructions() : primaryActionInstructions();
+  return `${base}
+
+وضع إصلاح مقطع موجّه: الاستجابة السابقة لهذا المقطع وصلت لكنها لم تحقق العقد.
+سبب الرفض: ${reason || "لم يكتمل المقطع وفق العقد."}
+ستجد previousCandidate داخل payload.segmentRepairContext. احتفظ بما هو صالح وصحح سبب الرفض فقط. لا تعِد بناء المقطع من الصفر بلا حاجة.`;
+}
+
+function buildPrimarySegmentRepairPayload(
+  payload: JsonRecord,
+  segment: "reasoning" | "action",
+  previousCandidate: JsonRecord,
+  rejectionReason: string,
+): JsonRecord {
+  return {
+    ...payload,
+    segmentRepairContext: {
+      mode: "segment_contract_repair",
+      segment,
       rejectionReason: cleanString(rejectionReason, 520),
       previousCandidate,
     },
@@ -1274,9 +1360,14 @@ function validatePrimaryAnalysis(result: unknown, payload: JsonRecord, mode: "pr
   }
   const richEvidence = allowed.size >= 6;
   const minUnits = mode === "primary" && richEvidence ? 3 : 2;
-  const minTools = mode === "primary" && allowed.size >= 4 ? 1 : 0;
-  if (units.length < minUnits || interventions.length < 2 || monitoringPlan.length < 3 || qualityTools.length < minTools) {
-    throw new Error("التحليل الذكي لم يبلغ عمق القرار المتوازن المطلوب من وحدات وتدخلات ومتابعة وأدوات جودة.");
+  // أدوات الجودة إثرائية، وليست سببًا لإسقاط تحليل كامل إذا كانت الأدلة لا تحتاج أداة إضافية.
+  const minTools = 0;
+  if (units.length < minUnits || interventions.length < 2 || monitoringPlan.length < 3) {
+    const missing: string[] = [];
+    if (units.length < minUnits) missing.push(`وحدات التحليل ${units.length}/${minUnits}`);
+    if (interventions.length < 2) missing.push(`التدخلات ${interventions.length}/2`);
+    if (monitoringPlan.length < 3) missing.push(`مراحل المتابعة ${monitoringPlan.length}/3`);
+    throw new Error(`التحليل الذكي لم يبلغ عمق القرار المتوازن المطلوب: ${missing.join("، ")}.`);
   }
 
   const numericGuardedInterventions = interventions.filter(item => item.numericGuard && typeof item.numericGuard === "object" && Boolean((item.numericGuard as JsonRecord).applied)).length;
@@ -1336,13 +1427,19 @@ function validatePrimaryAnalysis(result: unknown, payload: JsonRecord, mode: "pr
   };
 }
 
-function primaryRequestBody(payload: JsonRecord, instructions: string, thinkingLevel: "low" | "minimal", maxOutputTokens: number): JsonRecord {
+function primaryRequestBody(
+  payload: JsonRecord,
+  instructions: string,
+  schema: JsonRecord,
+  thinkingLevel: "low" | "minimal",
+  maxOutputTokens: number,
+): JsonRecord {
   return {
     systemInstruction: { parts: [{ text: instructions }] },
     contents: [{ role: "user", parts: [{ text: JSON.stringify(payload) }] }],
     generationConfig: {
       responseMimeType: "application/json",
-      responseJsonSchema: PRIMARY_ANALYSIS_SCHEMA,
+      responseJsonSchema: schema,
       thinkingConfig: { thinkingLevel },
       maxOutputTokens,
       candidateCount: 1,
@@ -1350,9 +1447,9 @@ function primaryRequestBody(payload: JsonRecord, instructions: string, thinkingL
   };
 }
 
-function tryValidatePrimaryCandidate(text: string, payload: JsonRecord, mode: "primary" | "rescue" = "primary"): { result: JsonRecord | null; error: unknown } {
+function tryValidatePrimaryObject(value: JsonRecord, payload: JsonRecord, mode: "primary" | "rescue" = "primary"): { result: JsonRecord | null; error: unknown } {
   try {
-    return { result: validatePrimaryAnalysis(parseJsonObject(text), payload, mode), error: null };
+    return { result: validatePrimaryAnalysis(value, payload, mode), error: null };
   } catch (error) {
     return { result: null, error };
   }
@@ -1363,90 +1460,283 @@ function usageCount(raw: JsonRecord, key: string): number {
   return Number(usage[key] || 0);
 }
 
-async function analyzePrimary(payload: JsonRecord): Promise<JsonRecord> {
-  const configured = normalizeModelName(Deno.env.get("GEMINI_ANALYSIS_MODEL") || DEFAULT_ANALYSIS_MODEL);
-  const preferred = /^gemini-3(?:\.|-)/i.test(configured) ? configured : DEFAULT_ANALYSIS_MODEL;
-  const models = uniqueModelCandidates(preferred, PRIMARY_MODEL_FALLBACKS);
-  const startedAt = performance.now();
-  const deadlineAt = startedAt + PRIMARY_ANALYSIS_DEADLINE_MS;
+type PrimarySegmentName = "reasoning" | "action";
+type PrimarySegmentRun = {
+  segment: PrimarySegmentName;
+  value: JsonRecord;
+  raw: JsonRecord;
+  candidateText: string;
+  finishReason: string;
+  requestId: string | null;
+  modelUsed: string;
+  fallbackUsed: boolean;
+  fallbackReason: string;
+  attemptedModels: number;
+  repaired: boolean;
+  firstError: string;
+  repairModelUsed: string;
+  repairAttemptedModels: number;
+};
 
-  let response = await geminiRequestWithFallback(
+function primarySegmentSchema(segment: PrimarySegmentName): JsonRecord {
+  return segment === "reasoning" ? PRIMARY_REASONING_SCHEMA : PRIMARY_ACTION_SCHEMA;
+}
+
+function primarySegmentInstructions(segment: PrimarySegmentName): string {
+  return segment === "reasoning" ? primaryReasoningInstructions() : primaryActionInstructions();
+}
+
+function primarySegmentOutputLimit(segment: PrimarySegmentName): number {
+  return segment === "reasoning" ? 2700 : 2300;
+}
+
+function primarySegmentTimeout(segment: PrimarySegmentName): number {
+  return segment === "reasoning" ? PRIMARY_REASONING_ATTEMPT_TIMEOUT_MS : PRIMARY_ACTION_ATTEMPT_TIMEOUT_MS;
+}
+
+function primarySegmentModels(segment: PrimarySegmentName): string[] {
+  if (segment === "reasoning") {
+    const configured = normalizeModelName(Deno.env.get("GEMINI_ANALYSIS_MODEL") || DEFAULT_ANALYSIS_MODEL);
+    const preferred = /^gemini-3(?:\.|-)/i.test(configured) ? configured : DEFAULT_ANALYSIS_MODEL;
+    return uniqueModelCandidates(preferred, PRIMARY_REASONING_MODELS);
+  }
+  const configured = normalizeModelName(Deno.env.get("GEMINI_FAST_MODEL") || DEFAULT_FAST_MODEL);
+  return uniqueModelCandidates(configured, PRIMARY_ACTION_MODELS);
+}
+
+function validatePrimarySegmentShape(segment: PrimarySegmentName, value: JsonRecord): void {
+  if (segment === "reasoning") {
+    const executive = value.executive && typeof value.executive === "object" ? value.executive as JsonRecord : {};
+    const units = Array.isArray(value.analysisUnits) ? value.analysisUnits : [];
+    if (!cleanString(executive.title, 220) || !cleanString(executive.summary, 900) || units.length < 2) {
+      throw new Error("مقطع reasoning لم يرجع ملخصًا ووحدتي تحليل على الأقل.");
+    }
+    return;
+  }
+  const interventions = Array.isArray(value.interventions) ? value.interventions : [];
+  const monitoring = Array.isArray(value.monitoringPlan) ? value.monitoringPlan : [];
+  if (interventions.length < 2 || monitoring.length !== 3) {
+    throw new Error("مقطع action لم يرجع تدخلين على الأقل وثلاث مراحل متابعة بالضبط.");
+  }
+}
+
+function parsePrimarySegment(segment: PrimarySegmentName, text: string): JsonRecord {
+  const value = parseJsonObject(text);
+  validatePrimarySegmentShape(segment, value);
+  return value;
+}
+
+async function repairPrimarySegment(
+  segment: PrimarySegmentName,
+  payload: JsonRecord,
+  previousCandidate: JsonRecord,
+  rejectionReason: string,
+  deadlineAt: number,
+): Promise<PrimarySegmentRun> {
+  const repairPayload = buildPrimarySegmentRepairPayload(payload, segment, previousCandidate, rejectionReason);
+  const models = uniqueModelCandidates(PRIMARY_REPAIR_MODELS[0], PRIMARY_REPAIR_MODELS);
+  const response = await geminiRequestWithFallback(
     models,
-    primaryRequestBody(payload, primaryAnalysisInstructions(), "low", 4096),
+    primaryRequestBody(
+      repairPayload,
+      primarySegmentRepairInstructions(segment, rejectionReason),
+      primarySegmentSchema(segment),
+      "minimal",
+      primarySegmentOutputLimit(segment),
+    ),
     1,
     {
-      attemptTimeoutMs: PRIMARY_MODEL_ATTEMPT_TIMEOUT_MS,
+      attemptTimeoutMs: PRIMARY_REPAIR_ATTEMPT_TIMEOUT_MS,
       deadlineAt,
       minRemainingMs: PRIMARY_MIN_REMAINING_MS,
     },
   );
-  let candidate = candidateResult(response.raw);
-  let checked = tryValidatePrimaryCandidate(candidate.text, payload, "primary");
-  const firstFinishReason = candidate.finishReason;
-  const firstThoughtTokens = usageCount(response.raw, "thoughtsTokenCount");
-  const firstCandidateTokens = usageCount(response.raw, "candidatesTokenCount");
+  const candidate = candidateResult(response.raw);
+  if (candidate.finishReason === "MAX_TOKENS") {
+    throw new Error(`استنفد Gemini حد الإخراج أثناء إصلاح مقطع ${segment}.`);
+  }
+  const value = parsePrimarySegment(segment, candidate.text);
+  return {
+    segment,
+    value,
+    raw: response.raw,
+    candidateText: candidate.text,
+    finishReason: candidate.finishReason,
+    requestId: response.requestId,
+    modelUsed: response.modelUsed,
+    fallbackUsed: response.fallbackUsed,
+    fallbackReason: response.fallbackReason || "",
+    attemptedModels: response.attemptedModels || 1,
+    repaired: true,
+    firstError: cleanString(rejectionReason, 520),
+    repairModelUsed: response.modelUsed,
+    repairAttemptedModels: response.attemptedModels || 1,
+  };
+}
+
+async function requestPrimarySegment(
+  segment: PrimarySegmentName,
+  payload: JsonRecord,
+  deadlineAt: number,
+): Promise<PrimarySegmentRun> {
+  const response = await geminiRequestWithFallback(
+    primarySegmentModels(segment),
+    primaryRequestBody(
+      payload,
+      primarySegmentInstructions(segment),
+      primarySegmentSchema(segment),
+      segment === "reasoning" ? "low" : "minimal",
+      primarySegmentOutputLimit(segment),
+    ),
+    1,
+    {
+      attemptTimeoutMs: primarySegmentTimeout(segment),
+      deadlineAt,
+      minRemainingMs: PRIMARY_MIN_REMAINING_MS,
+    },
+  );
+  const candidate = candidateResult(response.raw);
+  let value: JsonRecord;
+  try {
+    if (candidate.finishReason === "MAX_TOKENS") throw new Error(`توقف مقطع ${segment} عند حد الإخراج.`);
+    value = parsePrimarySegment(segment, candidate.text);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : `مقطع ${segment} غير مكتمل.`;
+    let previousCandidate: JsonRecord = {};
+    try { previousCandidate = parseJsonObject(candidate.text); } catch { previousCandidate = {}; }
+    return repairPrimarySegment(segment, payload, previousCandidate, reason, deadlineAt);
+  }
+  return {
+    segment,
+    value,
+    raw: response.raw,
+    candidateText: candidate.text,
+    finishReason: candidate.finishReason,
+    requestId: response.requestId,
+    modelUsed: response.modelUsed,
+    fallbackUsed: response.fallbackUsed,
+    fallbackReason: response.fallbackReason || "",
+    attemptedModels: response.attemptedModels || 1,
+    repaired: false,
+    firstError: "",
+    repairModelUsed: "",
+    repairAttemptedModels: 0,
+  };
+}
+
+function mergePrimarySegments(reasoning: JsonRecord, action: JsonRecord): JsonRecord {
+  return {
+    ...reasoning,
+    interventions: Array.isArray(action.interventions) ? action.interventions : [],
+    monitoringPlan: Array.isArray(action.monitoringPlan) ? action.monitoringPlan : [],
+  };
+}
+
+function validationRepairTargets(message: string): PrimarySegmentName[] {
+  if (/ملخص|وحدة التحليل|وحدات التحليل|كررت الشرح/i.test(message)) return ["reasoning"];
+  if (/التدخلات|الفئات أو القضايا|فئات أو قضايا|مراحل المتابعة|سياق حسابي|مؤشرات نجاح|targetGroup/i.test(message)) return ["action"];
+  return ["reasoning", "action"];
+}
+
+async function analyzePrimary(payload: JsonRecord): Promise<JsonRecord> {
+  const startedAt = performance.now();
+  const deadlineAt = startedAt + PRIMARY_ANALYSIS_DEADLINE_MS;
+
+  // الطلبان أصغر ويعملان بالتوازي. فشل أحدهما لا يعيد المقطع الآخر من الصفر.
+  const segmentSettled = await Promise.allSettled([
+    requestPrimarySegment("reasoning", payload, deadlineAt),
+    requestPrimarySegment("action", payload, deadlineAt),
+  ]);
+
+  const segmentError = (result: PromiseSettledResult<PrimarySegmentRun>, name: PrimarySegmentName): PrimarySegmentRun => {
+    if (result.status === "fulfilled") return result.value;
+    const message = result.reason instanceof Error ? result.reason.message : String(result.reason || "خطأ غير معروف");
+    const status = geminiErrorStatus(result.reason) || 503;
+    throw geminiRequestError(`فشل مقطع ${name}: ${message}`, status);
+  };
+
+  let reasoning = segmentError(segmentSettled[0], "reasoning");
+  let action = segmentError(segmentSettled[1], "action");
+  let combined = mergePrimarySegments(reasoning.value, action.value);
+  let checked = tryValidatePrimaryObject(combined, payload, "primary");
   const firstValidationError = checked.error instanceof Error ? checked.error.message : "";
-  let rescueUsed = false;
+  let postValidationRepairUsed = false;
   let rescueValidationError = "";
+  const repairedSegments = new Set<PrimarySegmentName>([
+    ...(reasoning.repaired ? ["reasoning" as const] : []),
+    ...(action.repaired ? ["action" as const] : []),
+  ]);
 
   if (!checked.result) {
-    rescueUsed = true;
-    const rescueModels = uniqueModelCandidates(PRIMARY_RESCUE_MODELS[0], PRIMARY_RESCUE_MODELS);
-    const repairPayload = buildPrimaryRepairPayload(payload, candidate.text, firstValidationError);
-    response = await geminiRequestWithFallback(
-      rescueModels,
-      primaryRequestBody(repairPayload, primaryRescueInstructions(firstValidationError), "minimal", 3072),
-      1,
-      {
-        attemptTimeoutMs: PRIMARY_RESCUE_ATTEMPT_TIMEOUT_MS,
-        deadlineAt,
-        minRemainingMs: PRIMARY_MIN_REMAINING_MS,
-      },
-    );
-    candidate = candidateResult(response.raw);
-    checked = tryValidatePrimaryCandidate(candidate.text, payload, "rescue");
+    postValidationRepairUsed = true;
+    const targets = validationRepairTargets(firstValidationError);
+    const repairs = await Promise.all(targets.map(async segment => {
+      const previous = segment === "reasoning" ? reasoning.value : action.value;
+      return repairPrimarySegment(segment, payload, previous, firstValidationError, deadlineAt);
+    }));
+    for (const repaired of repairs) {
+      repairedSegments.add(repaired.segment);
+      if (repaired.segment === "reasoning") reasoning = repaired;
+      else action = repaired;
+    }
+    combined = mergePrimarySegments(reasoning.value, action.value);
+    checked = tryValidatePrimaryObject(combined, payload, "rescue");
     rescueValidationError = checked.error instanceof Error ? checked.error.message : "";
   }
 
   if (!checked.result) {
     const detail = checked.error instanceof Error ? checked.error.message : "نتيجة غير مكتملة";
-    if (candidate.finishReason === "MAX_TOKENS") {
-      throw new Error(`استنفد Gemini حد الإخراج حتى بعد إصلاح العقد: ${detail}`);
-    }
-    throw new Error(`فشل إصلاح عقد التحليل بعد استجابة Gemini: ${detail}`);
+    throw new Error(`فشل إصلاح مقاطع عقد التحليل بعد استجابات Gemini: ${detail}`);
   }
 
   const result = checked.result;
   const validation = result.validation && typeof result.validation === "object" ? result.validation as JsonRecord : {};
+  const reasoningThoughtTokens = usageCount(reasoning.raw, "thoughtsTokenCount");
+  const actionThoughtTokens = usageCount(action.raw, "thoughtsTokenCount");
+  const reasoningCandidateTokens = usageCount(reasoning.raw, "candidatesTokenCount");
+  const actionCandidateTokens = usageCount(action.raw, "candidatesTokenCount");
+  const totalAttemptedModels = reasoning.attemptedModels + action.attemptedModels + reasoning.repairAttemptedModels + action.repairAttemptedModels;
+  const rescueUsed = repairedSegments.size > 0 || postValidationRepairUsed;
+
   return {
     result,
-    model: String(response.raw.modelVersion || response.modelUsed),
-    usage: response.raw.usageMetadata || null,
-    requestId: response.requestId,
+    model: `${String(reasoning.raw.modelVersion || reasoning.modelUsed)} + ${String(action.raw.modelVersion || action.modelUsed)}`,
+    usage: {
+      reasoning: reasoning.raw.usageMetadata || null,
+      action: action.raw.usageMetadata || null,
+    },
+    requestId: reasoning.requestId || action.requestId,
     provider: "gemini",
     serverTiming: {
       aiPrimary: true,
+      segmentedPrimary: true,
+      parallelSegments: true,
       geminiMs: Math.round(performance.now() - startedAt),
       payloadChars: JSON.stringify(payload).length,
-      outputCharacters: candidate.text.length,
-      finishReason: candidate.finishReason,
-      firstFinishReason,
-      thinkingLevel: rescueUsed ? "minimal" : "low",
-      maxOutputTokens: rescueUsed ? 3072 : 4096,
+      outputCharacters: reasoning.candidateText.length + action.candidateText.length,
+      finishReason: `${reasoning.finishReason}/${action.finishReason}`,
+      firstFinishReason: `${reasoning.finishReason}/${action.finishReason}`,
+      thinkingLevel: "segmented-low-minimal",
+      maxOutputTokens: primarySegmentOutputLimit("reasoning") + primarySegmentOutputLimit("action"),
       rescueUsed,
+      repairedSegments: [...repairedSegments],
       firstValidationError: cleanString(firstValidationError, 520),
       rescueValidationError: cleanString(rescueValidationError, 520),
       repairContextUsed: rescueUsed,
-      fallbackUsed: response.fallbackUsed,
-      fallbackReason: response.fallbackReason || "",
-      attemptedModels: response.attemptedModels || 1,
+      fallbackUsed: reasoning.fallbackUsed || action.fallbackUsed,
+      fallbackReason: [reasoning.fallbackReason, action.fallbackReason].filter(Boolean).join(","),
+      attemptedModels: totalAttemptedModels,
+      reasoningModel: reasoning.modelUsed,
+      actionModel: action.modelUsed,
       serverDeadlineMs: PRIMARY_ANALYSIS_DEADLINE_MS,
-      primaryAttemptTimeoutMs: PRIMARY_MODEL_ATTEMPT_TIMEOUT_MS,
-      rescueAttemptTimeoutMs: PRIMARY_RESCUE_ATTEMPT_TIMEOUT_MS,
-      firstThoughtTokens,
-      firstCandidateTokens,
-      finalThoughtTokens: usageCount(response.raw, "thoughtsTokenCount"),
-      finalCandidateTokens: usageCount(response.raw, "candidatesTokenCount"),
+      primaryAttemptTimeoutMs: Math.max(PRIMARY_REASONING_ATTEMPT_TIMEOUT_MS, PRIMARY_ACTION_ATTEMPT_TIMEOUT_MS),
+      reasoningAttemptTimeoutMs: PRIMARY_REASONING_ATTEMPT_TIMEOUT_MS,
+      actionAttemptTimeoutMs: PRIMARY_ACTION_ATTEMPT_TIMEOUT_MS,
+      rescueAttemptTimeoutMs: PRIMARY_REPAIR_ATTEMPT_TIMEOUT_MS,
+      firstThoughtTokens: reasoningThoughtTokens + actionThoughtTokens,
+      firstCandidateTokens: reasoningCandidateTokens + actionCandidateTokens,
+      finalThoughtTokens: reasoningThoughtTokens + actionThoughtTokens,
+      finalCandidateTokens: reasoningCandidateTokens + actionCandidateTokens,
       acceptedAnalysisUnits: validation.acceptedAnalysisUnits || 0,
       acceptedDiagnosticSections: validation.acceptedDiagnosticSections || 0,
       acceptedFindings: validation.acceptedFindings || 0,
@@ -1467,7 +1757,7 @@ function errorInfo(message: string): { status: number; errorCode: string; retrya
   if (/api key|مفتاح.*غير صالح|GEMINI_API_KEY|model.*not found|النموذج.*غير/i.test(message)) return { status: 502, errorCode: "GEMINI_CONFIGURATION", retryable: false };
   if (/429|rate limit|quota|RESOURCE_EXHAUSTED/i.test(message)) return { status: 429, errorCode: "GEMINI_RATE_LIMIT", retryable: true };
   if (/حد الإخراج|MAX_TOKENS|استنفد Gemini/i.test(message)) return { status: 502, errorCode: "GEMINI_OUTPUT_EXHAUSTED", retryable: false };
-  if (/فشل إصلاح عقد التحليل|لم يبلغ عمق القرار|لم ينتج المحلل الذكي ملخصًا|التدخلات الذكية لم تقدم تمايزًا|كررت الشرح التشخيصي/i.test(message)) return { status: 502, errorCode: "GEMINI_CONTRACT_REJECTED", retryable: true };
+  if (/فشل إصلاح (?:مقاطع )?عقد التحليل|مقطع (?:reasoning|action) لم يرجع|لم يبلغ عمق القرار|لم ينتج المحلل الذكي ملخصًا|التدخلات الذكية لم تقدم تمايزًا|كررت الشرح التشخيصي/i.test(message)) return { status: 502, errorCode: "GEMINI_CONTRACT_REJECTED", retryable: true };
   if (/high demand|spikes in demand|temporar(?:y|ily)|timeout|مهلة التحليل الذكي|مهلة استجابة نموذج|تعذر الاتصال|unavailable|overload|503|500|504/i.test(message)) return { status: 503, errorCode: "GEMINI_TRANSIENT", retryable: true };
   return { status: 500, errorCode: "GEMINI_RESPONSE", retryable: false };
 }
@@ -1537,6 +1827,7 @@ Deno.serve(async (req: Request) => {
       error: publicErrorMessage(info, message),
       errorCode: info.errorCode,
       retryable: info.retryable,
+      requestId: req.headers.get("x-taqareer-request-id") || "",
       edgeVersion: EDGE_VERSION,
     }, info.status, origin);
   }

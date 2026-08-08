@@ -130,6 +130,27 @@ function rescueResult() {
   return result;
 }
 
+
+function reasoningResult(full = primaryResult()) {
+  return {
+    contractVersion: full.contractVersion,
+    analysisProfile: full.analysisProfile,
+    executive: full.executive,
+    analysisUnits: full.analysisUnits,
+    methodChecks: full.methodChecks,
+    additionalCautions: full.additionalCautions,
+    missingDataRequests: full.missingDataRequests,
+    suggestedNewType: full.suggestedNewType,
+  };
+}
+
+function actionResult(full = primaryResult()) {
+  return {
+    interventions: full.interventions,
+    monitoringPlan: full.monitoringPlan,
+  };
+}
+
 function geminiRaw(result, finishReason = 'STOP') {
   return {
     modelVersion: 'gemini-test',
@@ -212,12 +233,16 @@ async function invoke(runtime, customPayload = payload()) {
   return { status: response.status, body: await response.json() };
 }
 
-test('edge primary runtime accepts balanced non-duplicative result in one request', async () => {
-  const runtime = await createRuntime([geminiRaw(primaryResult())]);
+test('edge primary runtime composes reasoning and action segments in parallel', async () => {
+  const full = primaryResult();
+  const runtime = await createRuntime([
+    geminiRaw(reasoningResult(full)),
+    geminiRaw(actionResult(full)),
+  ]);
   const { status, body } = await invoke(runtime);
   assert.equal(status, 200);
   assert.equal(body.ok, true);
-  assert.equal(runtime.getCalls(), 1);
+  assert.equal(runtime.getCalls(), 2);
   assert.equal(body.result.contractVersion, '6.6.0');
   assert.equal(body.result.diagnosticSections.length, 3);
   assert.equal(body.result.findings.length, 3);
@@ -225,10 +250,12 @@ test('edge primary runtime accepts balanced non-duplicative result in one reques
   assert.equal(body.result.monitoringPlan.length, 3);
   assert.equal(body.result.qualityTools.length, 1);
   assert.notEqual(body.result.diagnosticSections[0].analysis, body.result.findings[0].statement);
+  assert.equal(body.serverTiming.segmentedPrimary, true);
+  assert.equal(body.serverTiming.parallelSegments, true);
   assert.equal(body.serverTiming.rescueUsed, false);
-  assert.equal(body.serverTiming.serverDeadlineMs, 42000);
-  assert.equal(body.serverTiming.primaryAttemptTimeoutMs, 16000);
-  assert.equal(body.serverTiming.attemptedModels, 1);
+  assert.equal(body.serverTiming.serverDeadlineMs, 45000);
+  assert.equal(body.serverTiming.reasoningAttemptTimeoutMs, 15000);
+  assert.equal(body.serverTiming.actionAttemptTimeoutMs, 13000);
   assert.equal(body.serverTiming.distinctTargetGroups, 2);
   assert.equal(body.result.interventions[1].numericGuard.applied, true);
   assert.equal(body.result.interventions[1].numericGuard.mode, 'mastery_gain');
@@ -236,13 +263,21 @@ test('edge primary runtime accepts balanced non-duplicative result in one reques
   assert.equal(body.result.interventions[1].numericGuard.targetCount, 67);
   assert.equal(body.result.interventions[1].numericGuard.feasibleGain, 19);
   assert.match(body.result.interventions[1].successIndicator, /من 48 إلى 67/);
+  const requestBodies = runtime.getRequestBodies().map(JSON.parse);
+  assert.ok(requestBodies[0].generationConfig.responseJsonSchema.properties.executive);
+  assert.equal(requestBodies[0].generationConfig.responseJsonSchema.properties.interventions, undefined);
+  assert.ok(requestBodies[1].generationConfig.responseJsonSchema.properties.interventions);
+  assert.equal(requestBodies[1].generationConfig.responseJsonSchema.properties.executive, undefined);
 });
 
-test('edge numeric guard clamps an impossible mastery target to the selected groups capacity', async () => {
-  const impossible = primaryResult();
-  impossible.interventions[1].targetGroupIds = ['mastery', 'near_mastery'];
-  impossible.interventions[1].successMetric = { mode: 'mastery_gain', targetValue: 25, targetSegmentId: '' };
-  const runtime = await createRuntime([geminiRaw(impossible)]);
+test('edge numeric guard clamps an impossible mastery target after segmented composition', async () => {
+  const full = primaryResult();
+  full.interventions[1].targetGroupIds = ['mastery', 'near_mastery'];
+  full.interventions[1].successMetric = { mode: 'mastery_gain', targetValue: 25, targetSegmentId: '' };
+  const runtime = await createRuntime([
+    geminiRaw(reasoningResult(full)),
+    geminiRaw(actionResult(full)),
+  ]);
   const { status, body } = await invoke(runtime);
   assert.equal(status, 200);
   assert.equal(body.ok, true);
@@ -258,9 +293,35 @@ test('edge numeric guard clamps an impossible mastery target to the selected gro
   assert.doesNotMatch(guarded.successIndicator, /25%/);
 });
 
+test('student-work primary analysis does not fail merely because no extra method check is needed', async () => {
+  const full = primaryResult();
+  full.methodChecks = [];
+  full.interventions = full.interventions.map((item, index) => ({
+    ...item,
+    targetGroup: index === 0 ? 'البنود ذات الأولوية الأعلى' : 'البنود المتوسطة التي تحتاج متابعة',
+    targetGroupIds: [],
+    successIndicator: index === 0 ? 'تحسن المؤشرات ذات الأولوية في إعادة القياس' : 'ثبات التحسن في العينة اللاحقة',
+    successMetric: { mode: 'custom', targetValue: 0, targetSegmentId: '' },
+  }));
+  const studentWorkPayload = {
+    ...payload(),
+    recognizedType: { id: 'student_work', nameAr: 'ملخص فحص أعمال الطلبة' },
+  };
+  const runtime = await createRuntime([
+    geminiRaw(reasoningResult(full)),
+    geminiRaw(actionResult(full)),
+  ]);
+  const { status, body } = await invoke(runtime, studentWorkPayload);
+  assert.equal(status, 200);
+  assert.equal(body.ok, true);
+  assert.equal(body.result.qualityTools.length, 0);
+  assert.equal(body.result.interventions.length, 2);
+  assert.equal(body.result.monitoringPlan.length, 3);
+});
+
 test('edge preserves cross-subject analysis when score segmentation math is not applicable', async () => {
-  const result = primaryResult();
-  result.interventions = result.interventions.map((item, index) => ({
+  const full = primaryResult();
+  full.interventions = full.interventions.map((item, index) => ({
     ...item,
     targetGroup: index === 0 ? 'طلبة المادة الأضعف' : 'الطلبة المتعثرون في أكثر من مادة',
     targetGroupIds: [],
@@ -272,7 +333,10 @@ test('edge preserves cross-subject analysis when score segmentation math is not 
     recognizedType: { id: 'cross_subject', nameAr: 'مقارنة مواد متعددة' },
     evidenceAnalysis: { metrics: [], charts: [], evidenceCatalog: [] },
   };
-  const runtime = await createRuntime([geminiRaw(result)]);
+  const runtime = await createRuntime([
+    geminiRaw(reasoningResult(full)),
+    geminiRaw(actionResult(full)),
+  ]);
   const { status, body } = await invoke(runtime, crossPayload);
   assert.equal(status, 200);
   assert.equal(body.ok, true);
@@ -280,32 +344,34 @@ test('edge preserves cross-subject analysis when score segmentation math is not 
   assert.equal(body.result.interventions[0].numericGuard, undefined);
 });
 
-test('edge runtime rescues an incomplete first response without returning to local templates', async () => {
+test('edge repairs only a malformed reasoning segment while keeping a valid action segment', async () => {
+  const full = primaryResult();
   const runtime = await createRuntime([
     geminiRaw({}, 'MAX_TOKENS'),
-    geminiRaw(rescueResult(), 'STOP'),
+    geminiRaw(actionResult(full), 'STOP'),
+    geminiRaw(reasoningResult(full), 'STOP'),
   ]);
   const { status, body } = await invoke(runtime);
   assert.equal(status, 200);
   assert.equal(body.ok, true);
-  assert.equal(runtime.getCalls(), 2);
+  assert.equal(runtime.getCalls(), 3);
   assert.equal(body.serverTiming.rescueUsed, true);
-  assert.equal(body.result.diagnosticSections.length, 2);
+  assert.ok(body.serverTiming.repairedSegments.includes('reasoning'));
+  assert.equal(body.result.diagnosticSections.length, 3);
   assert.equal(body.result.interventions.length, 2);
   assert.equal(body.result.monitoringPlan.length, 3);
-  assert.equal(body.result.qualityTools.length, 0);
-  assert.equal(body.result.validation.validationMode, 'rescue');
 });
 
-
-
-test('edge rescue repairs the rejected candidate with its exact validation reason', async () => {
-  const incomplete = primaryResult();
-  incomplete.analysisUnits = incomplete.analysisUnits.slice(0, 1);
-  incomplete.methodChecks = [];
+test('edge repairs a validation-rejected reasoning segment with the exact full-contract reason', async () => {
+  const full = primaryResult();
+  const incompleteReasoning = reasoningResult(full);
+  incompleteReasoning.analysisUnits = incompleteReasoning.analysisUnits.slice(0, 2);
+  incompleteReasoning.methodChecks = [];
+  const repairedReasoning = reasoningResult(full);
   const runtime = await createRuntime([
-    geminiRaw(incomplete, 'STOP'),
-    geminiRaw(rescueResult(), 'STOP'),
+    geminiRaw(incompleteReasoning, 'STOP'),
+    geminiRaw(actionResult(full), 'STOP'),
+    geminiRaw(repairedReasoning, 'STOP'),
   ]);
   const { status, body } = await invoke(runtime);
   assert.equal(status, 200);
@@ -313,62 +379,64 @@ test('edge rescue repairs the rejected candidate with its exact validation reaso
   assert.equal(body.serverTiming.rescueUsed, true);
   assert.equal(body.serverTiming.repairContextUsed, true);
   assert.match(body.serverTiming.firstValidationError, /عمق القرار المتوازن/);
-  const urls = runtime.getUrls();
-  assert.match(urls[1], /gemini-3\.5-flash:generateContent/);
-  const secondBody = JSON.parse(runtime.getRequestBodies()[1]);
-  const repairPayload = JSON.parse(secondBody.contents[0].parts[0].text);
-  assert.equal(repairPayload.repairContext.mode, 'contract_repair');
-  assert.match(repairPayload.repairContext.rejectionReason, /عمق القرار المتوازن/);
-  assert.equal(Array.isArray(repairPayload.repairContext.previousCandidate.analysisUnits), true);
-  assert.equal(repairPayload.repairContext.previousCandidate.analysisUnits.length, 1);
+  assert.ok(body.serverTiming.repairedSegments.includes('reasoning'));
+  const bodies = runtime.getRequestBodies().map(JSON.parse);
+  const repairPayload = JSON.parse(bodies[2].contents[0].parts[0].text);
+  assert.equal(repairPayload.segmentRepairContext.mode, 'segment_contract_repair');
+  assert.equal(repairPayload.segmentRepairContext.segment, 'reasoning');
+  assert.match(repairPayload.segmentRepairContext.rejectionReason, /عمق القرار المتوازن/);
+  assert.equal(repairPayload.segmentRepairContext.previousCandidate.analysisUnits.length, 2);
 });
 
-test('edge switches immediately to a fallback model after one busy response', async () => {
+test('edge reasoning segment fails over without restarting the successful action segment', async () => {
   const busy = httpError(503, 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.');
-  const runtime = await createRuntime([busy, geminiRaw(primaryResult())]);
+  const full = primaryResult();
+  const runtime = await createRuntime([
+    busy,
+    geminiRaw(actionResult(full)),
+    geminiRaw(reasoningResult(full)),
+  ]);
   const { status, body } = await invoke(runtime);
   assert.equal(status, 200);
   assert.equal(body.ok, true);
-  assert.equal(runtime.getCalls(), 2);
+  assert.equal(runtime.getCalls(), 3);
   const urls = runtime.getUrls();
   assert.match(urls[0], /gemini-3\.6-flash:generateContent/);
   assert.match(urls[1], /gemini-3\.5-flash-lite:generateContent/);
-  assert.equal(body.serverTiming.fallbackUsed, true);
-  assert.equal(body.serverTiming.fallbackReason, 'transient_capacity');
+  assert.match(urls[2], /gemini-3\.5-flash:generateContent/);
+  assert.equal(body.serverTiming.parallelSegments, true);
 });
 
-
-
-test('edge treats a per-model timeout as transient and moves to the next model', async () => {
-  const runtime = await createRuntime([{ __abort: true }, geminiRaw(primaryResult())]);
+test('edge treats a reasoning timeout as transient and fails over while action remains independent', async () => {
+  const full = primaryResult();
+  const runtime = await createRuntime([
+    { __abort: true },
+    geminiRaw(actionResult(full)),
+    geminiRaw(reasoningResult(full)),
+  ]);
   const { status, body } = await invoke(runtime);
   assert.equal(status, 200);
   assert.equal(body.ok, true);
-  assert.equal(runtime.getCalls(), 2);
-  const urls = runtime.getUrls();
-  assert.match(urls[0], /gemini-3\.6-flash:generateContent/);
-  assert.match(urls[1], /gemini-3\.5-flash-lite:generateContent/);
-  assert.equal(body.serverTiming.fallbackUsed, true);
-  assert.equal(body.serverTiming.fallbackReason, 'transient_capacity');
-  assert.equal(body.serverTiming.attemptedModels, 2);
+  assert.equal(runtime.getCalls(), 3);
+  assert.match(runtime.getUrls()[2], /gemini-3\.5-flash:generateContent/);
 });
 
-test('edge treats an aborted Gemini response body as transient and fails over instead of hanging past the deadline', async () => {
-  const runtime = await createRuntime([{ __bodyAbort: true }, geminiRaw(primaryResult())]);
+test('edge treats an aborted reasoning response body as transient and fails over', async () => {
+  const full = primaryResult();
+  const runtime = await createRuntime([
+    { __bodyAbort: true },
+    geminiRaw(actionResult(full)),
+    geminiRaw(reasoningResult(full)),
+  ]);
   const { status, body } = await invoke(runtime);
   assert.equal(status, 200);
   assert.equal(body.ok, true);
-  assert.equal(runtime.getCalls(), 2);
-  const urls = runtime.getUrls();
-  assert.match(urls[0], /gemini-3\.6-flash:generateContent/);
-  assert.match(urls[1], /gemini-3\.5-flash-lite:generateContent/);
-  assert.equal(body.serverTiming.fallbackUsed, true);
-  assert.equal(body.serverTiming.fallbackReason, 'transient_capacity');
+  assert.equal(runtime.getCalls(), 3);
 });
 
-test('edge returns an Arabic retryable message when all Gemini models are temporarily busy', async () => {
+test('edge returns a retryable Arabic transient error when every segment model is unavailable', async () => {
   const busy = httpError(503, 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.');
-  const runtime = await createRuntime([busy, busy]);
+  const runtime = await createRuntime([busy, busy, busy, busy, busy]);
   const { status, body } = await invoke(runtime);
   assert.equal(status, 503);
   assert.equal(body.ok, false);
@@ -376,7 +444,6 @@ test('edge returns an Arabic retryable message when all Gemini models are tempor
   assert.equal(body.retryable, true);
   assert.match(body.error, /مزدحمة مؤقتًا/);
   assert.doesNotMatch(body.error, /high demand|Spikes in demand|try again later/i);
-  assert.equal(runtime.getCalls(), 2);
 });
 
 function multiVisitPayload() {
@@ -434,8 +501,10 @@ function multiVisitPrimaryResult() {
   return result;
 }
 
+
 test('edge scope guard narrows a school-wide intervention to the observed science visits sample', async () => {
-  const runtime = await createRuntime([geminiRaw(multiVisitPrimaryResult())]);
+  const full = multiVisitPrimaryResult();
+  const runtime = await createRuntime([geminiRaw(reasoningResult(full)), geminiRaw(actionResult(full))]);
   const { status, body } = await invoke(runtime, multiVisitPayload());
   assert.equal(status, 200);
   assert.equal(body.ok, true);

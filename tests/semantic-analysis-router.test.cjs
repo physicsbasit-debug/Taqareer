@@ -94,5 +94,5 @@ test('Edge classification returns a semantic analysis profile and is instructed 
   assert.match(edge, /levelFields/);
   assert.match(edge, /لا تُجبر|لا تجبر/);
   assert.match(edge, /توزيع مستويات مجمع/);
-  assert.match(edge, /EDGE_VERSION = "0\.15\.4"/);
+  assert.match(edge, /EDGE_VERSION = "0\.15\.5"/);
 });

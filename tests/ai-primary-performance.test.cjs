@@ -6,24 +6,26 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 
-test('primary AI request has a bounded latency budget and compact output', () => {
+test('primary AI request is split into bounded reasoning and action segments', () => {
   const edge = read('supabase/functions/analyze-educational-form/index.ts');
   const client = read('assets/ai-client.js');
-  assert.match(edge, /GEMINI_ANALYSIS_MODEL/);
-  assert.match(edge, /DEFAULT_ANALYSIS_MODEL = "gemini-3\.6-flash"/);
-  assert.match(edge, /primaryRequestBody\(payload, primaryAnalysisInstructions\(\), "low", 4096\)/);
+  assert.match(edge, /PRIMARY_REASONING_SCHEMA/);
+  assert.match(edge, /PRIMARY_ACTION_SCHEMA/);
+  assert.match(edge, /Promise\.allSettled\(\[/);
+  assert.match(edge, /requestPrimarySegment\("reasoning"/);
+  assert.match(edge, /requestPrimarySegment\("action"/);
+  assert.match(edge, /primarySegmentOutputLimit\(segment: PrimarySegmentName\)/);
+  assert.match(edge, /return segment === "reasoning" \? 2700 : 2300/);
   assert.match(edge, /thinkingConfig: \{ thinkingLevel \}/);
-  assert.match(edge, /primaryRequestBody\(repairPayload, primaryRescueInstructions\(firstValidationError\), "minimal", 3072\)/);
-  assert.match(edge, /rescueUsed = true/);
-  assert.match(client, /analyze_primary", payload, \{ timeoutMs: 52000, networkRetry: true \}/);
-  assert.match(edge, /PRIMARY_ANALYSIS_DEADLINE_MS = 42_000/);
-  assert.match(edge, /PRIMARY_MODEL_ATTEMPT_TIMEOUT_MS = 16_000/);
-  assert.match(edge, /PRIMARY_RESCUE_ATTEMPT_TIMEOUT_MS = 12_000/);
-  assert.match(edge, /primaryAnalysisInstructions\(\), "low", 4096\),[\s\S]*?1,[\s\S]*?attemptTimeoutMs: PRIMARY_MODEL_ATTEMPT_TIMEOUT_MS/);
-  assert.match(edge, /primaryRescueInstructions\(firstValidationError\), "minimal", 3072\),[\s\S]*?1,[\s\S]*?attemptTimeoutMs: PRIMARY_RESCUE_ATTEMPT_TIMEOUT_MS/);
-  assert.match(client, /timeoutError\.retryable = true/);
+  assert.match(client, /analyze_primary", payload, \{ timeoutMs: 60000, networkRetry: true \}/);
+  assert.match(edge, /PRIMARY_ANALYSIS_DEADLINE_MS = 45_000/);
+  assert.match(edge, /PRIMARY_REASONING_ATTEMPT_TIMEOUT_MS = 15_000/);
+  assert.match(edge, /PRIMARY_ACTION_ATTEMPT_TIMEOUT_MS = 13_000/);
+  assert.match(edge, /PRIMARY_REPAIR_ATTEMPT_TIMEOUT_MS = 11_000/);
+  assert.match(edge, /PRIMARY_REASONING_MODELS = Object\.freeze\(\["gemini-3\.6-flash", "gemini-3\.5-flash"\]\)/);
+  assert.match(edge, /PRIMARY_ACTION_MODELS = Object\.freeze\(\["gemini-3\.5-flash-lite", "gemini-3\.6-flash", "gemini-3\.5-flash"\]\)/);
+  assert.match(edge, /PRIMARY_REPAIR_MODELS = Object\.freeze\(\["gemini-3\.5-flash", "gemini-3\.6-flash", "gemini-3\.5-flash-lite"\]\)/);
   assert.match(edge, /rawText = await response\.text\(\);[\s\S]*?finally \{[\s\S]*?clearTimeout\(timeoutId\)/);
-  assert.match(edge, /PRIMARY_MODEL_FALLBACKS = Object\.freeze\(\["gemini-3\.6-flash", "gemini-3\.5-flash-lite"\]\)/);
 });
 
 test('frontend sends compact evidence for scores and shows elapsed progress', () => {
@@ -63,6 +65,7 @@ test('schema constrains balanced output and thinking remains explicitly controll
   assert.match(edge, /methodChecks: \{[\s\S]*?maxItems: 2,/);
   assert.match(edge, /monitoringPlan: \{[\s\S]*?minItems: 3,[\s\S]*?maxItems: 3,/);
   assert.match(edge, /mode === "primary" && richEvidence \? 3 : 2/);
+  assert.match(edge, /const minTools = 0/);
   assert.match(edge, /interventions\.length < 2/);
   assert.match(edge, /monitoringPlan\.length < 3/);
   assert.match(edge, /textOverlapRatio/);
