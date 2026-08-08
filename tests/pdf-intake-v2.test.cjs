@@ -14,6 +14,7 @@ function load() {
   };
   vm.createContext(sandbox);
   vm.runInContext(read('assets/pdf-table-structure.js'), sandbox, { filename: 'pdf-table-structure.js' });
+  vm.runInContext(read('assets/pdf-column-alignment.js'), sandbox, { filename: 'pdf-column-alignment.js' });
   vm.runInContext(read('assets/pdf-intake-v2.js'), sandbox, { filename: 'pdf-intake-v2.js' });
   vm.runInContext(read('assets/document-lite.js'), sandbox, { filename: 'document-lite.js' });
   return sandbox.window;
@@ -61,7 +62,7 @@ const indicatorPdf = [page(1, [
 test('canonical PDF intake separates metadata from a 13x2 indicator table without a type-specific adapter', () => {
   const window = load();
   const canonical = window.TaqareerPdfIntakeV2.normalizePdfPages(indicatorPdf);
-  assert.equal(canonical.canonicalDocumentVersion, '2.1.0');
+  assert.equal(canonical.canonicalDocumentVersion, '2.2.0');
   assert.equal(canonical.metadata.school, 'الباسط للبنين (8-10)');
   assert.equal(canonical.metadata.subject, 'الفيزياء');
   assert.equal(canonical.metadata.grade, '8-10');
@@ -85,7 +86,7 @@ test('canonical datasets carry provenance metadata and become the preferred clea
   const datasets = window.TaqareerPdfIntakeV2.datasetsFromCanonical(canonical);
   assert.equal(datasets.length, 1);
   assert.equal(datasets[0].meta.extractionMode, 'canonical-pdf-intake-v2');
-  assert.equal(datasets[0].meta.canonicalDocumentVersion, '2.1.0');
+  assert.equal(datasets[0].meta.canonicalDocumentVersion, '2.2.0');
   assert.equal(datasets[0].meta.metadata.subject, 'الفيزياء');
   assert.equal(datasets[0].meta.structuralConfidence >= 0.85, true);
   assert.ok(canonical.metadataProvenance.every(item => item.provenance?.sourceText));
@@ -118,7 +119,7 @@ test('narrative PDF remains narrative and is not forced into a table', () => {
   const specialized = window.TaqareerDocuments._test.detectAggregatedSupervisionNarrativePdf(pages, canonical);
   assert.ok(specialized);
   assert.equal(specialized.dataset.meta.metadata.school, 'الباسط للبنين (8-10)');
-  assert.equal(specialized.dataset.meta.canonicalDocumentVersion, '2.1.0');
+  assert.equal(specialized.dataset.meta.canonicalDocumentVersion, '2.2.0');
 });
 
 test('blind dimension-measure layout is normalized without report-type or filename rules', () => {
@@ -212,7 +213,7 @@ const blindHierarchicalDistributionPdf = [
 test('blind hierarchical PDF headers collapse to parent measures and repeated grand totals are deduplicated', () => {
   const window = load();
   const canonical = window.TaqareerPdfIntakeV2.normalizePdfPages(blindHierarchicalDistributionPdf);
-  assert.equal(canonical.canonicalDocumentVersion, '2.1.0');
+  assert.equal(canonical.canonicalDocumentVersion, '2.2.0');
   assert.equal(canonical.tables.length, 1);
   const table = canonical.tables[0];
   assert.equal(table.status, 'accepted');
@@ -279,4 +280,73 @@ test('non-additive hierarchical child groups are not promoted to an accepted par
   assert.equal(canonical.tables.length, 1);
   assert.equal(canonical.tables[0].status, 'unresolved');
   assert.equal(window.TaqareerPdfIntakeV2.datasetsFromCanonical(canonical).length, 0);
+});
+
+
+test('RTL individual-results table keeps seven semantic columns aligned across 14 pages', () => {
+  const window = load();
+  const headers = ['م', 'اسم الطالب', 'الجنسية', 'حالة القيد', 'المجموع', 'المستوى', 'دور ثاني'];
+  const rows = Array.from({ length: 319 }, (_, index) => {
+    const serial = index + 1;
+    const score = serial === 313 ? 'غـ' : serial === 36 ? '0' : serial === 124 ? '21' : String(50 + (serial * 7) % 51);
+    const numeric = Number(score);
+    const level = score === 'غـ' ? 'غـ' : numeric >= 90 ? 'أ' : numeric >= 80 ? 'ب' : numeric >= 65 ? 'ج' : numeric >= 50 ? 'د' : 'هـ';
+    return [String(serial), `طالب اختبار ${serial}`, serial % 19 === 0 ? 'جنسية أخرى' : 'عماني', serial % 53 === 0 ? 'مستجد' : 'منقول', score, level, serial === 124 ? 'شامل الفصلين' : serial === 313 ? 'الفصل الثاني' : '--'];
+  });
+  const pages = [];
+  for (let pageIndex = 0; pageIndex < 14; pageIndex += 1) {
+    const start = pageIndex * 25;
+    const end = pageIndex === 13 ? rows.length : Math.min(rows.length, start + 25);
+    const body = rows.slice(start, end);
+    pages.push(page(pageIndex + 1, [
+      ['وزارة التعليم'],
+      ['كشف نتائج الطلب على مستوى المادة'],
+      ['المادة', 'العلوم'],
+      ['الصف', 'الثامن'],
+      headers,
+      ...body,
+    ]));
+  }
+  const canonical = window.TaqareerPdfIntakeV2.normalizePdfPages(pages);
+  assert.equal(canonical.tables.length, 1);
+  const table = canonical.tables[0];
+  assert.equal(table.status, 'accepted');
+  assert.deepEqual(Array.from(table.headers), ['م', 'اسم الطالب', 'الجنسية', 'حالة القيد', 'الدرجة', 'المستوى', 'دور ثانٍ']);
+  assert.equal(table.rows.length, 319);
+  assert.deepEqual(JSON.parse(JSON.stringify(table.rows[0])), {
+    'م': '1', 'اسم الطالب': 'طالب اختبار 1', 'الجنسية': 'عماني', 'حالة القيد': 'منقول', 'الدرجة': '57', 'المستوى': 'د', 'دور ثانٍ': '--'
+  });
+  assert.equal(table.rows[35]['الدرجة'], '0', 'zero is a valid observed score');
+  assert.equal(table.rows[35]['المستوى'], 'هـ');
+  assert.equal(table.rows[312]['الدرجة'], 'غـ', 'non-numeric source token must be preserved, not coerced to zero');
+  assert.equal(table.rows[312]['المستوى'], 'غـ');
+  assert.equal(table.rows[312]['دور ثانٍ'], 'الفصل الثاني');
+  assert.equal(table.structure.kind, 'flat-table');
+  assert.equal(table.structure.alignmentMode, 'semantic-column-order');
+  assert.equal(table.structure.columnAlignmentVersion, '1.0.0');
+  assert.equal(table.structure.validationIssues.length, 0);
+});
+
+test('column alignment can recover a reversed RTL row without changing the header contract', () => {
+  const window = load();
+  const pages = [page(1, [
+    ['رقم الطالب', 'اسم الطالب', 'الجنسية', 'حالة القيد', 'الدرجة', 'المستوى', 'ملاحظات'],
+    ['--', 'د', '58', 'منقول', 'عماني', 'طالب ألف', '1'],
+    ['--', 'ب', '80', 'منقول', 'عماني', 'طالب باء', '2'],
+    ['--', 'أ', '95', 'مستجد', 'عماني', 'طالب جيم', '3'],
+  ])];
+  const canonical = window.TaqareerPdfIntakeV2.normalizePdfPages(pages);
+  assert.equal(canonical.tables.length, 1);
+  const table = canonical.tables[0];
+  assert.equal(table.status, 'accepted');
+  assert.deepEqual(JSON.parse(JSON.stringify(table.rows[0])), {
+    'م': '1', 'اسم الطالب': 'طالب ألف', 'الجنسية': 'عماني', 'حالة القيد': 'منقول', 'الدرجة': '58', 'المستوى': 'د', 'الملاحظات': '--'
+  });
+});
+
+test('column-alignment core is generic and contains no report, subject, or filename switch', () => {
+  const source = read('assets/pdf-column-alignment.js');
+  assert.doesNotMatch(source, /single_subject|supervision_|student_work|level_distribution/);
+  assert.doesNotMatch(source, /العلوم|الفيزياء|الكيمياء|الأحياء/);
+  assert.doesNotMatch(source, /filename|fileName|\.pdf/i);
 });

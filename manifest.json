@@ -1,6 +1,6 @@
 {
   "app": "تقارير",
-  "version": "1.2.27",
+  "version": "1.2.28",
   "phase": "Phase 2-D Fix 21 - Cross-Section A4 Flow",
   "releaseName": "Cross-Section A4 Flow and Safe Whitespace Recovery",
   "buildType": "static-github-pages-plus-supabase-edge-function",

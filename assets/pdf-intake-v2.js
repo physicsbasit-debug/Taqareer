@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "2.1.0";
+  const VERSION = "2.2.0";
   const HIGH_CONFIDENCE = 0.85;
   const REVIEW_CONFIDENCE = 0.60;
 
@@ -58,19 +58,23 @@
   ]);
 
   const TABLE_HEADER_TERMS = Object.freeze([
+    { key: "serial", canonical: "م", pattern: /^(?:م|الرقم|رقم\s*(?:الطالب|السجل|التسلسل))$/ },
     { key: "item", canonical: "بنود التقويم", pattern: /بنود?\s*التقويم|عنصر\s*التقويم|المؤشر|^البند$/ },
     { key: "mean", canonical: "المتوسط", pattern: /^المتوسط$|المتوسط\s|متوسط\s/ },
     { key: "mode", canonical: "الأكثر تكرارا", pattern: /الاكثر\s*تكرار|الأكثر\s*تكرار|المنوال/ },
-    { key: "student", canonical: "اسم الطالب", pattern: /اسم\s*الطالب|الطالب/ },
-    { key: "score", canonical: "الدرجة", pattern: /^الدرج[هة]$|المجموع|الدرجه\s|الدرجة\s/ },
+    { key: "student", canonical: "اسم الطالب", pattern: /اسم\s*الطالب|^الطالب$|^الاسم$/ },
+    { key: "nationality", canonical: "الجنسية", pattern: /^الجنسي[هة]$/ },
+    { key: "enrollment", canonical: "حالة القيد", pattern: /حاله\s*القيد|حالة\s*القيد|^القيد$/ },
+    { key: "score", canonical: "الدرجة", pattern: /^الدرج[هة]$|^المجموع$|الدرجه\s|الدرجة\s/ },
     { key: "level", canonical: "المستوى", pattern: /^المستو[يى]$|المستوى\s|المستوي\s/ },
+    { key: "second_round", canonical: "دور ثانٍ", pattern: /دور\s*ثان/ },
     { key: "category", canonical: "الفئة", pattern: /^الفئ[هة]$|التصنيف/ },
     { key: "value", canonical: "القيمة", pattern: /^القيم[هة]$|النسب[هة]|النسبة/ },
     { key: "date", canonical: "التاريخ", pattern: /^التاريخ$/ },
     { key: "subject", canonical: "المادة", pattern: /^الماد[هة]$/ },
     { key: "grade", canonical: "الصف", pattern: /^الصف$/ },
     { key: "class", canonical: "الفصل", pattern: /^الفصل$/ },
-    { key: "notes", canonical: "الملاحظات", pattern: /الملاحظات/ },
+    { key: "notes", canonical: "الملاحظات", pattern: /الملاحظات|^ملاحظات$/ },
   ]);
 
   const SECTION_HEADINGS = Object.freeze([
@@ -114,30 +118,69 @@
     return false;
   }
 
-  function inferHeaderSpec(line) {
-    const cells = lineCells(line);
-    const matchesByCell = cells.map(cell => ({ cell, matches: tableHeaderMatches(cell) }))
-      .filter(item => item.matches.length);
-    const distinct = [];
-    for (const item of matchesByCell) {
-      for (const match of item.matches) {
-        if (!distinct.some(existing => existing.key === match.key)) distinct.push(match);
-      }
-    }
-    if (distinct.length < 2) {
-      for (const match of tableHeaderMatches(lineText(line))) {
-        if (!distinct.some(existing => existing.key === match.key)) distinct.push(match);
-      }
-    }
-    if (distinct.length < 2) return null;
+  function uniqueHeaderNames(values) {
+    const counts = new Map();
+    return values.map((value, index) => {
+      const base = clean(value) || `حقل ${index + 1}`;
+      const key = normalize(base);
+      const count = (counts.get(key) || 0) + 1;
+      counts.set(key, count);
+      return count === 1 ? base : `${base} (${count})`;
+    });
+  }
 
-    const preferredOrder = ["item", "student", "subject", "grade", "class", "date", "score", "mean", "mode", "level", "value", "category", "notes"];
-    distinct.sort((a, b) => preferredOrder.indexOf(a.key) - preferredOrder.indexOf(b.key));
-    const headers = distinct.map(item => item.canonical);
+  function inferHeaderSpec(line) {
+    const rawCells = lineCells(line).filter(cell => !/^[\s:：|\-–—/]+$/.test(cell));
+    const columns = rawCells.map((cell, sourceIndex) => {
+      const matches = tableHeaderMatches(cell);
+      const match = matches[0] || null;
+      return {
+        sourceIndex,
+        sourceText: cell,
+        role: match?.key || "unknown",
+        header: match?.canonical || cell,
+        matched: Boolean(match),
+      };
+    });
+    const knownRoles = [...new Set(columns.filter(column => column.matched).map(column => column.role))];
+
+    if (knownRoles.length < 2) {
+      const collapsed = [];
+      for (const match of tableHeaderMatches(lineText(line))) {
+        if (!collapsed.some(existing => existing.key === match.key)) collapsed.push(match);
+      }
+      if (collapsed.length < 2) return null;
+      const preferredOrder = ["item", "student", "subject", "grade", "class", "date", "score", "mean", "mode", "level", "value", "category", "notes"];
+      collapsed.sort((a, b) => preferredOrder.indexOf(a.key) - preferredOrder.indexOf(b.key));
+      return {
+        headers: collapsed.map(item => item.canonical),
+        roles: collapsed.map(item => item.key),
+        columns: collapsed.map((item, sourceIndex) => ({ sourceIndex, sourceText: item.canonical, role: item.key, header: item.canonical, matched: true })),
+        sourceCellCount: collapsed.length,
+        alignmentMode: "collapsed-header",
+        confidence: Math.min(0.92, 0.68 + collapsed.length * 0.07),
+      };
+    }
+
+    const dimensionMeasureOnly = columns.every(column => column.matched)
+      && columns.some(column => column.role === "item")
+      && columns.some(column => ["mean", "value", "mode"].includes(column.role))
+      && !columns.some(column => ["student", "serial", "nationality", "enrollment"].includes(column.role));
+    let orderedColumns = columns;
+    if (dimensionMeasureOnly) {
+      const preferredOrder = ["item", "mean", "mode", "value", "category", "notes"];
+      orderedColumns = [...columns].sort((a, b) => preferredOrder.indexOf(a.role) - preferredOrder.indexOf(b.role));
+    }
+    const headers = uniqueHeaderNames(orderedColumns.map(column => column.header));
+    orderedColumns = orderedColumns.map((column, index) => ({ ...column, header: headers[index] }));
+    const coverage = columns.length ? columns.filter(column => column.matched).length / columns.length : 0;
     return {
       headers,
-      roles: distinct.map(item => item.key),
-      confidence: Math.min(0.99, 0.72 + distinct.length * 0.08),
+      roles: orderedColumns.map(column => column.role),
+      columns: orderedColumns,
+      sourceCellCount: rawCells.length,
+      alignmentMode: dimensionMeasureOnly ? "dimension-measure" : "semantic-column-order",
+      confidence: Math.min(0.99, 0.72 + knownRoles.length * 0.035 + coverage * 0.12),
     };
   }
 
@@ -211,13 +254,13 @@
     }
 
     if (cells.length < Math.min(2, headers.length)) return null;
-    const row = Object.fromEntries(headers.map(header => [header, ""]));
-    if (cells.length === headers.length) {
-      headers.forEach((header, index) => { row[header] = cells[index] ?? ""; });
-      return row;
-    }
-    const selected = cells.slice(0, headers.length);
-    headers.forEach((header, index) => { row[header] = selected[index] ?? ""; });
+    const alignment = window.TaqareerPdfColumnAlignment?.alignCells
+      ? window.TaqareerPdfColumnAlignment.alignCells(cells, headerSpec.columns || [])
+      : { values: cells, orientation: "source", score: 0.75 };
+    const values = alignment.values || cells;
+    if (values.length !== headers.length) return null;
+    const row = Object.fromEntries(headers.map((header, index) => [header, values[index] ?? ""]));
+    Object.defineProperty(row, "__alignment", { value: alignment, enumerable: false, configurable: true });
     return row;
   }
 
@@ -233,6 +276,8 @@
       const measure = row[headerSpec.headers[measureIndex]];
       return String(item || "").trim().length >= 3 && Number.isFinite(numericValue(measure));
     }
+    const alignment = row.__alignment;
+    if (alignment && alignment.score < 0.48) return false;
     return values.length >= Math.max(2, Math.ceil(headerSpec.headers.length * 0.5));
   }
 
@@ -270,14 +315,21 @@
           }
         }
         if (rows.length < 3) continue;
-        const confidence = Math.min(0.99, headerSpec.confidence + Math.min(0.18, rows.length * 0.012));
+        const validation = window.TaqareerPdfColumnAlignment?.validateRows
+          ? window.TaqareerPdfColumnAlignment.validateRows(rows, headerSpec.columns || [])
+          : { score: 0.75, hardFailure: false, roles: {}, issues: [] };
+        const baseConfidence = Math.min(0.99, headerSpec.confidence + Math.min(0.18, rows.length * 0.012));
+        const confidence = Math.max(0, Math.min(0.99, baseConfidence * (0.82 + 0.18 * Math.max(0, Number(validation.score || 0)))));
+        const status = validation.hardFailure
+          ? "unresolved"
+          : confidence >= HIGH_CONFIDENCE ? "accepted" : confidence >= REVIEW_CONFIDENCE ? "review" : "unresolved";
         tables.push({
           id: `table-${++serial}`,
           headers: headerSpec.headers,
           roles: headerSpec.roles,
           rows,
           confidence,
-          status: confidence >= HIGH_CONFIDENCE ? "accepted" : confidence >= REVIEW_CONFIDENCE ? "review" : "unresolved",
+          status,
           pages: [page.pageNumber],
           provenance: {
             header: provenance(page.pageNumber, lines[index], headerSpec.confidence),
@@ -285,6 +337,14 @@
             endLine: lines[endIndex]?.lineIndex || endIndex + 1,
           },
           sourceText: lines.slice(index, endIndex + 1).map(lineText).filter(Boolean).join("\n"),
+          structure: {
+            kind: "flat-table",
+            alignmentMode: headerSpec.alignmentMode || "legacy",
+            columnAlignmentVersion: window.TaqareerPdfColumnAlignment?.VERSION || "",
+            validationScore: Number(validation.score || 0),
+            validationIssues: Array.isArray(validation.issues) ? validation.issues : [],
+            columnRoles: (headerSpec.columns || []).map(column => ({ header: column.header, role: column.role, sourceText: column.sourceText })),
+          },
         });
         index = Math.max(index, endIndex);
       }
