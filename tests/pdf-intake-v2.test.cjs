@@ -62,7 +62,7 @@ const indicatorPdf = [page(1, [
 test('canonical PDF intake separates metadata from a 13x2 indicator table without a type-specific adapter', () => {
   const window = load();
   const canonical = window.TaqareerPdfIntakeV2.normalizePdfPages(indicatorPdf);
-  assert.equal(canonical.canonicalDocumentVersion, '2.3.0');
+  assert.equal(canonical.canonicalDocumentVersion, '2.4.0');
   assert.equal(canonical.metadata.school, 'الباسط للبنين (8-10)');
   assert.equal(canonical.metadata.subject, 'الفيزياء');
   assert.equal(canonical.metadata.grade, '8-10');
@@ -86,7 +86,7 @@ test('canonical datasets carry provenance metadata and become the preferred clea
   const datasets = window.TaqareerPdfIntakeV2.datasetsFromCanonical(canonical);
   assert.equal(datasets.length, 1);
   assert.equal(datasets[0].meta.extractionMode, 'canonical-pdf-intake-v2');
-  assert.equal(datasets[0].meta.canonicalDocumentVersion, '2.3.0');
+  assert.equal(datasets[0].meta.canonicalDocumentVersion, '2.4.0');
   assert.equal(datasets[0].meta.metadata.subject, 'الفيزياء');
   assert.equal(datasets[0].meta.structuralConfidence >= 0.85, true);
   assert.ok(canonical.metadataProvenance.every(item => item.provenance?.sourceText));
@@ -119,7 +119,7 @@ test('narrative PDF remains narrative and is not forced into a table', () => {
   const specialized = window.TaqareerDocuments._test.detectAggregatedSupervisionNarrativePdf(pages, canonical);
   assert.ok(specialized);
   assert.equal(specialized.dataset.meta.metadata.school, 'الباسط للبنين (8-10)');
-  assert.equal(specialized.dataset.meta.canonicalDocumentVersion, '2.3.0');
+  assert.equal(specialized.dataset.meta.canonicalDocumentVersion, '2.4.0');
 });
 
 test('blind dimension-measure layout is normalized without report-type or filename rules', () => {
@@ -213,7 +213,7 @@ const blindHierarchicalDistributionPdf = [
 test('blind hierarchical PDF headers collapse to parent measures and repeated grand totals are deduplicated', () => {
   const window = load();
   const canonical = window.TaqareerPdfIntakeV2.normalizePdfPages(blindHierarchicalDistributionPdf);
-  assert.equal(canonical.canonicalDocumentVersion, '2.3.0');
+  assert.equal(canonical.canonicalDocumentVersion, '2.4.0');
   assert.equal(canonical.tables.length, 1);
   const table = canonical.tables[0];
   assert.equal(table.status, 'accepted');
@@ -325,7 +325,7 @@ test('RTL individual-results table keeps seven semantic columns aligned across 1
   assert.equal(table.rows[312]['دور ثانٍ'], 'الفصل الثاني');
   assert.equal(table.structure.kind, 'flat-table');
   assert.equal(table.structure.alignmentMode, 'semantic-column-order');
-  assert.equal(table.structure.columnAlignmentVersion, '1.1.0');
+  assert.equal(table.structure.columnAlignmentVersion, '1.2.0');
   assert.equal(table.structure.validationIssues.length, 0);
 });
 
@@ -444,9 +444,16 @@ test('realistic 14-page geometry regression keeps all 319 serial rows after the 
     const numeric = Number(score);
     const level = score === 'غـ' ? 'غـ' : numeric >= 90 ? 'أ' : numeric >= 80 ? 'ب' : numeric >= 65 ? 'ج' : numeric >= 50 ? 'د' : 'هـ';
     const note = serial === 124 ? 'شامل الفصلين' : serial === 313 ? 'الفصل الثاني' : '--';
+    const enrollment = serial % 53 === 0 ? 'مستجد' : 'منقول';
+    const compact = new Set([106, 195, 248, 275]).has(serial);
+    if (compact) return [
+      item(`${enrollment}--`, 60, y, 216), item(`${score}${level}`, 137, y, 78),
+      item('جنسية اختبار', 314, y, 42), item(`طالب قصير ${serial}`, 483, y, 54),
+      item(String(serial), 543, y, 21, 'ltr')
+    ];
     return [
       item(note, 20, y, note === '--' ? 22 : 72), item(level, 135, y, 12), item(score, 195, y, 28, 'ltr'),
-      item(serial % 53 === 0 ? 'مستجد' : 'منقول', 275, y, 45), item(serial % 19 === 0 ? 'جنسية أخرى' : 'عماني', 350, y, 55),
+      item(enrollment, 275, y, 45), item(serial % 19 === 0 ? 'جنسية أخرى' : 'عماني', 350, y, 55),
       item(`طالب اختبار ${serial}`, 430, y, 220), item(String(serial), serial >= 100 ? 657 : 682, y, serial >= 100 ? 20 : 8, 'ltr')
     ];
   };
@@ -470,6 +477,13 @@ test('realistic 14-page geometry regression keeps all 319 serial rows after the 
   assert.equal(table.status, 'accepted');
   assert.equal(table.rows.length, 319);
   assert.deepEqual(Array.from(table.pages), [1,2,3,4,5,6,7,8,9,10,11,12,13,14]);
+  for (const serial of [106, 195, 248, 275]) {
+    const recovered = table.rows.find(row => Number(row['م']) === serial);
+    assert.ok(recovered, `compact fused row ${serial} must survive the full 14-page merge`);
+    assert.match(recovered['اسم الطالب'], /طالب قصير/);
+    assert.ok(/^\d+$/.test(recovered['الدرجة']));
+    assert.ok(['أ','ب','ج','د','هـ'].includes(recovered['المستوى']));
+  }
   assert.equal(table.rows[99]['م'], '100');
   assert.equal(table.rows[99]['اسم الطالب'], 'طالب اختبار 100');
   assert.equal(table.rows[312]['الدرجة'], 'غـ');
@@ -479,4 +493,59 @@ test('realistic 14-page geometry regression keeps all 319 serial rows after the 
   assert.equal(table.structure.pagination.serial.first, 1);
   assert.equal(table.structure.pagination.serial.last, 319);
   assert.equal(table.structure.pagination.serial.gaps.length, 0);
+});
+
+test('semantic geometry recovery keeps short RTL rows when adjacent PDF spans fuse multiple roles', () => {
+  const window = load();
+  const item = (str, x, y, width, dir = 'rtl') => ({ str, transform: [1, 0, 0, 10, x, y], width, height: 10, dir });
+  const headerItems = [
+    item('دور ثاني', 20, 700, 55), item('المستوى', 120, 700, 48), item('المجموع', 190, 700, 48),
+    item('حالة القيد', 270, 700, 65), item('الجنسية', 355, 700, 50), item('اسم الطالب', 440, 700, 75), item('م', 675, 700, 10)
+  ];
+  const compactRow = (serial, y, score, level, enrollment = 'منقول', nationality = 'جنسية اختبار') => [
+    item(`${enrollment}--`, 60, y, 216),
+    item(`${score}${level}`, 137, y, 78),
+    item(nationality, 314, y, 36),
+    item('طالب قصير', 483, y, 54),
+    item(String(serial), 543, y, 21, 'ltr'),
+  ];
+  const lines = window.TaqareerDocuments._test.groupPdfItemsIntoLines([
+    ...headerItems,
+    ...compactRow(106, 680, 52, 'د', 'مستجد', 'باكستان'),
+    ...compactRow(107, 660, 80, 'ب'),
+    ...compactRow(108, 640, 0, 'هـ', 'باق'),
+  ]);
+  const compactLine = lines.find(line => /106/.test(line.text));
+  assert.ok(compactLine && compactLine.cells.length < 7, 'fixture must reproduce fused sparse RTL cells');
+  const canonical = window.TaqareerPdfIntakeV2.normalizePdfPages([{ pageNumber: 1, lines }]);
+  assert.equal(canonical.tables.length, 1);
+  const table = canonical.tables[0];
+  assert.equal(table.status, 'accepted');
+  assert.equal(table.rows.length, 3);
+  assert.deepEqual(JSON.parse(JSON.stringify(table.rows[0])), {
+    'م': '106', 'اسم الطالب': 'طالب قصير', 'الجنسية': 'باكستان', 'حالة القيد': 'مستجد', 'الدرجة': '52', 'المستوى': 'د', 'دور ثانٍ': '--'
+  });
+  assert.equal(table.rows[2]['الدرجة'], '0', 'zero must remain a valid score after composite-span recovery');
+  assert.equal(table.rows[2]['المستوى'], 'هـ');
+});
+
+test('recovered short row receives its following nationality continuation instead of leaking it to the previous student', () => {
+  const window = load();
+  const item = (str, x, y, width, dir = 'rtl') => ({ str, transform: [1, 0, 0, 10, x, y], width, height: 10, dir });
+  const header = [
+    item('دور ثاني', 20, 700, 55), item('المستوى', 120, 700, 48), item('المجموع', 190, 700, 48),
+    item('حالة القيد', 270, 700, 65), item('الجنسية', 355, 700, 50), item('اسم الطالب', 440, 700, 75), item('م', 675, 700, 10)
+  ];
+  const normal = (serial, y) => [item('--', 25, y, 20, 'ltr'), item('ج', 135, y, 12), item('70', 195, y, 28, 'ltr'), item('منقول', 275, y, 45), item('عماني', 355, y, 40), item(`طالب ${serial}`, 430, y, 150), item(String(serial), 543, y, 21, 'ltr')];
+  const short = [item('منقول--', 60, 660, 216), item('89ب', 136, 660, 79), item('الجمهورية', 308, 660, 39), item('طالب قصير', 483, 660, 53), item('195', 543, 660, 21, 'ltr')];
+  const continuation = [item('العربية التجريبية', 300, 648, 70)];
+  const lines = window.TaqareerDocuments._test.groupPdfItemsIntoLines([...header, ...normal(194, 680), ...short, ...continuation, ...normal(196, 630)]);
+  const canonical = window.TaqareerPdfIntakeV2.normalizePdfPages([{ pageNumber: 1, lines }]);
+  const table = canonical.tables[0];
+  assert.equal(table.rows.length, 3);
+  assert.equal(table.rows[0]['الجنسية'], 'عماني');
+  assert.equal(table.rows[1]['م'], '195');
+  assert.match(table.rows[1]['الجنسية'], /الجمهورية/);
+  assert.match(table.rows[1]['الجنسية'], /العربية التجريبية/);
+  assert.doesNotMatch(table.rows[0]['الجنسية'], /العربية التجريبية/);
 });

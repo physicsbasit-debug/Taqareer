@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.1.0";
+  const VERSION = "1.2.0";
 
   function normalize(value) {
     return String(value ?? "")
@@ -67,8 +67,11 @@
       case "score":
       case "mean":
       case "value":
-      case "mode":
-        return numeric ? 1 : isLevelToken(text) ? 0.25 : placeholder ? 0.35 : 0;
+      case "mode": {
+        const normalizedToken = normalize(text).replace(/\s+/g, "");
+        const absentScoreToken = /^(?:غ|غائب|غياب)$/.test(normalizedToken);
+        return numeric ? 1 : absentScoreToken ? 0.9 : isLevelToken(text) ? 0.25 : placeholder ? 0.35 : 0;
+      }
       case "level":
         return isLevelToken(text) ? 1 : hasText(text) && !numeric && text.length <= 24 ? 0.45 : placeholder ? 0.25 : 0;
       case "second_round":
@@ -87,6 +90,54 @@
       default:
         return placeholder ? 0.55 : text ? 0.75 : 0.2;
     }
+  }
+
+  function canonicalLevelToken(value) {
+    const raw = clean(value);
+    const text = normalize(raw).replace(/[.،,:؛()\[\]]/g, "").replace(/\s+/g, "");
+    const map = { "ا": "أ", "ب": "ب", "ج": "ج", "د": "د", "ه": "هـ", "غ": "غـ", "a": "A", "b": "B", "c": "C", "d": "D", "e": "E" };
+    return map[text] || raw;
+  }
+
+  function splitCompositeValue(value, availableRoles = []) {
+    const raw = clean(value);
+    const roles = new Set((availableRoles || []).map(String));
+    if (!raw) return [];
+
+    if (roles.has("serial") && roles.has("student")) {
+      const match = normalizeDigits(raw).match(/^(\d{1,6})\s+(.+)$/);
+      if (match && /[A-Za-z\u0600-\u06ff]/.test(match[2])) {
+        const serialLength = raw.search(/\s/);
+        return [
+          { text: match[1], forcedRole: "serial" },
+          { text: clean(serialLength >= 0 ? raw.slice(serialLength + 1) : match[2]), forcedRole: "student" },
+        ];
+      }
+    }
+
+    if (roles.has("score") && roles.has("level")) {
+      const normalized = normalize(normalizeDigits(raw)).replace(/\s+/g, "");
+      const match = normalized.match(/^([-+]?\d+(?:[.,]\d+)?)((?:[ابجدهغ]|[a-e]))$/);
+      if (match) return [
+        { text: match[1].replace(/,/g, "."), forcedRole: "score" },
+        { text: canonicalLevelToken(match[2]), forcedRole: "level" },
+      ];
+    }
+
+    if (roles.has("enrollment") && roles.has("second_round")) {
+      const n = normalize(raw);
+      const enrollmentMatch = n.match(/^(منقول|مستجد|باق|باقي|مرفع|موقوف|منسحب|منتقل|مسجل)(.*)$/);
+      if (enrollmentMatch) {
+        const enrollmentRaw = raw.slice(0, raw.length - enrollmentMatch[2].length).trim();
+        const tail = clean(enrollmentMatch[2]);
+        if (tail) return [
+          { text: enrollmentRaw, forcedRole: "enrollment" },
+          { text: tail, forcedRole: "second_round" },
+        ];
+      }
+    }
+
+    return [{ text: raw, forcedRole: "" }];
   }
 
   function candidateScore(values, columns) {
@@ -153,6 +204,8 @@
     alignCells,
     validateRows,
     scoreValues,
-    _test: { normalize, normalizeDigits, clean, parseNumber, isPlaceholder, isLevelToken, isEnrollmentToken, valueRoleScore, candidateScore },
+    valueRoleScore,
+    splitCompositeValue,
+    _test: { normalize, normalizeDigits, clean, parseNumber, isPlaceholder, isLevelToken, isEnrollmentToken, canonicalLevelToken, splitCompositeValue, valueRoleScore, candidateScore },
   };
 })();

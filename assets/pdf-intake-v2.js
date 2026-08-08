@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "2.3.0";
+  const VERSION = "2.4.0";
   const HIGH_CONFIDENCE = 0.85;
   const REVIEW_CONFIDENCE = 0.60;
 
@@ -266,27 +266,59 @@
     const items = Array.isArray(line?.items) ? line.items.filter(item => clean(item?.str)) : [];
     if (!columns.length || !items.length || columns.some(column => !Number.isFinite(Number(column?.center)))) return null;
 
-    const buckets = columns.map(() => []);
+    const aligner = window.TaqareerPdfColumnAlignment;
+    const roles = columns.map(column => String(column?.role || "unknown"));
     const centers = columns.map(column => Number(column.center));
+    const sortedCenters = [...centers].sort((a, b) => a - b);
+    const gaps = sortedCenters.slice(1).map((value, index) => Math.abs(value - sortedCenters[index])).filter(value => value > 0);
+    const typicalGap = gaps.length ? gaps.sort((a, b) => a - b)[Math.floor(gaps.length / 2)] : 70;
+    const buckets = columns.map(() => []);
+
+    function columnScore(fragment, item, column, index) {
+      if (fragment.forcedRole) return fragment.forcedRole === roles[index] ? 10 : -10;
+      const x = Number(item?.x);
+      const width = Math.abs(Number(item?.width) || 0);
+      const center = Number.isFinite(x) ? x + width / 2 : NaN;
+      const distance = Number.isFinite(center) ? Math.abs(center - centers[index]) : typicalGap * 2;
+      const spatial = Math.max(0, 1 - distance / Math.max(24, typicalGap * 1.8));
+      const semantic = aligner?.valueRoleScore ? Number(aligner.valueRoleScore(roles[index], fragment.text) || 0) : 0;
+      const semanticWeight = roles[index] === "unknown" ? 0.35 : 0.72;
+      return semantic * semanticWeight + spatial * (1 - semanticWeight);
+    }
+
     for (const item of items) {
       const x = Number(item?.x);
       const width = Math.abs(Number(item?.width) || 0);
       if (!Number.isFinite(x)) continue;
-      const center = x + width / 2;
-      let bestIndex = 0;
-      let bestDistance = Infinity;
-      centers.forEach((candidate, index) => {
-        const distance = Math.abs(center - candidate);
-        if (distance < bestDistance) { bestDistance = distance; bestIndex = index; }
-      });
-      buckets[bestIndex].push({ ...item, x, width });
+      const fragments = aligner?.splitCompositeValue
+        ? aligner.splitCompositeValue(item.str, roles)
+        : [{ text: clean(item.str), forcedRole: "" }];
+      for (const fragment of fragments) {
+        if (!clean(fragment?.text)) continue;
+        let bestIndex = 0;
+        let bestScore = -Infinity;
+        columns.forEach((column, index) => {
+          const score = columnScore(fragment, item, column, index);
+          if (score > bestScore) { bestScore = score; bestIndex = index; }
+        });
+        buckets[bestIndex].push({ ...item, str: fragment.text, x, width, semanticScore: bestScore });
+      }
     }
 
     const rtl = Boolean(line?.rtl);
     return buckets.map(bucket => {
       if (!bucket.length) return "";
       const ordered = [...bucket].sort((a, b) => rtl ? b.x - a.x : a.x - b.x);
-      return clean(ordered.map(item => item.str).join(" "));
+      const seen = new Set();
+      const values = [];
+      for (const item of ordered) {
+        const value = clean(item.str);
+        const key = normalize(value);
+        if (!value || seen.has(key)) continue;
+        seen.add(key);
+        values.push(value);
+      }
+      return clean(values.join(" "));
     });
   }
 

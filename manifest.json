@@ -1,6 +1,6 @@
 {
   "app": "تقارير",
-  "version": "1.2.29",
+  "version": "1.2.30",
   "phase": "Phase 2-D Fix 29 - Full-Document PDF Geometry",
   "releaseName": "Full-Document PDF Geometry and Pagination Contract",
   "buildType": "static-github-pages-plus-supabase-edge-function",
@@ -188,7 +188,10 @@
     "dumbbell-before-after-charts",
     "scatter-relationship-ready",
     "pareto-cumulative-rendering",
-    "radar-dimension-readability-guard"
+    "radar-dimension-readability-guard",
+    "role-weighted-pdf-geometry",
+    "composite-pdf-span-decomposition",
+    "short-rtl-row-recovery"
   ],
   "runtime": {
     "frontend": "GitHub Pages static site",
