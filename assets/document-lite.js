@@ -926,13 +926,17 @@
     return rows;
   }
 
-  function detectAggregatedSupervisionNarrativePdf(pageRecords) {
+  function detectAggregatedSupervisionNarrativePdf(pageRecords, canonicalDocument = null) {
     const allText = normalize((pageRecords || []).map(page => pageText(page.lines || [])).join("\n"));
     const sectionHits = AGGREGATED_NARRATIVE_SECTIONS.filter(section => section.pattern.test(allText)).length;
     if (!/التقرير التجميعي/.test(allText) || !/(?:الزياره|الزيارة).*(?:الاشرافيه|الإشرافية|الشرافيه)/.test(allText) || sectionHits < 3) return null;
     const rows = buildAggregatedNarrativeRows(pageRecords);
     if (rows.length < 3) return null;
-    const metadata = extractAggregatedNarrativeMetadata(pageRecords);
+    const metadata = {
+      ...extractAggregatedNarrativeMetadata(pageRecords),
+      ...(canonicalDocument?.metadata || {}),
+      aggregatedReport: true,
+    };
     const sourceWarnings = [];
     if (metadata.academicYearRaw && metadata.academicYearRaw !== metadata.academicYear) {
       sourceWarnings.push(`تم توحيد اتجاه العام الدراسي من ${metadata.academicYearRaw} إلى ${metadata.academicYear} للعرض.`);
@@ -959,6 +963,12 @@
           },
           narrativeSections: [...new Set(rows.map(row => row["القسم"]))],
           pageCount: pageRecords.length,
+          canonicalDocumentVersion: canonicalDocument?.canonicalDocumentVersion || "",
+          intake: canonicalDocument ? {
+            version: canonicalDocument.canonicalDocumentVersion,
+            sectionCount: canonicalDocument.diagnostics?.sectionCount || 0,
+            unresolvedCount: canonicalDocument.diagnostics?.unresolvedCount || 0,
+          } : null,
         },
       },
       warnings: sourceWarnings,
@@ -1000,6 +1010,21 @@
     }).concat(other);
   }
 
+  function comparePdfIntakeTables(canonicalDatasets = [], legacyDatasets = []) {
+    const describe = dataset => ({
+      rows: Array.isArray(dataset?.rows) ? dataset.rows.length : 0,
+      columns: Array.isArray(dataset?.headers) ? dataset.headers.length : 0,
+      headers: Array.isArray(dataset?.headers) ? dataset.headers.map(String) : [],
+    });
+    return {
+      mode: canonicalDatasets.length ? "canonical-primary" : "legacy-fallback",
+      canonical: canonicalDatasets.map(describe),
+      legacy: legacyDatasets.map(describe),
+      canonicalTableCount: canonicalDatasets.length,
+      legacyTableCount: legacyDatasets.length,
+    };
+  }
+
   async function loadPdfModule() {
     if (window.__TAQAREER_PDFJS__) return window.__TAQAREER_PDFJS__;
     try {
@@ -1022,7 +1047,7 @@
       useSystemFonts: true
     });
     const pdf = await loadingTask.promise;
-    const pageDatasets = [];
+    const legacyPageDatasets = [];
     const allLines = [];
     const pageRecords = [];
     let totalItems = 0;
@@ -1039,7 +1064,7 @@
       if (table.headers.length >= 2 && table.rows.length >= 1 && table.score > 8) {
         const pageText = lines.map(line => String(line?.text || "").trim()).filter(Boolean).join("\n");
         const reportTitle = detectPdfPageReportTitle(lines, table.headerRow);
-        pageDatasets.push({
+        legacyPageDatasets.push({
           id: `pdf-page-${pageNumber}-table`,
           name: `جدول PDF · صفحة ${pageNumber}`,
           headers: table.headers,
@@ -1060,13 +1085,28 @@
       throw error;
     }
 
+    const intakeEngine = window.TaqareerPdfIntakeV2;
+    const canonicalDocument = intakeEngine?.normalizePdfPages ? intakeEngine.normalizePdfPages(pageRecords) : null;
+    const canonicalDatasets = canonicalDocument && intakeEngine?.datasetsFromCanonical
+      ? intakeEngine.datasetsFromCanonical(canonicalDocument)
+      : [];
+    const legacyMergedTables = mergeCompatiblePdfTables(legacyPageDatasets);
+    const shadowComparison = comparePdfIntakeTables(canonicalDatasets, legacyMergedTables);
+    for (const dataset of canonicalDatasets) {
+      dataset.meta = {
+        ...(dataset.meta || {}),
+        intake: { ...(dataset.meta?.intake || {}), shadowComparison },
+      };
+    }
+    const compatibilityTables = canonicalDatasets.length ? canonicalDatasets : legacyMergedTables;
+
     const specialized = detectMultiVisitSupervisionPdf(pageRecords);
-    const narrativeSpecialized = specialized ? null : detectAggregatedSupervisionNarrativePdf(pageRecords);
+    const narrativeSpecialized = specialized ? null : detectAggregatedSupervisionNarrativePdf(pageRecords, canonicalDocument);
     const datasets = specialized
-      ? [specialized.dataset, ...mergeCompatiblePdfTables(pageDatasets)]
+      ? [specialized.dataset, ...compatibilityTables]
       : narrativeSpecialized
-        ? [narrativeSpecialized.dataset, ...mergeCompatiblePdfTables(pageDatasets)]
-        : mergeCompatiblePdfTables(pageDatasets);
+        ? [narrativeSpecialized.dataset, ...compatibilityTables]
+        : [...compatibilityTables];
     const narrativeRows = allLines.map((line, index) => ({
       "م": index + 1,
       "الصفحة": line.page,
@@ -1078,17 +1118,39 @@
       headers: ["م", "الصفحة", "النص"],
       rows: narrativeRows,
       rawText: allLines.map(line => line.text).join("\n"),
-      meta: { sourceType: "pdf", mode: "narrative", pageCount: pdf.numPages, textItemCount: totalItems, metadata: narrativeSpecialized?.dataset?.meta?.metadata || {} }
+      meta: {
+        sourceType: "pdf",
+        mode: "narrative",
+        pageCount: pdf.numPages,
+        textItemCount: totalItems,
+        metadata: narrativeSpecialized?.dataset?.meta?.metadata || canonicalDocument?.metadata || {},
+        canonicalDocumentVersion: canonicalDocument?.canonicalDocumentVersion || "",
+        intake: canonicalDocument ? {
+          version: canonicalDocument.canonicalDocumentVersion,
+          acceptedTableCount: canonicalDocument.diagnostics?.acceptedTableCount || 0,
+          reviewTableCount: canonicalDocument.diagnostics?.reviewTableCount || 0,
+          sectionCount: canonicalDocument.diagnostics?.sectionCount || 0,
+          unresolvedCount: canonicalDocument.diagnostics?.unresolvedCount || 0,
+        } : null,
+      }
     });
+
+    const preferredCanonical = !specialized && !narrativeSpecialized && canonicalDatasets.length === 1
+      && Number(canonicalDatasets[0]?.meta?.structuralConfidence || 0) >= 0.85
+      ? canonicalDatasets[0].id
+      : "";
 
     return {
       name: file.name,
       kind: "pdf",
       datasets,
-      preferredDatasetId: specialized?.dataset?.id || narrativeSpecialized?.dataset?.id || "",
+      preferredDatasetId: specialized?.dataset?.id || narrativeSpecialized?.dataset?.id || preferredCanonical,
+      canonicalDocument,
+      shadowComparison,
       warnings: [
         ...(totalItems < 20 ? ["طبقة النص محدودة؛ راجع المعاينة قبل اعتماد التحليل."] : []),
         ...(specialized?.warnings || []),
+        ...(canonicalDocument?.diagnostics?.reviewTableCount ? ["يوجد جدول مستخرج بثقة متوسطة؛ راجع المعاينة قبل اعتماد التحليل."] : []),
       ]
     };
   }
@@ -1154,7 +1216,7 @@
     constants: { PDF_MODULE_URL, PDF_WORKER_URL },
     _test: {
       matrixToTable, pruneGeneratedEmptyColumns, groupPdfItemsIntoLines, detectPdfPageReportTitle, paragraphRows, parseWordBody, parseWordMetadata, parseWordMetadataTokens, storyTextTokens,
-      detectMultiVisitSupervisionPdf, detectAggregatedSupervisionNarrativePdf, extractAggregatedNarrativeMetadata, buildAggregatedNarrativeRows, parseSupervisionRatings, parseSupervisionNarrative, parseVisitPage,
+      detectMultiVisitSupervisionPdf, detectAggregatedSupervisionNarrativePdf, extractAggregatedNarrativeMetadata, buildAggregatedNarrativeRows, parseSupervisionRatings, parseSupervisionNarrative, parseVisitPage, comparePdfIntakeTables,
       supervisionVisitRows, indicators: SUPERVISION_VISIT_INDICATORS, scale: SUPERVISION_SCALE,
     }
   };
