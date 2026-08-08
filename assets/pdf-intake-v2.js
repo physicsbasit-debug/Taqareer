@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "2.0.0";
+  const VERSION = "2.1.0";
   const HIGH_CONFIDENCE = 0.85;
   const REVIEW_CONFIDENCE = 0.60;
 
@@ -52,6 +52,9 @@
     { key: "reportDate", pattern: /^(?:التاريخ)(?:\s|:|$)/ },
     { key: "time", pattern: /^(?:الساعه|الساعة)(?:\s|:|$)/ },
     { key: "pageNumber", pattern: /رقم\s*الصفح[هة]/ },
+    { key: "wilaya", pattern: /^(?:الولايه|الولاية|الوليه)(?:\s|:|$)/ },
+    { key: "educationSystem", pattern: /نظام\s*التعليم/ },
+    { key: "term", pattern: /^(?:الدور|الفصل\s*الدراس[يى])(?:\s|:|$)/ },
   ]);
 
   const TABLE_HEADER_TERMS = Object.freeze([
@@ -336,6 +339,28 @@
     return clean(match?.[1] || "").replace(/^ماد[هة]\s+/, "");
   }
 
+  function subjectFromPageRecords(pageRecords, title = "") {
+    const direct = subjectFromTitle(title);
+    if (direct && direct.length <= 48 && !/التاريخ|الساعه|الساعة|العام\s*الدراس/.test(normalize(direct))) return direct;
+    for (const page of pageRecords || []) {
+      for (const line of page.lines || []) {
+        const cells = lineCells(line);
+        const titleIndex = cells.findIndex(cell => TITLE_SIGNALS.test(normalize(cell)) && /ماد[هة]/.test(normalize(cell)));
+        if (titleIndex < 0) continue;
+        const candidates = cells.filter((cell, index) => {
+          if (index === titleIndex) return false;
+          const n = normalize(cell);
+          if (!/[\u0600-\u06ffA-Za-z]/.test(cell) || cell.length > 48) return false;
+          if (metadataLabel(cell) || TITLE_SIGNALS.test(n) || /التاريخ|الساعه|الساعة|وزار[هة]|مديري[هة]|محافظ[هة]|العام\s*الدراس/.test(n)) return false;
+          if (dateFromText(cell) || academicYearFromText(cell)) return false;
+          return true;
+        });
+        if (candidates.length) return clean(candidates.sort((a, b) => a.length - b.length)[0]).replace(/^ماد[هة]\s+/, "");
+      }
+    }
+    return "";
+  }
+
   function findMetadata(pageRecords) {
     const entries = [];
     const lines = (pageRecords || []).flatMap(page => (page.lines || []).map(line => ({ pageNumber: page.pageNumber, line })));
@@ -348,7 +373,10 @@
     }
 
     const titleItem = lines.find(item => TITLE_SIGNALS.test(normalize(lineText(item.line))) && lineText(item.line).length >= 12);
-    if (titleItem) add("title", lineText(titleItem.line), titleItem, 0.94);
+    if (titleItem) {
+      const titleCell = lineCells(titleItem.line).find(cell => TITLE_SIGNALS.test(normalize(cell)) && cell.length >= 12) || lineText(titleItem.line);
+      add("title", titleCell, titleItem, 0.94);
+    }
 
     const schoolItem = lines.find(item => /(?:للبنين|للبنات)/.test(normalize(lineText(item.line))) && (/الصفوف/.test(normalize(lineText(item.line))) || gradeRangeFromText(lineText(item.line))));
     if (schoolItem) {
@@ -387,9 +415,29 @@
     const directorateItem = lines.find(item => /المديري[هة].*التعليم/.test(normalize(lineText(item.line))));
     if (directorateItem) add("directorate", lineText(directorateItem.line), directorateItem, 0.95);
 
-    const title = entries.find(entry => entry.key === "title")?.value || "";
-    const subject = subjectFromTitle(title);
-    if (subject && titleItem) add("subject", subject, titleItem, 0.93);
+    let title = entries.find(entry => entry.key === "title")?.value || "";
+    const subject = subjectFromPageRecords(pageRecords, title);
+    if (subject && titleItem) {
+      add("subject", subject, titleItem, 0.93);
+      if (title && !normalize(title).includes(normalize(subject))) {
+        const titleEntry = entries.find(entry => entry.key === "title");
+        if (titleEntry) titleEntry.value = clean(`${title} ${subject}`);
+        title = titleEntry?.value || title;
+      }
+    }
+
+    const extraMetadata = [
+      ["wilaya", /^(?:الولايه|الولاية|الوليه)(?:\s|:|$)/],
+      ["educationSystem", /نظام\s*التعليم/],
+      ["term", /^(?:الدور|الفصل\s*الدراس[يى])(?:\s|:|$)/],
+    ];
+    for (const [key, pattern] of extraMetadata) {
+      const item = lines.find(candidate => pattern.test(normalize(lineText(candidate.line))));
+      if (!item) continue;
+      const raw = lineText(item.line);
+      const value = clean(raw.replace(pattern, "").replace(/^\s*[:：]+\s*/, ""));
+      if (value) add(key, value, item, 0.88);
+    }
 
     const values = Object.fromEntries(entries.map(entry => [entry.key, entry.value]));
     return { values, entries };
@@ -458,11 +506,16 @@
     let active = null;
     const tableCoverage = new Set();
     for (const table of tables || []) {
-      const page = table.pages?.[0];
-      const start = Number(table.provenance?.startLine || 0);
-      const end = Number(table.provenance?.endLine || 0);
-      if (!page || !start || !end) continue;
-      for (let line = start; line <= end; line += 1) tableCoverage.add(`${page}:${line}`);
+      const segments = Array.isArray(table.provenance?.segments) && table.provenance.segments.length
+        ? table.provenance.segments
+        : [table.provenance];
+      for (const segment of segments) {
+        const page = Number(segment?.header?.page || table.pages?.[0] || 0);
+        const start = Number(segment?.startLine || 0);
+        const end = Number(segment?.endLine || 0);
+        if (!page || !start || !end) continue;
+        for (let line = start; line <= end; line += 1) tableCoverage.add(`${page}:${line}`);
+      }
     }
     for (const page of pageRecords || []) {
       for (const line of page.lines || []) {
@@ -510,32 +563,55 @@
         groups.set(key, {
           ...table,
           rows: [],
+          rowMeta: [],
           pages: [],
           sourceTexts: [],
           segments: [],
           confidenceValues: [],
+          statusValues: [],
         });
       }
       const group = groups.get(key);
       group.rows.push(...(table.rows || []));
+      group.rowMeta.push(...(Array.isArray(table.rowMeta) ? table.rowMeta : (table.rows || []).map(() => ({ role: "detail" }))));
       group.pages.push(...(table.pages || []));
       if (table.sourceText) group.sourceTexts.push(table.sourceText);
       group.segments.push(table.provenance);
       group.confidenceValues.push(Number(table.confidence || 0));
+      group.statusValues.push(String(table.status || "review"));
     }
     return [...groups.values()].map((group, index) => {
       const confidence = group.confidenceValues.length ? Math.min(...group.confidenceValues) : 0;
-      const { sourceTexts, segments, confidenceValues, ...cleanGroup } = group;
+      const { sourceTexts, segments, confidenceValues, statusValues, ...cleanGroup } = group;
+      const status = statusValues.includes("unresolved")
+        ? "unresolved"
+        : confidence >= HIGH_CONFIDENCE ? "accepted" : confidence >= REVIEW_CONFIDENCE ? "review" : "unresolved";
       return {
         ...cleanGroup,
         id: `table-${index + 1}`,
         pages: [...new Set(group.pages)].sort((a, b) => a - b),
         confidence,
-        status: confidence >= HIGH_CONFIDENCE ? "accepted" : confidence >= REVIEW_CONFIDENCE ? "review" : "unresolved",
+        status,
         sourceText: sourceTexts.join("\n"),
         provenance: { ...group.provenance, segments },
       };
     });
+  }
+
+  function tablesOverlap(a, b) {
+    const aSegments = Array.isArray(a?.provenance?.segments) && a.provenance.segments.length ? a.provenance.segments : [a?.provenance];
+    const bSegments = Array.isArray(b?.provenance?.segments) && b.provenance.segments.length ? b.provenance.segments : [b?.provenance];
+    return aSegments.some(left => bSegments.some(right => {
+      const leftPage = Number(left?.header?.page || a?.pages?.[0] || 0);
+      const rightPage = Number(right?.header?.page || b?.pages?.[0] || 0);
+      if (!leftPage || leftPage !== rightPage) return false;
+      const leftStart = Number(left?.startLine || 0);
+      const leftEnd = Number(left?.endLine || 0);
+      const rightStart = Number(right?.startLine || 0);
+      const rightEnd = Number(right?.endLine || 0);
+      if (!leftStart || !leftEnd || !rightStart || !rightEnd) return false;
+      return leftStart <= rightEnd && rightStart <= leftEnd;
+    }));
   }
 
   function normalizePdfPages(pageRecords = []) {
@@ -545,7 +621,12 @@
     }));
     const { blocks, blockIndex } = classifyBlocks(safePages);
     const metadata = findMetadata(safePages);
-    const tables = mergeCompatibleTables(discoverTables(safePages, blockIndex));
+    const hierarchicalTables = window.TaqareerPdfTableStructure?.discoverHierarchicalTables
+      ? window.TaqareerPdfTableStructure.discoverHierarchicalTables(safePages)
+      : [];
+    const flatTables = discoverTables(safePages, blockIndex)
+      .filter(table => !hierarchicalTables.some(structured => tablesOverlap(structured, table)));
+    const tables = mergeCompatibleTables([...hierarchicalTables, ...flatTables]);
     const sections = buildSections(safePages, blockIndex, tables);
     const unresolved = blocks.filter(block => block.type === "unknown" && block.confidence < REVIEW_CONFIDENCE);
     const noise = blocks.filter(block => ["footer", "noise", "repeated_header"].includes(block.type));
@@ -598,6 +679,8 @@
         pages: table.pages,
         metadata: { ...canonical.metadata },
         reportTitle: canonical.metadata?.title || "",
+        tableStructure: table.structure ? structuredClone(table.structure) : null,
+        rowRoles: Array.isArray(table.rowMeta) ? table.rowMeta.map(item => item?.role || "detail") : [],
         intake: {
           version: VERSION,
           acceptedTableCount: canonical.diagnostics.acceptedTableCount,
@@ -636,6 +719,8 @@
       gradeRangeFromText,
       schoolFromText,
       subjectFromTitle,
+      subjectFromPageRecords,
+      tablesOverlap,
       isNoiseText,
     },
   };

@@ -13,6 +13,7 @@ function load() {
     TextDecoder, DecompressionStream, Blob, Response, Uint8Array, DataView,
   };
   vm.createContext(sandbox);
+  vm.runInContext(read('assets/pdf-table-structure.js'), sandbox, { filename: 'pdf-table-structure.js' });
   vm.runInContext(read('assets/pdf-intake-v2.js'), sandbox, { filename: 'pdf-intake-v2.js' });
   vm.runInContext(read('assets/document-lite.js'), sandbox, { filename: 'document-lite.js' });
   return sandbox.window;
@@ -60,7 +61,7 @@ const indicatorPdf = [page(1, [
 test('canonical PDF intake separates metadata from a 13x2 indicator table without a type-specific adapter', () => {
   const window = load();
   const canonical = window.TaqareerPdfIntakeV2.normalizePdfPages(indicatorPdf);
-  assert.equal(canonical.canonicalDocumentVersion, '2.0.0');
+  assert.equal(canonical.canonicalDocumentVersion, '2.1.0');
   assert.equal(canonical.metadata.school, 'الباسط للبنين (8-10)');
   assert.equal(canonical.metadata.subject, 'الفيزياء');
   assert.equal(canonical.metadata.grade, '8-10');
@@ -84,7 +85,7 @@ test('canonical datasets carry provenance metadata and become the preferred clea
   const datasets = window.TaqareerPdfIntakeV2.datasetsFromCanonical(canonical);
   assert.equal(datasets.length, 1);
   assert.equal(datasets[0].meta.extractionMode, 'canonical-pdf-intake-v2');
-  assert.equal(datasets[0].meta.canonicalDocumentVersion, '2.0.0');
+  assert.equal(datasets[0].meta.canonicalDocumentVersion, '2.1.0');
   assert.equal(datasets[0].meta.metadata.subject, 'الفيزياء');
   assert.equal(datasets[0].meta.structuralConfidence >= 0.85, true);
   assert.ok(canonical.metadataProvenance.every(item => item.provenance?.sourceText));
@@ -117,7 +118,7 @@ test('narrative PDF remains narrative and is not forced into a table', () => {
   const specialized = window.TaqareerDocuments._test.detectAggregatedSupervisionNarrativePdf(pages, canonical);
   assert.ok(specialized);
   assert.equal(specialized.dataset.meta.metadata.school, 'الباسط للبنين (8-10)');
-  assert.equal(specialized.dataset.meta.canonicalDocumentVersion, '2.0.0');
+  assert.equal(specialized.dataset.meta.canonicalDocumentVersion, '2.1.0');
 });
 
 test('blind dimension-measure layout is normalized without report-type or filename rules', () => {
@@ -175,4 +176,107 @@ test('compatible tables repeated across PDF pages are merged before semantic rou
   assert.equal(canonical.tables.length, 1);
   assert.deepEqual(Array.from(canonical.tables[0].pages), [1, 2]);
   assert.equal(canonical.tables[0].rows.length, 6);
+});
+
+
+const blindHierarchicalDistributionPdf = [
+  page(1, [
+    ['سلطنة عمان'],
+    ['وزارة التعليم'],
+    ['احصائية بنسب مستويات الطلبة في مادة', 'الكيمياء', 'التاريخ', ': 2026/08/02'],
+    ['نظام التعليم : أساسي'],
+    ['العام الدراسي : 2025/2026'],
+    ['المدرسة', ': الباسط للبنين الصفوف (10-8)'],
+    ['البيان', 'أ', 'ب', 'ج', 'د', 'هـ', 'المجموع'],
+    ['الصف', 'ذكور', 'إناث', 'ذكور', 'إناث', 'ذكور', 'إناث', 'ذكور', 'إناث', 'ذكور', 'إناث', 'ذكور', 'إناث'],
+    ['التاسع', '47', '0', '46', '0', '73', '0', '77', '0', '25', '0', '268', '0'],
+    ['17.54%', '0%', '17.16%', '0%', '27.24%', '0%', '28.73%', '0%', '9.33%', '0%'],
+    ['العاشر', '46', '0', '29', '0', '65', '0', '97', '0', '15', '0', '252', '0'],
+    ['18.25%', '0%', '11.51%', '0%', '25.79%', '0%', '38.49%', '0%', '5.95%', '0%'],
+    ['جملة', '93', '0', '75', '0', '138', '0', '174', '0', '40', '0', '520', '0'],
+    ['17.88%', '0%', '14.42%', '0%', '26.54%', '0%', '33.46%', '0%', '7.69%', '0%'],
+  ]),
+  page(2, [
+    ['سلطنة عمان'],
+    ['وزارة التعليم'],
+    ['احصائية بنسب مستويات الطلبة في مادة', 'الكيمياء', 'التاريخ', ': 2026/08/02'],
+    ['العام الدراسي : 2025/2026'],
+    ['البيان', 'أ', 'ب', 'ج', 'د', 'هـ', 'المجموع'],
+    ['الصف', 'ذكور', 'إناث', 'ذكور', 'إناث', 'ذكور', 'إناث', 'ذكور', 'إناث', 'ذكور', 'إناث', 'ذكور', 'إناث'],
+    ['جملة عامة', '93', '0', '75', '0', '138', '0', '174', '0', '40', '0', '520', '0'],
+    ['17.88%', '0%', '14.42%', '0%', '26.54%', '0%', '33.46%', '0%', '7.69%', '0%'],
+    ['طبع بواسطة /', '[محجوب]'],
+  ]),
+];
+
+test('blind hierarchical PDF headers collapse to parent measures and repeated grand totals are deduplicated', () => {
+  const window = load();
+  const canonical = window.TaqareerPdfIntakeV2.normalizePdfPages(blindHierarchicalDistributionPdf);
+  assert.equal(canonical.canonicalDocumentVersion, '2.1.0');
+  assert.equal(canonical.tables.length, 1);
+  const table = canonical.tables[0];
+  assert.equal(table.status, 'accepted');
+  assert.deepEqual(Array.from(table.headers), ['الصف', 'أ', 'ب', 'ج', 'د', 'هـ', 'المجموع']);
+  assert.deepEqual(Array.from(table.pages), [1, 2]);
+  assert.equal(table.rows.length, 3, 'two detail rows plus one deduplicated aggregate row');
+  assert.deepEqual(JSON.parse(JSON.stringify(table.rows)), [
+    { 'الصف': 'التاسع', 'أ': '47', 'ب': '46', 'ج': '73', 'د': '77', 'هـ': '25', 'المجموع': '268' },
+    { 'الصف': 'العاشر', 'أ': '46', 'ب': '29', 'ج': '65', 'د': '97', 'هـ': '15', 'المجموع': '252' },
+    { 'الصف': 'جملة عامة', 'أ': '93', 'ب': '75', 'ج': '138', 'د': '174', 'هـ': '40', 'المجموع': '520' },
+  ]);
+  assert.equal(table.structure.kind, 'hierarchical-table');
+  assert.equal(table.structure.childWidth, 2);
+  assert.equal(table.structure.percentageRowsCaptured, 4);
+  assert.deepEqual(Array.from(table.rowMeta.map(item => item.role)), ['detail', 'detail', 'grand_total']);
+});
+
+test('hierarchical structure parser is generic and not tied to chemistry, gender labels, or report types', () => {
+  const window = load();
+  const pages = [page(1, [
+    ['لوحة تشغيل عامة'],
+    ['الوحدة', 'المجال الأول', 'المجال الثاني', 'الإجمالي'],
+    ['الفئة', 'قناة 1', 'قناة 2', 'قناة 1', 'قناة 2', 'قناة 1', 'قناة 2'],
+    ['المجموعة س', '10', '5', '4', '6', '14', '11'],
+    ['المجموعة ص', '7', '3', '8', '2', '15', '5'],
+  ])];
+  const canonical = window.TaqareerPdfIntakeV2.normalizePdfPages(pages);
+  assert.equal(canonical.tables.length, 1);
+  assert.deepEqual(Array.from(canonical.tables[0].headers), ['الفئة', 'المجال الأول', 'المجال الثاني', 'الإجمالي']);
+  assert.deepEqual(JSON.parse(JSON.stringify(canonical.tables[0].rows)), [
+    { 'الفئة': 'المجموعة س', 'المجال الأول': '15', 'المجال الثاني': '10', 'الإجمالي': '25' },
+    { 'الفئة': 'المجموعة ص', 'المجال الأول': '10', 'المجال الثاني': '10', 'الإجمالي': '20' },
+  ]);
+  const source = read('assets/pdf-table-structure.js');
+  assert.doesNotMatch(source, /الكيمياء|الفيزياء|الأحياء/);
+  assert.doesNotMatch(source, /ذكور|إناث/);
+  assert.doesNotMatch(source, /supervision_|level_distribution|student_work|filename|fileName/);
+});
+
+test('hierarchical PDF projection feeds the existing distribution profile without score settings', () => {
+  const window = load();
+  vm.runInNewContext(read('assets/analysis-profile.js'), { window, console, Map, Set, Array, Object, String, Number, RegExp, JSON, Math, structuredClone }, { filename: 'analysis-profile.js' });
+  const canonical = window.TaqareerPdfIntakeV2.normalizePdfPages(blindHierarchicalDistributionPdf);
+  const dataset = window.TaqareerPdfIntakeV2.datasetsFromCanonical(canonical)[0];
+  const profile = window.TaqareerAnalysisProfiler.profileTable({ headers: dataset.headers, rows: dataset.rows, sourceMeta: dataset.meta, typeId: 'unknown' });
+  assert.equal(profile.recommendedTypeId, 'level_distribution');
+  assert.equal(profile.analyzerId, 'level_distribution');
+  assert.equal(profile.requiresScoreSettings, false);
+  assert.equal(profile.rowRoles.dataRowIndexes.length, 2);
+  assert.equal(profile.rowRoles.aggregateRowIndexes.length, 1);
+  assert.deepEqual(Array.from(profile.columnRoles.levels.map(item => item.level)), ['أ', 'ب', 'ج', 'د', 'هـ']);
+});
+
+test('non-additive hierarchical child groups are not promoted to an accepted parent-sum dataset', () => {
+  const window = load();
+  const pages = [page(1, [
+    ['عنوان مجهول'],
+    ['الوحدة', 'المجال الأول', 'المجال الثاني', 'الإجمالي'],
+    ['الفئة', 'مقياس 1', 'مقياس 2', 'مقياس 1', 'مقياس 2', 'مقياس 1', 'مقياس 2'],
+    ['س', '10', '20', '30', '40', '999', '0'],
+    ['ص', '5', '15', '25', '35', '888', '0'],
+  ])];
+  const canonical = window.TaqareerPdfIntakeV2.normalizePdfPages(pages);
+  assert.equal(canonical.tables.length, 1);
+  assert.equal(canonical.tables[0].status, 'unresolved');
+  assert.equal(window.TaqareerPdfIntakeV2.datasetsFromCanonical(canonical).length, 0);
 });

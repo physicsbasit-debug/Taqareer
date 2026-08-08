@@ -74,7 +74,7 @@
 
   function rowLooksAggregate(row, groupHeader, headers) {
     const groupValue = normalize(groupHeader ? row?.[groupHeader] : "");
-    if (/^(الاجمالي|الإجمالي|المجموع|جمله عامه|جملة عامة|total)$/.test(groupValue)) return true;
+    if (/^(الاجمالي|الإجمالي|المجموع|جمله|جملة|جمله عامه|جملة عامة|total)$/.test(groupValue)) return true;
     const text = headers.map(header => normalize(row?.[header])).join(" ");
     return /(^|\s)(الاجمالي|الإجمالي|المجموع الكلي|المجموع العام)(\s|$)/.test(text);
   }
