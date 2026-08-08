@@ -177,7 +177,7 @@ test('multi-visit report uses semantic chart types on print-safe analytical page
     sourceMeta: parsed.dataset.meta,
   });
   const sheets = html.split(/<section class="report-sheet"[^>]*>/).slice(1);
-  assert.equal(sandbox.window.TaqareerReports.VERSION, '1.2.30');
+  assert.equal(sandbox.window.TaqareerReports.VERSION, '1.2.31');
   assert.doesNotMatch(sheets[0], /supervision-level-distribution|supervision-indicator-performance/);
   assert.match(sheets.slice(1).join('\n'), /supervision-level-distribution/);
   assert.match(sheets.slice(1).join('\n'), /supervision-indicator-performance/);

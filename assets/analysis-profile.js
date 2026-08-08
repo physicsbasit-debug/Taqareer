@@ -204,7 +204,7 @@
       },
       metadata: {
         reportTitle: String(sourceMeta?.normalization?.reportTitle || sourceMeta?.metadata?.title || "كشف نتائج طلاب متعدد المواد"),
-        grade: sourceMeta?.metadata?.grade || sourceMeta?.normalization?.grade || "",
+        grade: sourceMeta?.metadata?.analyzedGrade || sourceMeta?.metadata?.grade || sourceMeta?.normalization?.grade || "",
         period: sourceMeta?.metadata?.period || sourceMeta?.normalization?.period || "",
         academicYear: sourceMeta?.metadata?.academicYear || sourceMeta?.normalization?.academicYear || "",
         group: sourceMeta?.metadata?.group || sourceMeta?.normalization?.group || "",

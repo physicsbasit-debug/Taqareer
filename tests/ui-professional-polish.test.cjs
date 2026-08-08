@@ -12,7 +12,7 @@ test('public workspace hides development clutter and exposes compact review cont
   const app = read('assets/app.js');
   const css = read('assets/styles.css');
 
-  assert.match(index, /v1\.2\.30/);
+  assert.match(index, /v1\.2\.31/);
   assert.match(index, /id="togglePreviewColumnsBtn"/);
   assert.match(index, /id="qualityDetails"/);
   assert.match(index, /خدمة التحليل التربوي/);

@@ -47,16 +47,45 @@ test('official report renders reconciled analysis without exposing AI provenance
   const analysis = sandbox.window.TaqareerReconciliation.composePrimary(local, primary, { availableEvidenceRefs: ['metric:positivePct'] });
   const context = { analysis, type: { name: 'استبانة اتجاهات أو رضا' }, sourceName: 'survey.csv', sourceMeta: { metadata: { school: 'الباسط للبنين الصفوف (8-10)', subject: 'اللغة العربية', grade: '8-10', academicYear: '2025/2026' } }, quality: { completeness: 100 }, recognitionStatus: 'معتمد' };
   const html = sandbox.window.TaqareerReports.buildReportHtml(context, { autoPrint: false });
-  assert.equal(sandbox.window.TaqareerReports.VERSION, '1.2.30');
+  assert.equal(sandbox.window.TaqareerReports.VERSION, '1.2.31');
   assert.match(html, /تحليل تربوي موثق/);
   assert.match(html, /منصة التحليل التربوي والبيانات التعليمية/);
   assert.doesNotMatch(html, /ذكاء اصطناعي|Gemini|TQR-/i);
   assert.match(html, /رضا متوسط يخفي أولوية محددة/);
-  assert.match(html, /تقارير v1\.2\.30/);
+  assert.match(html, /تقارير v1\.2\.31/);
   assert.match(html, /خط الأساس/);
   assert.match(html, /فحص تجانس الاتجاه/);
   assert.match(html, /الباسط للبنين الصفوف \(8-10\)/);
   assert.match(html, /اللغة العربية/);
   assert.match(html, /2025\/2026/);
   assert.doesNotMatch(html, /تحليل متخصص حتمي/);
+});
+
+
+test('official report prefers analyzed grade over school grade range without discarding either metadata field', () => {
+  const analysis = {
+    metrics: [], charts: [], findings: [], qualityTools: [], improvementPlan: [], monitoringPlan: [], limitations: [],
+    executiveTitle: 'اختبار فصل بيانات الصف', executiveSummary: 'اختبار عرض الصف المحلل فعليًا.',
+    _reconciliation: { aiPrimary: true },
+  };
+  const context = {
+    analysis,
+    type: { id: 'single_subject', name: 'نتائج مادة دراسية' },
+    sourceName: 'grade8-results.pdf',
+    sourceMeta: { metadata: {
+      school: 'الباسط للبنين (8-10)',
+      schoolGradeRange: '8-10',
+      analyzedGrade: 'الثامن',
+      grade: '8-10',
+      subject: 'العلوم',
+    } },
+    quality: { completeness: 100 },
+    recognitionStatus: 'معتمد',
+  };
+  const report = sandbox.window.TaqareerReports.buildReportData(context);
+  assert.equal(report.meta.grade, 'الثامن');
+  assert.equal(context.sourceMeta.metadata.schoolGradeRange, '8-10');
+  const html = sandbox.window.TaqareerReports.buildReportHtml(context, { autoPrint: false });
+  assert.match(html, /الصف \/ الفئة<\/span><strong>الثامن<\/strong>/);
+  assert.match(html, /الباسط للبنين \(8-10\)/);
 });

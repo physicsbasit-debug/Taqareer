@@ -1,6 +1,6 @@
 {
   "app": "تقارير",
-  "version": "1.2.30",
+  "version": "1.2.31",
   "phase": "Phase 2-D Fix 29 - Full-Document PDF Geometry",
   "releaseName": "Full-Document PDF Geometry and Pagination Contract",
   "buildType": "static-github-pages-plus-supabase-edge-function",

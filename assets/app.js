@@ -671,7 +671,7 @@
         else warnings.push({ title: "بنية سردية جزئية", detail: `تم التعرف على ${foundExpected.length} من ${expectedSections.length} أقسام إشرافية متوقعة. سيقتصر التحليل على الأقسام الموجودة.` });
       }
       const metadata = sourceMeta?.metadata || {};
-      const metadataItems = [metadata.school, metadata.subject, metadata.grade, metadata.academicYear].filter(Boolean);
+      const metadataItems = [metadata.school, metadata.subject, metadata.analyzedGrade || metadata.grade, metadata.academicYear].filter(Boolean);
       if (metadataItems.length) info.unshift({ title: "تم فصل بيانات الترويسة عن النص", detail: metadataItems.join(" · ") });
       if (sourceMeta?.documentContext?.aggregatedReport || metadata.aggregatedReport) {
         info.push({ title: "تقرير تجميعي متعدد السياقات", detail: "يعامل اختلاف العبارات كتباين سياقي حتى يثبت أنها تخص المعلم والزيارة والزمن نفسها." });
@@ -767,7 +767,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "1.2.30",
+      appVersion: "1.2.31",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -939,7 +939,7 @@
           : "راجع المعاينة لأن ترتيب النص في بعض ملفات PDF يعتمد على طريقة إنشاء التقرير."
       });
       const metadata = sourceMeta.metadata || {};
-      const extracted = [metadata.school, metadata.grade, metadata.academicYear].filter(Boolean);
+      const extracted = [metadata.school, metadata.analyzedGrade || metadata.grade, metadata.academicYear].filter(Boolean);
       if (extracted.length) state.quality.info.unshift({ title: "تم استخراج بيانات PDF المنظمة", detail: extracted.join(" · ") });
       for (const warning of sourceMeta.sourceWarnings || []) state.quality.warnings.unshift({ title: "تنبيه استخراج PDF", detail: String(warning) });
     }
@@ -949,11 +949,11 @@
         detail: "تم الاستخراج محليًا داخل المتصفح دون رفع المستند إلى خادم."
       });
       const metadata = sourceMeta.metadata || {};
-      const extracted = [metadata.school, metadata.subject, metadata.grade, metadata.academicYear].filter(Boolean);
+      const extracted = [metadata.school, metadata.subject, metadata.analyzedGrade || metadata.grade, metadata.academicYear].filter(Boolean);
       if (extracted.length) {
         state.quality.info.unshift({
           title: "تم استخراج بيانات ترويسة Word",
-          detail: [metadata.school, metadata.subject, metadata.grade ? `الصفوف ${metadata.grade}` : "", metadata.academicYear].filter(Boolean).join(" · ")
+          detail: [metadata.school, metadata.subject, (metadata.analyzedGrade || metadata.grade) ? `الصفوف ${metadata.analyzedGrade || metadata.grade}` : "", metadata.academicYear].filter(Boolean).join(" · ")
         });
       }
       for (const warning of sourceMeta.sourceWarnings || []) {
@@ -1654,7 +1654,7 @@
     if (!window.TaqareerReconciliation?.composePrimary) throw new Error("محرك التحقق من التحليل الذكي غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "1.2.30",
+      appVersion: "1.2.31",
       pipeline: {
         mode: "ai-primary-analysis-v1",
         instruction: "المحرك المحلي يحسب المؤشرات والرسوم فقط. يبني الذكاء الاصطناعي التشخيص والاستنتاجات والتدخلات من الأدلة، ثم تتحقق البوابة من المراجع قبل عرض التقرير."
@@ -2335,7 +2335,7 @@
   function exportAnalysis() {
     const payload = {
       app: "تقارير",
-      version: "1.2.30",
+      version: "1.2.31",
       generatedAt: new Date().toISOString(),
       source: state.sourceName,
       sourceMeta: state.sourceMeta,
@@ -2348,7 +2348,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v1.2.30.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v1.2.31.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }

@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.2.30";
+  const VERSION = "1.2.31";
 
   function escapeHtml(value) {
     return String(value ?? "").replace(/[&<>'"]/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" }[char]));
@@ -47,7 +47,7 @@
       subject:context.type?.id==="multi_subject_results"
         ? pick(scope.analysisMode==="subject"?scope.selectedSubject:"",scope.analysisMode==="all"?"متعدد المواد":"",structured.subject,"متعدد المواد")
         : pick(structured.subject,capture([/مادة\s+دراسية\s*\(\s*([^)]+?)\s*\)/i,/المادة\s*[:：-]?\s*\(?\s*([^)|]{2,45})/i,/لمادة\s+\(?\s*([^)|]{2,45})/i])),
-      grade:pick(structured.grade,scope.grade,capture([/الصف\s*[:：-]?\s*([^|\-]{1,35})/i])),
+      grade:pick(structured.analyzedGrade,structured.grade,scope.grade,structured.schoolGradeRange,capture([/الصف\s*[:：-]?\s*([^|\-]{1,35})/i])),
       academicYear:pick(structured.academicYear,scope.academicYear,capture([/(20\d{2}\s*[\/]\s*20\d{2})/,/العام\s*الدراس[يى]\s*[:：-]?\s*([^|\-]{4,15})/i])),
       period:pick(structured.period,scope.period,capture([/امتحان\s+نهاية\s+الفصل\s+الدراس[يى]\s+(الأول|الاول|الثاني)/i,/الفصل\s*الدراس[يى]\s*[:：-]?\s*(الأول|الاول|الثاني)/i,/الفترة\s*[:：-]?\s*([^|\-]{2,35})/i])),
       region:pick(structured.region),
