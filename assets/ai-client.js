@@ -3,7 +3,7 @@
 
   const STORAGE_KEY = "taqareer.ai.config.v1";
   const ACCESS_KEY = "taqareer.ai.access-code.v1";
-  const CLIENT_VERSION = "1.2.42";
+  const CLIENT_VERSION = "1.2.43";
   const HEALTH_MAX_AGE_MS = 120000;
   const defaults = window.TAQAREER_CONFIG || {};
   let healthState = {
@@ -182,7 +182,6 @@
         "Authorization": `Bearer ${config.anonKey}`,
         "x-taqareer-client-version": CLIENT_VERSION,
         "x-taqareer-request-id": requestId,
-        "x-taqareer-attempt": String(attempt),
       };
       const accessCode = getAccessCode();
       if (accessCode) headers["x-taqareer-access-code"] = accessCode;

@@ -1,3 +1,11 @@
+# v1.2.43 — Browser CORS Request Contract Fix
+
+- فحص End-to-End بعد فشل v1.2.42 أثبت أن الطلب الحقيقي يتوقف في CORS preflight قبل وصول `analyze_primary` إلى Edge.
+- السبب: العميل أضاف رأس التشخيص `x-taqareer-attempt` في v1.2.41، بينما Edge V0.15.6 لا يعلنه ضمن `Access-Control-Allow-Headers`؛ المتصفح لذلك يحجب الطلب ويعيد `Failed to fetch`/خطأ نقل.
+- أزيل الرأس التشخيصي غير الضروري من الطلبات، مع بقاء عداد المحاولات داخل العميل واستمرار backoff والمحاولات الثلاث لأخطاء السعة.
+- أضيف Contract Regression يضمن أن كل رأس `x-taqareer-*` يرسله المتصفح موجود في CORS allow-list للـEdge، حتى لا يتكرر الانقطاع الصامت.
+- لا تغيير في Edge V0.15.6 أو PDF Intake أو الحسابات أو الترتيب أو استعادة أسماء الطلبة.
+
 # v1.2.42 — Direct Analysis Request Health Authority
 
 - إزالة فحص `health` كحاجز إلزامي قبل `analyze_primary`؛ الطلب الحقيقي أصبح دليل الجاهزية الحاكم لمسار التحليل.

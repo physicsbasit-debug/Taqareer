@@ -63,12 +63,11 @@ function loadRuntime(fetchImpl) {
 
 test('End-to-End: compact analysis payload survives two transient Edge 503 responses and completes on the third automatic attempt', async () => {
   const operations = [];
-  const attempts = [];
   let primaryCalls = 0;
   const { api, orchestrator } = loadRuntime(async (_url, options) => {
     const body = JSON.parse(options.body);
     operations.push(body.operation);
-    attempts.push(options.headers['x-taqareer-attempt']);
+    assert.equal(options.headers['x-taqareer-attempt'], undefined);
     if (body.operation === 'analyze_primary') {
       primaryCalls += 1;
       if (primaryCalls <= 2) {
@@ -105,7 +104,6 @@ test('End-to-End: compact analysis payload survives two transient Edge 503 respo
   });
 
   assert.deepEqual(operations, ['analyze_primary', 'analyze_primary', 'analyze_primary']);
-  assert.deepEqual(attempts, ['1', '2', '3']);
   assert.equal(primaryCalls, 3);
   assert.equal(output.result.contractVersion, '6.6.0');
   assert.equal(output.result.executive.headline, 'تحليل مكتمل');
