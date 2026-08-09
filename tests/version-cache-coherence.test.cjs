@@ -26,6 +26,7 @@ test('public HTML cache-busters and runtime version markers match package versio
   const app = readText(root, 'assets/app.js');
   const client = readText(root, 'assets/ai-client.js');
   const report = readText(root, 'assets/report-system.js');
+  const reportV2 = readText(root, 'assets/print-report-v2.js');
   const setup = readText(root, 'assets/setup-policy.js');
   const escaped = escapeRegExp(appVersion);
 

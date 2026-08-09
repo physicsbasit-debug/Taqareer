@@ -770,7 +770,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "1.3.4",
+      appVersion: "1.4.0",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -1657,7 +1657,7 @@
     if (!window.TaqareerReconciliation?.composePrimary) throw new Error("محرك التحقق من التحليل الذكي غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "1.3.4",
+      appVersion: "1.4.0",
       pipeline: {
         mode: "ai-decision-core-v1",
         instruction: "المحرك المحلي يحسب المؤشرات والرسوم. يبني Gemini نواة القرار التشخيصية مرة واحدة، ثم يبني الخادم التدخلات والمتابعة من القرار والأرقام الحتمية ويطبق حراس الأدلة قبل العرض."
@@ -2331,7 +2331,7 @@
       return;
     }
     try {
-      window.TaqareerReports.openReport({
+      const reportContext = {
         analysis: state.reconciledAnalysis,
         aiResult: null,
         aiDelta: state.aiResult,
@@ -2344,7 +2344,19 @@
         recognitionStatus: state.recognitionStatus,
         headers: state.headers,
         rows: state.rows
-      }, { reportMode: reportMode === "executive" ? "executive" : "full" });
+      };
+      const reportOptions = { reportMode: reportMode === "executive" ? "executive" : "full" };
+      const renderer = window.TaqareerPrintReportV2?.openReport ? window.TaqareerPrintReportV2 : window.TaqareerReports;
+      try {
+        renderer.openReport(reportContext, reportOptions);
+      } catch (rendererError) {
+        if (renderer !== window.TaqareerReports && window.TaqareerReports?.openReport) {
+          console.error("Print Report V2 failed; opening the stable legacy renderer.", rendererError);
+          window.TaqareerReports.openReport(reportContext, reportOptions);
+        } else {
+          throw rendererError;
+        }
+      }
     } catch (error) {
       alert(error.message || "تعذر إنشاء التقرير الرسمي.");
     }
@@ -2353,7 +2365,7 @@
   function exportAnalysis() {
     const payload = {
       app: "تقارير",
-      version: "1.3.4",
+      version: "1.4.0",
       generatedAt: new Date().toISOString(),
       source: state.sourceName,
       sourceMeta: state.sourceMeta,
@@ -2366,7 +2378,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v1.3.4.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v1.4.0.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }

@@ -1,8 +1,8 @@
 {
   "app": "تقارير",
-  "version": "1.3.4",
-  "phase": "Decision Core AI Architecture",
-  "releaseName": "Educational Inference Guardrails",
+  "version": "1.4.0",
+  "phase": "Print Report V2 Production",
+  "releaseName": "Page-Centric Educational Report Renderer",
   "buildType": "static-github-pages-plus-supabase-edge-function",
   "supportedInputs": {
     "table": [
@@ -61,7 +61,8 @@
     "routingRule": "a semantic profile determines unit of analysis, aggregation, measures, scale direction and required analytical families; known type labels are optional routing hints, not a mandatory template",
     "reportPrivacyRule": "official reports use neutral professional provenance wording, map internal analysis identifiers to human Arabic labels, and do not expose provider/model labels or random report tokens",
     "presentationBoundary": "internal analyzer ids remain available for routing, while report/result presentation resolves them through a centralized public display dictionary",
-    "visualizationRule": "specialized analyzers declare or imply analytical intent; a shared semantic visualization policy selects a safe chart form without changing source calculations"
+    "visualizationRule": "specialized analyzers declare or imply analytical intent; a shared semantic visualization policy selects a safe chart form without changing source calculations",
+    "reportRendering": "Print Report V2 consumes the trusted normalized report data contract and renders page-centric A4 output; legacy renderer remains a runtime fallback only"
   },
   "features": [
     "adaptive-analysis-router",
@@ -202,7 +203,12 @@
     "decision-core-evidence-fingerprint-cache",
     "no-primary-repair-rescue-chain",
     "one-browser-edge-request-per-click",
-    "three-stage-server-monitoring-plan"
+    "three-stage-server-monitoring-plan",
+    "page-centric-print-report-v2",
+    "legacy-report-renderer-fallback",
+    "report-v2-semantic-block-integrity-guard",
+    "report-v2-executive-3-to-5-page-contract",
+    "report-v2-ranking-table-packing"
   ],
   "runtime": {
     "frontend": "GitHub Pages static site",

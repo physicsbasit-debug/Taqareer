@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.3.4";
+  const VERSION = "1.4.0";
 
   function escapeHtml(value) {
     return String(value ?? "").replace(/[&<>'"]/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" }[char]));
@@ -450,5 +450,5 @@ window.addEventListener("load",()=>setTimeout(()=>{flowPaginateA4();requestAnima
   }
 
   function openReport(context,options={}){if(!context?.analysis)throw new Error("لا توجد نتيجة تحليل جاهزة لإنشاء التقرير.");const popup=window.open("","taqareer-deep-report");if(!popup)throw new Error("منع المتصفح فتح نافذة التقرير. اسمح بالنوافذ المنبثقة ثم أعد المحاولة.");try{popup.opener=null}catch{}popup.document.open();popup.document.write(buildReportHtml(context,options));popup.document.close();return popup;}
-  window.TaqareerReports={VERSION,buildReportData,buildReportHtml,openReport};
+  window.TaqareerReports={VERSION,buildReportData,buildReportHtml,openReport,renderChart,selectMetricGroups,metricValue,reportTitle,reportSourceLabel};
 })();
