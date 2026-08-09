@@ -153,3 +153,65 @@ test('multi-subject PDF keeps special nonnumeric students in the analysis popula
   assert.ok(analysis.statusDistribution.some(item => item.label === 'باق' && item.count === 1));
   assert.ok(analysis.subjects.every(item => item.n === 5));
 });
+
+
+function pdfJsFragmentedHeaderItems(expected, pageNumber) {
+  const parts = [
+    ['التربية', 'الإسلامية', 700], ['اللغة', 'العربية', 650], ['اللغة', 'الإنجليزية', 600],
+    ['الرياضيات', '', 550], ['العلوم', '', 500], ['الدراسات', 'الاجتماعية', 450],
+    ['المهارات', 'الحياتية', 400], ['تقنية', 'المعلومات', 350], ['الرياضة', 'المدرسية', 300],
+    ['الفنون', 'التشكيلية', 250], ['المهارات', 'الموسيقية', 200],
+  ];
+  const items = [
+    item('كشــــف نتــــائج الطــــلب', 500, 790, 160),
+    item('الباسط للبنين الصفوف (10-8)', 860, 760, 170),
+    item('الصف : الثامن', 850, 735, 90),
+    item('العام الدراسي : 2025/2026', 700, 710, 150),
+    item('الشعبة : الكل', 500, 710, 90),
+    item('إجمالي الطلبة', 760, 680, 90),
+    item(String(expected), 760, 660, 25),
+    item(`رقم الصفحة ${pageNumber}`, 930, 680, 90),
+    item('م', 1010, 540, 12), item('اسم الطالب', 920, 540, 70), item('الجنسية', 815, 540, 50), item('القيد', 765, 540, 35),
+  ];
+  for (const [top, bottom, center] of parts) {
+    items.push(item(top, center, 575, 42));
+    // PDF.js may expose stacked RTL words with slightly different horizontal origins.
+    if (bottom) items.push(item(bottom, center + 14, 559, 42));
+    items.push(item('الدرجة', center + 10, 540, 20), item('المستوى', center - 10, 540, 20));
+  }
+  return items;
+}
+
+function pdfJsFragmentedPageItems(pageNumber, expected, serials) {
+  const items = pdfJsFragmentedHeaderItems(expected, pageNumber);
+  serials.forEach((serial, index) => items.push(...studentItems(serial, 500 - index * 25, serial === 3)));
+  return items;
+}
+
+test('multi-subject PDF uses score/level pair anchors when PDF.js shifts stacked RTL subject fragments', async () => {
+  const sandbox = load();
+  installPdfMock(sandbox, [
+    pdfJsFragmentedPageItems(1, 6, [1, 2, 3]),
+    pdfJsFragmentedPageItems(2, 6, [4, 5, 6]),
+  ]);
+
+  // Reproduce the live failure boundary: the generic canonical intake sees an
+  // incomplete repeated table.  The specialized adapter must recover the real
+  // student matrix first, otherwise readPdf throws the generic page error.
+  sandbox.window.TaqareerPdfIntakeV2.normalizePdfPages = () => ({
+    tables: [{ structure: { pagination: { missingPages: [1, 2], expectedPages: [1, 2], parsedPages: [] } } }],
+    diagnostics: { reviewTableCount: 1 },
+    metadata: {},
+  });
+  sandbox.window.TaqareerPdfIntakeV2.datasetsFromCanonical = () => [];
+
+  const source = await sandbox.window.TaqareerDocuments.readPdf(fakeFile);
+  assert.equal(source.preferredDatasetId, 'pdf-multi-subject-results');
+  const dataset = source.datasets.find(entry => entry.id === source.preferredDatasetId);
+  assert.equal(dataset.rows.length, 6);
+  assert.equal(dataset.meta.normalization.subjectCount, 11);
+  assert.equal(dataset.meta.normalization.scoreCount, 55);
+  assert.equal(dataset.meta.normalization.specialValueCount, 11);
+  assert.equal(dataset.meta.normalization.subjectDiscovery, 'score-level-pair-anchors');
+  assert.equal(dataset.rows[5]['الرياضيات - الدرجة'], String(55 + ((6 * 7 + 3 * 5) % 45)));
+});

@@ -1,8 +1,8 @@
 {
   "app": "تقارير",
-  "version": "1.2.37",
-  "phase": "Multi-Subject PDF Intake E2E",
-  "releaseName": "Complete Student-Matrix Recovery with Special-Record Preservation",
+  "version": "1.2.38",
+  "phase": "Browser-PDF.js Multi-Subject Header Recovery",
+  "releaseName": "Score-Level Pair Anchors for Fragmented RTL Subject Headers",
   "buildType": "static-github-pages-plus-supabase-edge-function",
   "supportedInputs": {
     "table": [

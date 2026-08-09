@@ -1053,12 +1053,16 @@
     return Number(item?.x || 0) + Math.abs(Number(item?.width || 0)) / 2;
   }
 
+  function pdfItemLexicalTokens(item) {
+    return cleanMetadataValue(item?.str || "").split(/\s+/).map(token => token.trim()).filter(Boolean);
+  }
+
   function firstMultiSubjectDataLine(page) {
     return (page?.lines || []).find(line => {
-      const items = (line?.items || []).map(item => ({ text: cleanMetadataValue(item?.str || ""), center: pdfItemCenter(item) })).filter(item => item.text);
-      const serial = items.find(item => item.center > 0 && /^\d{1,4}$/.test(normalizeDigits(item.text)));
-      const numericCells = items.filter(item => /^\d{1,3}$/.test(normalizeDigits(item.text))).length;
-      const hasStatus = items.some(item => /^(?:منقول|باق|مستجد|مرفع|راسب|ناجح)$/i.test(item.text));
+      const tokens = (line?.items || []).flatMap(pdfItemLexicalTokens);
+      const serial = tokens.find(token => /^\d{1,4}$/.test(normalizeDigits(token)));
+      const numericCells = tokens.filter(token => /^\d{1,3}$/.test(normalizeDigits(token))).length;
+      const hasStatus = tokens.some(token => /^(?:منقول|باق|مستجد|مرفع|راسب|ناجح)$/i.test(token));
       return Boolean(serial && hasStatus && numericCells >= 5);
     }) || null;
   }
@@ -1070,23 +1074,76 @@
   }
 
   function discoverMultiSubjectPdfSubjects(pageRecords) {
+    const genericHeader = /الدرجه|الدرجة|المستوي|المستوى|الجنسيه|الجنسية|القيد|الماده|المادة|الاسم|السم|الصف|الشعبه|الشعبة/;
+
     for (const page of (pageRecords || []).slice(0, 4)) {
       const dataLine = firstMultiSubjectDataLine(page);
       if (!dataLine) continue;
-      const groups = [];
-      const headerTop = Number(dataLine.y || 0) + 100;
+      const headerTop = Number(dataLine.y || 0) + 115;
+      const headerItems = [];
       for (const line of page.lines || []) {
-        if (!(Number(line.y || 0) > Number(dataLine.y || 0) && Number(line.y || 0) <= headerTop)) continue;
+        const y = Number(line.y || 0);
+        if (!(y > Number(dataLine.y || 0) && y <= headerTop)) continue;
         for (const item of line.items || []) {
           const text = cleanMetadataValue(item?.str || "");
-          const normalized = normalize(text);
-          const center = pdfItemCenter(item);
-          if (!text || center < 120 || center > 900) continue;
-          if (/الدرجه|الدرجة|المستوي|المستوى|الجنسيه|الجنسية|القيد|الماده|المادة|الاسم|السم/.test(normalized)) continue;
-          let group = groups.find(candidate => Math.abs(candidate.center - center) <= 6);
-          if (!group) { group = { center, parts: [] }; groups.push(group); }
-          group.parts.push({ y: Number(line.y || 0), text });
+          if (!text) continue;
+          headerItems.push({ text, normalized: normalize(text), center: pdfItemCenter(item), y });
         }
+      }
+
+      // Crystal Reports renders every subject as a score/level pair.  These two
+      // labels are a more stable geometric anchor than the Arabic subject label
+      // itself, whose PDF.js text items may shift horizontally between stacked
+      // words (especially in RTL text).  Recover column centers from the pair,
+      // then attach nearby subject fragments to that center.
+      const scoreLabels = headerItems.filter(item => /^(?:الدرجه|الدرجة)$/.test(item.normalized));
+      const levelLabels = headerItems.filter(item => /^(?:المستوي|المستوى)$/.test(item.normalized));
+      const usedLevels = new Set();
+      const pairCenters = [];
+      for (const score of scoreLabels) {
+        let bestIndex = -1;
+        let bestDistance = Infinity;
+        levelLabels.forEach((level, index) => {
+          if (usedLevels.has(index) || Math.abs(level.y - score.y) > 12) return;
+          if (!(level.center < score.center)) return;
+          const distance = score.center - level.center;
+          if (distance >= 8 && distance <= 42 && distance < bestDistance) {
+            bestIndex = index;
+            bestDistance = distance;
+          }
+        });
+        if (bestIndex >= 0) {
+          usedLevels.add(bestIndex);
+          pairCenters.push((score.center + levelLabels[bestIndex].center) / 2);
+        }
+      }
+      pairCenters.sort((a, b) => b - a);
+      const pairGaps = pairCenters.slice(1).map((center, index) => Math.abs(pairCenters[index] - center)).filter(gap => gap >= 30 && gap <= 80);
+      const medianPairGap = pairGaps.length ? [...pairGaps].sort((a, b) => a - b)[Math.floor(pairGaps.length / 2)] : 50;
+      const labelTolerance = Math.max(16, Math.min(26, medianPairGap * 0.46));
+      const fragments = headerItems.filter(item => !genericHeader.test(item.normalized) && item.center > 15);
+      const anchoredSubjects = pairCenters.map(center => {
+        const nearby = fragments.filter(item => Math.abs(item.center - center) <= labelTolerance);
+        if (!nearby.length) return null;
+        const label = nearby.sort((a, b) => b.y - a.y).map(item => item.text).join(" ").replace(/\s+/g, " ").trim();
+        const name = canonicalMultiSubjectPdfName(label);
+        return name ? { name, center, sourceLabel: label } : null;
+      }).filter(Boolean);
+      const anchoredUnique = [];
+      for (const subject of anchoredSubjects) if (!anchoredUnique.some(item => item.name === subject.name)) anchoredUnique.push(subject);
+      if (anchoredUnique.length >= 5) return anchoredUnique.sort((a, b) => b.center - a.center);
+
+      // Compatibility fallback for PDFs whose headers do not expose separate
+      // score/level labels.  Use a tolerance derived from the expected column
+      // pitch rather than the former fixed six-point assumption.
+      const groups = [];
+      const clusterTolerance = Math.max(12, Math.min(22, medianPairGap * 0.4));
+      for (const item of fragments) {
+        if (item.center < 120 || item.center > 900) continue;
+        let group = groups.find(candidate => Math.abs(candidate.center - item.center) <= clusterTolerance);
+        if (!group) { group = { center: item.center, parts: [] }; groups.push(group); }
+        group.parts.push({ y: item.y, text: item.text, center: item.center });
+        group.center = group.parts.reduce((sum, part) => sum + part.center, 0) / group.parts.length;
       }
       const subjects = groups.map(group => {
         const label = group.parts.sort((a, b) => b.y - a.y).map(part => part.text).join(" ").replace(/\s+/g, " ").trim();
@@ -1296,7 +1353,7 @@
         meta: {
           sourceType: "pdf",
           mode: "table",
-          extractionMode: "multi-subject-pdf-adapter-v1",
+          extractionMode: "multi-subject-pdf-adapter-v2-pair-anchored",
           specializedType: "multi_subject_results",
           reportTitle: metadata.title,
           metadata,
@@ -1305,7 +1362,7 @@
           dataPages,
           ignoredPages,
           normalization: {
-            engine: "multi-subject-pdf-results-adapter-v1",
+            engine: "multi-subject-pdf-results-adapter-v2",
             applied: true,
             kind: "multi_subject_results",
             originalPages: pageRecords.length,
@@ -1320,6 +1377,7 @@
             specialStudentCount,
             subjects: subjects.map(subject => subject.name),
             pairOrientation: "score-level",
+            subjectDiscovery: "score-level-pair-anchors",
             serialContinuity: true,
           },
         },
