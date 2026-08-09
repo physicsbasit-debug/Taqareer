@@ -84,3 +84,30 @@ test('short analytical charts use compact measured cards so the next section can
   assert.match(source, /analytical-charts:not\(:has\(\.chart-wide\)\) \.chart-card\.chart-compact\{min-height:64mm\}/);
   assert.match(source, /cross-section-bridge \.analytical-charts:not\(:has\(\.chart-wide\)\) \.chart-card\.chart-compact\{min-height:54mm\}/);
 });
+
+test('packable grids retry whole on a fresh A4 page before any card-level split', () => {
+  const start = source.indexOf('function appendContainer');
+  const end = source.indexOf('source.forEach', start);
+  const block = source.slice(start, end);
+  const freshRetry = block.indexOf('fresh(section);const freshWhole=');
+  const splitCall = block.indexOf('splitContainer(container,section,heading)');
+  assert.ok(freshRetry >= 0, 'fresh-page whole retry is missing');
+  assert.ok(splitCall > freshRetry, 'grid is split before retrying it whole on a fresh A4 page');
+});
+
+test('long analytical grids can switch to full-width stacked flow without changing font size', () => {
+  assert.match(source, /const STACKABLE_FLOW_SELECTOR="\.diagnostic-grid,\.findings-grid,\.plan-cards,\.timeline,\.governance-grid"/);
+  assert.match(source, /function compactStackClone\(container\)/);
+  assert.match(source, /flow-stack-compact/);
+  const cssStart = source.indexOf('.report-sheet-flow-packed .flow-stack-compact');
+  const cssEnd = source.indexOf('.flow-fragment{', cssStart);
+  const css = source.slice(cssStart, cssEnd);
+  assert.match(css, /grid-template-columns:1fr!important/);
+  assert.doesNotMatch(css, /font-size/);
+});
+
+test('flow integrity preserves analytical card counts across measured repagination', () => {
+  assert.match(source, /const FLOW_COUNT_SELECTORS=\{diagnostic:"\.diagnostic-card",finding:"\.finding-card",plan:"\.plan-card",tool:"\.tool-card",monitoring:"\.timeline article",governance:"\.governance-grid article"\}/);
+  assert.match(source, /flowExpectedCounts=flowContentCounts\(\)/);
+  assert.match(source, /flow-count:/);
+});

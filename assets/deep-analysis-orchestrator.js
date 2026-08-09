@@ -3,7 +3,7 @@
 
   // Phase 2-A: الذكاء الاصطناعي هو مالك التحليل التربوي، بينما يبقى
   // المحرك المحلي مسؤولًا عن الحسابات والرسوم وحزمة الأدلة فقط.
-  const VERSION = "1.3.3";
+  const VERSION = "1.3.4";
   const PROTOCOL_VERSION = "6.8.0";
   const CACHE_KEY = "taqareer-ai-decision-core-cache-v1";
   const CACHE_TTL_MS = 24 * 60 * 60 * 1000;

@@ -1,6 +1,6 @@
 {
   "app": "تقارير",
-  "version": "1.3.3",
+  "version": "1.3.4",
   "phase": "Decision Core AI Architecture",
   "releaseName": "Educational Inference Guardrails",
   "buildType": "static-github-pages-plus-supabase-edge-function",
