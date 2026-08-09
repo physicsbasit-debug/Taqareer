@@ -808,6 +808,11 @@
           contingency: trimText(item?.contingency, 900),
           resources: clampItems(item?.resources, 6, 540),
           evidenceRefs: cleanPrimaryRefs(item?.evidenceRefs, allowedEvidence, 10),
+          basisClaimType: ["fact", "inference", "hypothesis"].includes(item?.basisClaimType) ? item.basisClaimType : "",
+          basisConfidence: ["مرتفعة", "متوسطة", "منخفضة"].includes(item?.basisConfidence) ? item.basisConfidence : "",
+          inferenceGuardApplied: Boolean(item?.inferenceGuardApplied),
+          guardedConstructs: clampItems(item?.guardedConstructs, 4, 140),
+          sourceAnalysisUnitTitle: trimText(item?.sourceAnalysisUnitTitle, 240),
           source: "gemini-primary",
         };
         if (scoreInterventionContext) {
@@ -836,6 +841,8 @@
         measure: trimText(item?.measure, 850),
         owner: trimText(item?.owner, 320),
         evidenceRefs: cleanPrimaryRefs(item?.evidenceRefs, allowedEvidence, 10),
+        basisClaimTypes: clampItems(item?.basisClaimTypes, 3, 40),
+        inferenceGuardApplied: Boolean(item?.inferenceGuardApplied),
         source: "gemini-primary",
       }))
       .filter(item => item.stage && item.measure);

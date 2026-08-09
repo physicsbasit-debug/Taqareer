@@ -463,3 +463,158 @@ test('End-to-End: score inference guard downgrades unsupported causal and psycho
   assert.doesNotMatch(html, /الثقة الذاتية المرتفعة سبب مباشر للتفوق/);
   assert.doesNotMatch(html, /طبيعة المادة التطبيقية هي سبب التفوق/);
 });
+
+
+test('End-to-End regression: inference taint must survive recommendedAction, interventions, and final HTML', async () => {
+  const scorePayload = payload();
+  scorePayload.recognizedType = { id: 'multi_subject_results', nameAr: 'نتائج طلاب فردية متعددة المواد' };
+  scorePayload.availableEvidenceRefs = [
+    'metric:n', 'metric:overallMean', 'metric:subjectGap', 'metric:weakestSubjectMean', 'metric:strongestSubjectMean', 'metric:sd',
+  ];
+  scorePayload.evidenceAnalysis = {
+    metrics: [
+      { id: 'n', value: 319 },
+      { id: 'overallMean', value: 82.7 },
+      { id: 'subjectGap', value: 18.4 },
+      { id: 'weakestSubjectMean', value: 67.7 },
+      { id: 'strongestSubjectMean', value: 96.1 },
+      { id: 'sd', value: 10.1 },
+    ],
+    charts: [],
+    scopeContext: { analysisMode: 'all', selectedSubject: '', rankingPolicy: 'school' },
+    evidenceCatalog: [],
+  };
+  scorePayload.data = { mode: 'table', headers: [], rowCount: 319, sentRowCount: 0, sampleRows: [] };
+
+  const taintedDecision = {
+    executive: {
+      title: 'فروق وصفية بين المواد',
+      summary: 'تظهر فروق بين متوسطات المواد وتحتاج المواد الأدنى إلى مراجعة موجهة.',
+      overallJudgement: 'تحسين موجه حسب الأولوية',
+      confidence: 'مرتفعة',
+      evidenceRefs: ['metric:overallMean', 'metric:subjectGap'],
+    },
+    findings: [
+      {
+        title: 'تفوق نسبي للأداء في المواد العملية',
+        diagnosticAnalysis: 'تظهر المؤشرات ارتفاعًا وصفيًا في متوسطات عدد من المواد مقارنة بمواد أخرى دون إثبات سبب للفروق.',
+        decisionFinding: 'تستخدم الفروق لترتيب مواد الأولوية فقط.',
+        claimType: 'fact', evidenceRefs: ['metric:subjectGap', 'metric:strongestSubjectMean'], confidence: 'مرتفعة', severity: 'medium',
+        educationalImpact: 'يمكن مراجعة خصائص الخبرات التعليمية في المواد الأعلى والأدنى أداءً.',
+        recommendedAction: 'الاستفادة من دافعية الطلبة المرتفعة في الأنشطة والمواد العملية لنقل أثرها إلى المواد الأساسية.',
+        limitation: 'الدرجات لا تقيس الدافعية مباشرة.', dataRequest: '',
+      },
+      {
+        title: 'القلق الاختباري',
+        diagnosticAnalysis: 'قد يكون القلق الاختباري مرتبطًا ببعض الفروق، لكن المصدر الحالي لا يتضمن قياسًا مباشرًا له.',
+        decisionFinding: 'القلق احتمال يحتاج تحققًا قبل أي تفسير سببي.',
+        claimType: 'hypothesis', evidenceRefs: ['metric:sd'], confidence: 'منخفضة', severity: 'low',
+        educationalImpact: 'لا يجوز بناء تدخل علاجي نفسي من الدرجات وحدها.',
+        recommendedAction: 'جمع دليل مباشر عن القلق الاختباري قبل اعتماد الفرضية.',
+        limitation: 'لا يوجد مقياس قلق.', dataRequest: 'مقياس مناسب للقلق الاختباري.',
+      },
+      {
+        title: 'فجوة المتوسطات',
+        diagnosticAnalysis: 'تظهر المؤشرات فجوة وصفية بين أعلى متوسط وأدنى متوسط عبر المواد.',
+        decisionFinding: 'تحدد الفجوة مواد أولوية للمراجعة دون تفسير سببها.',
+        claimType: 'fact', evidenceRefs: ['metric:subjectGap', 'metric:weakestSubjectMean'], confidence: 'مرتفعة', severity: 'high',
+        educationalImpact: 'يساعد ترتيب المواد على توجيه موارد التحسين.',
+        recommendedAction: 'تحليل المادة الأدنى على مستوى المهارات والمفردات.',
+        limitation: 'الدرجات لا تحدد المهارة.', dataRequest: 'تحليل مفردات المادة الأدنى.',
+      },
+    ],
+    additionalCautions: [],
+    missingDataRequests: [],
+  };
+
+  const runtime = await createRuntime([geminiRaw(taintedDecision)]);
+  const { status, body } = await invoke(runtime, scorePayload);
+  assert.equal(status, 200);
+  assert.equal(runtime.getCalls(), 1);
+  assert.equal(body.serverTiming.inferenceGuardApplied, true);
+
+  const serialized = JSON.stringify(body.result);
+  assert.doesNotMatch(serialized, /دافعية الطلبة المرتفعة/);
+  assert.doesNotMatch(serialized, /نقل أثرها إلى المواد الأساسية/);
+  assert.match(serialized, /تفاوت وصفي بين المواد/);
+
+  const anxiety = body.result.findings.find(item => /القلق/.test(`${item.title} ${item.statement}`));
+  assert.ok(anxiety, 'the named hypothesis must remain identifiable after guarding');
+  assert.equal(anxiety.claimType, 'hypothesis');
+  assert.equal(anxiety.confidence, 'منخفضة');
+
+  const hypothesisIntervention = body.result.interventions.find(item => item.basisClaimType === 'hypothesis');
+  assert.ok(hypothesisIntervention, 'hypothesis taint must propagate to the derived intervention');
+  assert.equal(hypothesisIntervention.basisConfidence, 'منخفضة');
+  assert.match(hypothesisIntervention.action, /جمع بيانات مباشرة|التحقق/);
+  assert.doesNotMatch(hypothesisIntervention.action, /تعزيز الثقة|تعزيز الدافعية|دافعية الطلبة المرتفعة/);
+
+  const reportSandbox = { window: {}, console, Intl, Date, Math, Set, Map, structuredClone, Array, Object, String, Number, RegExp, JSON };
+  vm.createContext(reportSandbox);
+  for (const file of ['display-terms.js', 'analysis-reconciliation.js', 'report-system.js']) {
+    vm.runInContext(fs.readFileSync(path.join(root, 'assets', file), 'utf8'), reportSandbox, { filename: file });
+  }
+  const local = {
+    typeId: 'multi_subject_results', kind: 'multi_subject_results',
+    metrics: scorePayload.evidenceAnalysis.metrics.map(item => ({ ...item, label: item.id, format: 'number', evidenceRef: `metric:${item.id}` })),
+    charts: [], evidenceMap: Object.fromEntries(scorePayload.availableEvidenceRefs.map(ref => [ref, ref])),
+    findings: [], qualityTools: [], improvementPlan: [], monitoringPlan: [], diagnosticSections: [], limitations: [],
+    scopeContext: { analysisMode: 'all', selectedSubject: '' },
+  };
+  const reconciled = reportSandbox.window.TaqareerReconciliation.composePrimary(local, body.result, { availableEvidenceRefs: scorePayload.availableEvidenceRefs });
+  const html = reportSandbox.window.TaqareerReports.buildReportHtml({
+    analysis: reconciled, type: { id: 'multi_subject_results', name: 'نتائج طلاب فردية متعددة المواد' },
+    sourceName: 'ministry-results.pdf', sourceMeta: { metadata: { school: 'مدرسة اختبار', analyzedGrade: 'الثامن' } },
+    quality: { completeness: 100 }, recognitionStatus: 'معتمد',
+  }, { autoPrint: false });
+  assert.doesNotMatch(html, /دافعية الطلبة المرتفعة/);
+  assert.doesNotMatch(html, /ثقة الطلبة/);
+  assert.doesNotMatch(html, /البيئة الإيجابية/);
+  assert.match(html, /فرضية تحتاج تحققًا/);
+  assert.match(html, /القلق/);
+  assert.match(html, /class="plan-basis"/);
+  assert.match(html, /ثقة منخفضة/);
+});
+
+
+test('Regression: the subject name الدراسات الاجتماعية is not itself treated as an unmeasured social-factor hypothesis', async () => {
+  const scorePayload = payload();
+  scorePayload.recognizedType = { id: 'multi_subject_results', nameAr: 'نتائج طلاب فردية متعددة المواد' };
+  scorePayload.availableEvidenceRefs = ['metric:n', 'metric:overallMean', 'metric:subjectGap', 'metric:sd'];
+  scorePayload.evidenceAnalysis = {
+    metrics: [
+      { id: 'n', value: 319 }, { id: 'overallMean', value: 82.7 }, { id: 'subjectGap', value: 18.4 }, { id: 'sd', value: 10.1 },
+    ],
+    charts: [], scopeContext: { analysisMode: 'subject', selectedSubject: 'الدراسات الاجتماعية' }, evidenceCatalog: [],
+  };
+  scorePayload.data = { mode: 'table', headers: [], rowCount: 319, sentRowCount: 0, sampleRows: [] };
+  const safeDecision = {
+    executive: {
+      title: 'تحليل نتائج الدراسات الاجتماعية',
+      summary: 'تصف المؤشرات مستوى التحصيل في الدراسات الاجتماعية وتحدد الفئات التي تحتاج متابعة.',
+      overallJudgement: 'متابعة موجهة حسب مستوى التحصيل', confidence: 'مرتفعة', evidenceRefs: ['metric:overallMean'],
+    },
+    findings: [
+      {
+        title: 'مستوى التحصيل في الدراسات الاجتماعية',
+        diagnosticAnalysis: 'يصف المتوسط الحالي مستوى التحصيل في المادة دون تفسير سبب الفروق.',
+        decisionFinding: 'تستخدم النتيجة لترتيب أولوية المتابعة.', claimType: 'fact', evidenceRefs: ['metric:overallMean'], confidence: 'مرتفعة', severity: 'medium',
+        educationalImpact: 'توجيه الدعم حسب الفئات الحالية.', recommendedAction: 'تنفيذ قياس قصير قبل الدعم.', limitation: 'لا تحدد الدرجة المهارة.', dataRequest: 'تحليل مفردات عند الحاجة.',
+      },
+      {
+        title: 'تشتت الدرجات', diagnosticAnalysis: 'يوضح الانحراف المعياري تفاوت النتائج بين الطلبة.', decisionFinding: 'التفاوت يستدعي دعما متمايزا.',
+        claimType: 'fact', evidenceRefs: ['metric:sd'], confidence: 'مرتفعة', severity: 'medium', educationalImpact: 'تمييز الدعم حسب الحاجة.', recommendedAction: 'تقسيم الدعم حسب مستويات الأداء.', limitation: 'التشتت لا يثبت السبب.', dataRequest: '',
+      },
+      {
+        title: 'فجوة داخل المادة', diagnosticAnalysis: 'تظهر المؤشرات فجوة وصفية تحتاج متابعة.', decisionFinding: 'تثبت الحاجة إلى مراجعة مرحلية.', claimType: 'inference', evidenceRefs: ['metric:subjectGap'], confidence: 'متوسطة', severity: 'medium', educationalImpact: 'توجيه المتابعة.', recommendedAction: 'إعادة القياس بعد التدخل.', limitation: '', dataRequest: '',
+      },
+    ],
+    additionalCautions: [], missingDataRequests: [],
+  };
+  const runtime = await createRuntime([geminiRaw(safeDecision)]);
+  const { status, body } = await invoke(runtime, scorePayload);
+  assert.equal(status, 200);
+  assert.equal(body.serverTiming.inferenceGuardApplied, false);
+  assert.ok(body.result.findings.some(item => item.title === 'مستوى التحصيل في الدراسات الاجتماعية'));
+  assert.ok(!body.result.findings.some(item => item.claimType === 'hypothesis'));
+});

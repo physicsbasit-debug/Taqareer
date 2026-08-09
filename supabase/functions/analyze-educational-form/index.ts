@@ -1,4 +1,4 @@
-const EDGE_VERSION = "0.16.2";
+const EDGE_VERSION = "0.16.3";
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 const DEFAULT_MODEL = "gemini-3.6-flash";
 const DEFAULT_FAST_MODEL = "gemini-3.5-flash-lite";
@@ -21,7 +21,7 @@ const PRIMARY_ACTION_ATTEMPT_TIMEOUT_MS = 13_000;
 const PRIMARY_REPAIR_ATTEMPT_TIMEOUT_MS = 11_000;
 const PRIMARY_TRANSIENT_RESCUE_ATTEMPT_TIMEOUT_MS = 8_000;
 const PRIMARY_MIN_REMAINING_MS = 2_500;
-// v0.16.2: حراس استدلال تربوي على نواة القرار؛ يبقى طلب AI أساسي واحد + fallback واحد فقط،
+// v0.16.3: حراس استدلال تربوي على نواة القرار؛ يبقى طلب AI أساسي واحد + fallback واحد فقط،
 // دون fan-out متعدد المقاطع أو سلاسل repair/rescue.
 const DEFAULT_DECISION_MODEL = "gemini-3.5-flash-lite";
 const DEFAULT_DECISION_FALLBACK_MODEL = "gemini-3.6-flash";
@@ -297,7 +297,7 @@ const PRIMARY_REASONING_SCHEMA: JsonRecord = {
   required: ["contractVersion", "analysisProfile", "executive", "analysisUnits", "methodChecks", "additionalCautions", "missingDataRequests", "suggestedNewType"],
 };
 
-// v0.16.2: عقد قرار مصغر. Gemini لا يعيد ملف التحليل الكامل؛ يكتب فقط
+// v0.16.3: عقد قرار مصغر. Gemini لا يعيد ملف التحليل الكامل؛ يكتب فقط
 // الحكم التنفيذي ووحدات القرار، ثم يبني الخادم بقية العقد حتميًا.
 const PRIMARY_DECISION_SCHEMA: JsonRecord = {
   type: "object",
@@ -1364,6 +1364,22 @@ function applyMultiVisitScopeGuard(base: JsonRecord, payload: JsonRecord): JsonR
   };
 }
 
+function normalizeInferenceTaint(value: unknown): JsonRecord | null {
+  if (!value || typeof value !== "object") return null;
+  const input = value as JsonRecord;
+  if (!input.applied) return null;
+  const claim = ["fact", "inference", "hypothesis"].includes(String(input.claimType)) ? String(input.claimType) : "inference";
+  const conf = ["مرتفعة", "متوسطة", "منخفضة"].includes(String(input.confidence)) ? String(input.confidence) : "متوسطة";
+  return {
+    applied: true,
+    kind: cleanString(input.kind, 80) || "guarded_inference",
+    claimType: claim,
+    confidence: conf,
+    constructs: cleanStringArray(input.constructs, 4, 140),
+    dataRequests: cleanStringArray(input.dataRequests, 4, 260),
+  };
+}
+
 function validatePrimaryAnalysis(result: unknown, payload: JsonRecord, mode: "primary" | "rescue" = "primary"): JsonRecord {
   if (!result || typeof result !== "object") throw new Error("رجع المحلل الذكي نتيجة فارغة.");
   const input = result as JsonRecord;
@@ -1388,8 +1404,9 @@ function validatePrimaryAnalysis(result: unknown, payload: JsonRecord, mode: "pr
       educationalImpact: cleanString(item.educationalImpact, 360),
       recommendedAction: cleanString(item.recommendedAction, 360),
       alternativeExplanations: cleanStringArray(item.alternativeExplanations, 1, 300),
-      limitations: cleanStringArray(item.limitations, 2, 300),
-      dataRequests: cleanStringArray(item.dataRequests, 2, 300),
+      limitations: cleanStringArray(item.limitations, 3, 300),
+      dataRequests: cleanStringArray(item.dataRequests, 3, 300),
+      inferenceTaint: normalizeInferenceTaint(item.inferenceTaint),
       source: "gemini-primary",
     }))
     .filter(item => item.title && item.diagnosticAnalysis && item.decisionFinding && item.evidenceRefs.length && item.educationalImpact && item.recommendedAction);
@@ -1413,6 +1430,7 @@ function validatePrimaryAnalysis(result: unknown, payload: JsonRecord, mode: "pr
     alternativeExplanations: item.alternativeExplanations,
     limitations: item.limitations,
     dataRequests: item.dataRequests,
+    inferenceTaint: item.inferenceTaint,
     source: item.source,
   }));
 
@@ -1427,6 +1445,7 @@ function validatePrimaryAnalysis(result: unknown, payload: JsonRecord, mode: "pr
     educationalImpact: item.educationalImpact,
     recommendedAction: item.recommendedAction,
     limitations: item.limitations,
+    inferenceTaint: item.inferenceTaint,
     source: item.source,
   }));
 
@@ -1474,6 +1493,11 @@ function validatePrimaryAnalysis(result: unknown, payload: JsonRecord, mode: "pr
         contingency: cleanString(item.contingency, 360),
         resources: cleanStringArray(item.resources, 2, 260),
         evidenceRefs: cleanRefs(item.evidenceRefs, allowed, 8),
+        basisClaimType: ["fact", "inference", "hypothesis"].includes(String(item.basisClaimType)) ? String(item.basisClaimType) : "",
+        basisConfidence: ["مرتفعة", "متوسطة", "منخفضة"].includes(String(item.basisConfidence)) ? String(item.basisConfidence) : "",
+        inferenceGuardApplied: Boolean(item.inferenceGuardApplied),
+        guardedConstructs: cleanStringArray(item.guardedConstructs, 4, 140),
+        sourceAnalysisUnitTitle: cleanString(item.sourceAnalysisUnitTitle, 180),
         source: "gemini-primary",
       };
       let guarded = scoreContext ? applyScoreInterventionGuard(base, item, scoreContext, allowed) : base;
@@ -1503,6 +1527,8 @@ function validatePrimaryAnalysis(result: unknown, payload: JsonRecord, mode: "pr
       measure: cleanString(item.measure, 420),
       owner: cleanString(item.owner, 220),
       evidenceRefs: cleanRefs(item.evidenceRefs, allowed, 8),
+      basisClaimTypes: cleanStringArray(item.basisClaimTypes, 3, 40),
+      inferenceGuardApplied: Boolean(item.inferenceGuardApplied),
       source: "gemini-primary",
     }))
     .filter(item => item.stage && item.timing && item.measure && item.owner && item.evidenceRefs.length);
@@ -1845,8 +1871,8 @@ function primaryDecisionInstructions(): string {
 1) executive: حكم تنفيذي موجز مرتبط بالمراجع المتاحة.
 2) findings: وحدتان أو ثلاث فقط، مختلفة فعلًا. لكل وحدة: تحليل تشخيصي، استنتاج قراري مختلف عنه، دليل حرفي من evidenceRefs، أثر تربوي، وإجراء عملي.
 3) لا تسمِّ مهارة أو سببًا غير مثبت من درجات كلية، ولا تحول الارتباط إلى سببية.
-4) في ملفات الدرجات: لا تستنتج الثقة الذاتية أو الدافعية أو المشاركة أو القلق أو الأسباب النفسية/الاجتماعية أو جودة التدريس أو صعوبة المنهج/الاختبار من الدرجات وحدها. إن ذكرت عاملًا من هذه العوامل فاجعله claimType=hypothesis وثقة منخفضة مع limitation وdataRequest صريحين.
-5) في الملفات متعددة المواد: لا تفسر الفروق بسبب كون المادة «تطبيقية» أو «نظرية» ما لم تكن هذه السمة موجودة صراحة في المصدر. صف الفروق بين المواد فقط ورتب الأولويات دون تفسير سببي.
+4) في ملفات الدرجات: لا تستنتج الثقة الذاتية أو الدافعية أو المشاركة أو البيئة التعليمية/الإيجابية أو القلق أو الأسباب النفسية/الاجتماعية أو جودة التدريس أو صعوبة المنهج/الاختبار من الدرجات وحدها. لا تضع هذه الادعاءات في title أو diagnosticAnalysis أو decisionFinding أو educationalImpact أو recommendedAction باعتبارها حقيقة. إن ذكرت عاملًا منها فاجعله claimType=hypothesis وثقة منخفضة مع limitation وdataRequest صريحين.
+5) في الملفات متعددة المواد: لا تفسر الفروق بسبب كون المادة «عملية» أو «تطبيقية» أو «نظرية» ما لم تكن هذه السمة موجودة صراحة في المصدر كمتغير موثق. صف الفروق بين المواد فقط ورتب الأولويات دون تفسير سببي.
 6) لا تضع فرضيات نفسية أو سببية غير مقاسة داخل executive؛ الملخص التنفيذي يقتصر على المؤشرات المؤكدة والاستنتاجات القرارّية المدعومة.
 7) لا تستخدم أسماء أشخاص أو بيانات شخصية ولا تعِد ترتيب الطلبة.
 8) إذا كان الملف متعدد المواد فالتزم analysisMode وselectedSubject وسياسة rankingPolicy الموجودة في scopeContext.
@@ -1922,7 +1948,11 @@ const SCORE_INFERENCE_SENSITIVE_RULES = [
   { id: "self_confidence", pattern: /الثق[ةه]\s*(?:الذاتي[ةه])?/i, label: "الثقة الذاتية", dataRequest: "مقياس مباشر للثقة الذاتية أو بيانات نوعية موثقة" },
   { id: "motivation", pattern: /الدافعي[ةه]|الحافز\s+للتعلم/i, label: "الدافعية", dataRequest: "أداة مباشرة لقياس الدافعية أو اتجاهات التعلم" },
   { id: "participation", pattern: /المشارك[ةه]\s*(?:الصفي[ةه]|الإيجابي[ةه])?/i, label: "المشاركة", dataRequest: "سجل مشاركة أو ملاحظة صفية مباشرة" },
-  { id: "anxiety", pattern: /القلق|النفسي[ةه]?|الاجتماعي[ةه]?|الأسري[ةه]?/i, label: "عامل نفسي أو اجتماعي", dataRequest: "بيانات مباشرة ومناسبة عن العامل النفسي أو الاجتماعي محل الفرضية" },
+  { id: "learning_climate", pattern: /البيئ[ةه]\s+(?:الإيجابي[ةه]|التعليمي[ةه]|المدرسي[ةه]|الصفي[ةه])/i, label: "البيئة التعليمية", dataRequest: "مقياس مناخ صفي/مدرسي أو ملاحظات مباشرة موثقة عن البيئة التعليمية" },
+  { id: "anxiety", pattern: /القلق(?:\s+الاختباري)?/i, label: "القلق", dataRequest: "مقياس مناسب للقلق أو القلق الاختباري عند ارتباط الفرضية به" },
+  { id: "psychological", pattern: /(?:عامل|عوامل|حال[ةه]|ظروف)\s+نفسي(?:[ةه]|[يى]ة)?|الصح[ةه]\s+النفسي[ةه]/i, label: "عامل نفسي", dataRequest: "بيانات مباشرة ومناسبة عن العامل النفسي محل الفرضية" },
+  { id: "social", pattern: /(?:عامل|عوامل|ظروف|بيئ[ةه]|وضع)\s+اجتماعي(?:[ةه])?/i, label: "عامل اجتماعي", dataRequest: "بيانات مباشرة ومناسبة عن العامل الاجتماعي محل الفرضية" },
+  { id: "family", pattern: /(?:عامل|عوامل|ظروف|وضع)\s+أ?سري(?:[ةه])?/i, label: "عامل أسري", dataRequest: "بيانات مباشرة ومناسبة عن العامل الأسري محل الفرضية" },
   { id: "instruction", pattern: /جود[ةه]\s+التدريس|أسلوب\s+التدريس|استراتيجي(?:ة|ات)\s+التدريس/i, label: "الممارسات التدريسية", dataRequest: "ملاحظة صفية أو بيانات مباشرة عن الممارسات التدريسية" },
   { id: "difficulty", pattern: /صعوب[ةه]\s+(?:المنهج|الاختبار|الأسئل[ةه])/i, label: "صعوبة المحتوى أو أداة القياس", dataRequest: "تحليل مفردات وأداة القياس أو بيانات صعوبة مباشرة" },
 ];
@@ -1933,16 +1963,22 @@ function isScoreLikeDecisionPayload(payload: JsonRecord): boolean {
 }
 
 function subjectNatureClassificationMentioned(text: string): boolean {
-  const normalized = normalizeForComparison(text);
-  const hasApplied = /تطبيقي/.test(normalized);
-  const hasTheoretical = /نظري/.test(normalized);
-  return (hasApplied && hasTheoretical) || /المواد?\s+(?:التطبيقي|النظري)/.test(normalized);
+  const raw = String(text || "");
+  const hasCategory = /(?:المواد?|مواد)\s+(?:التطبيقي(?:[ةه])?|النظري(?:[ةه])?|العملي(?:[ةه])?)/i.test(raw);
+  const normalized = normalizeForComparison(raw);
+  const paired = /تطبيقي/.test(normalized) && /نظري/.test(normalized);
+  return hasCategory || paired;
 }
 
-function scoreSensitiveConstructs(text: string): { label: string; dataRequest: string }[] {
-  return SCORE_INFERENCE_SENSITIVE_RULES
-    .filter(rule => rule.pattern.test(String(text || "")))
-    .map(rule => ({ label: rule.label, dataRequest: rule.dataRequest }));
+function scoreSensitiveConstructs(text: string): { id: string; label: string; dataRequest: string }[] {
+  const seen = new Set<string>();
+  const out: { id: string; label: string; dataRequest: string }[] = [];
+  for (const rule of SCORE_INFERENCE_SENSITIVE_RULES) {
+    if (!rule.pattern.test(String(text || "")) || seen.has(rule.id)) continue;
+    seen.add(rule.id);
+    out.push({ id: rule.id, label: rule.label, dataRequest: rule.dataRequest });
+  }
+  return out;
 }
 
 function uniqueCleanStrings(values: string[], limit = 3): string[] {
@@ -1957,6 +1993,16 @@ function uniqueCleanStrings(values: string[], limit = 3): string[] {
     if (out.length >= limit) break;
   }
   return out;
+}
+
+function scoreUnitClaimText(unit: JsonRecord): string {
+  return [
+    unit.title,
+    unit.diagnosticAnalysis,
+    unit.decisionFinding,
+    unit.educationalImpact,
+    unit.recommendedAction,
+  ].map(value => String(value || "")).join(" ");
 }
 
 function safeScoreExecutiveText(value: unknown): string {
@@ -1974,52 +2020,71 @@ function applyEducationalInferenceGuardrails(decision: JsonRecord, payload: Json
   const units = Array.isArray(decision.analysisUnits) ? decision.analysisUnits as JsonRecord[] : [];
   let guardedCount = 0;
   const guardedUnits = units.map(unit => {
-    const narrative = [unit.title, unit.diagnosticAnalysis, unit.decisionFinding, unit.educationalImpact].map(String).join(" ");
-    const sensitive = scoreSensitiveConstructs(narrative);
-    const nature = subjectNatureClassificationMentioned(narrative);
-    if (!sensitive.length && !nature) return unit;
+    const claimText = scoreUnitClaimText(unit);
+    const sensitive = scoreSensitiveConstructs(claimText);
+    const nature = subjectNatureClassificationMentioned(claimText);
+    const modelHypothesis = String(unit.claimType || "") === "hypothesis";
+    if (!sensitive.length && !nature && !modelHypothesis) return unit;
     guardedCount += 1;
 
-    if (sensitive.length) {
+    if (sensitive.length || modelHypothesis) {
       const labels = uniqueCleanStrings(sensitive.map(item => item.label), 3);
       const requests = uniqueCleanStrings([
         ...sensitive.map(item => item.dataRequest),
         ...cleanStringArray(unit.dataRequests, 2, 300),
-      ], 2);
-      const labelText = labels.join(" و") || "العامل غير المقاس";
+      ], 3);
+      const originalTitle = cleanString(unit.title, 160);
+      const labelText = labels.join(" و") || originalTitle || "العامل غير المقاس";
       return {
         ...unit,
-        title: "فرضية تفسيرية تحتاج تحققًا",
-        diagnosticAnalysis: `ذُكر عامل غير مقاس (${labelText})، لكن درجات التحصيل الحالية لا تسمح بإثباته أو نسبة الفروق إليه.`,
-        decisionFinding: `يبقى ${labelText} فرضية تفسيرية فقط حتى تتوافر بيانات مباشرة تدعمها.`,
+        title: `فرضية تحتاج تحققًا: ${labelText}`,
+        diagnosticAnalysis: `طُرحت فرضية تتعلق بـ${labelText}، لكن درجات التحصيل الحالية لا تقيسها مباشرة ولا تسمح بإثبات أنها سبب للفروق.`,
+        decisionFinding: `يبقى ${labelText} فرضية تفسيرية فقط حتى تتوافر بيانات مباشرة مستقلة تدعمها.`,
         claimType: "hypothesis",
         confidence: "منخفضة",
         educationalImpact: "لا يبرر هذا الافتراض تدخلًا سببيًا أو حكمًا على الطلبة أو المعلمين قبل التحقق المباشر.",
-        recommendedAction: `جمع بيانات مباشرة للتحقق من ${labelText} وربطها بالتحصيل قبل اعتماد تفسير أو تدخل سببي.`,
+        recommendedAction: `جمع بيانات مباشرة للتحقق من ${labelText} وربطها بالتحصيل وصفيًا قبل اعتماد تفسير أو تدخل سببي.`,
         alternativeExplanations: ["قد ترتبط الفروق ببنية التقويم أو المهارات المقاسة أو عوامل أخرى غير متاحة في البيانات الحالية."],
-        limitations: uniqueCleanStrings(["الدرجات الكلية لا تقيس هذا العامل مباشرة ولا تثبت أنه سبب للفروق.", ...cleanStringArray(unit.limitations, 2, 300)], 2),
+        limitations: uniqueCleanStrings(["الدرجات الكلية لا تقيس هذا العامل مباشرة ولا تثبت أن هذه الفرضية سبب للفروق.", ...cleanStringArray(unit.limitations, 2, 300)], 3),
         dataRequests: requests.length ? requests : ["جمع دليل مباشر مستقل عن درجات التحصيل للتحقق من الفرضية."],
+        inferenceTaint: {
+          applied: true,
+          kind: "hypothesis",
+          claimType: "hypothesis",
+          confidence: "منخفضة",
+          constructs: labels.length ? labels : [labelText],
+          dataRequests: requests,
+        },
       };
     }
 
+    const natureRequests = uniqueCleanStrings(["بيانات موثقة عن بنية التقويم والمهارات والممارسات المرتبطة بكل مادة.", ...cleanStringArray(unit.dataRequests, 2, 300)], 3);
     return {
       ...unit,
       title: "تفاوت وصفي بين المواد",
-      diagnosticAnalysis: "تظهر المؤشرات فروقًا وصفية بين المواد. تصنيف المواد إلى «تطبيقية» أو «نظرية» وتفسير الفروق بهذا التصنيف ليس متغيرًا مقاسًا في البيانات الحالية.",
+      diagnosticAnalysis: "تظهر المؤشرات فروقًا وصفية بين المواد. تصنيف المواد إلى «عملية/تطبيقية/نظرية» وتفسير الفروق بهذا التصنيف ليس متغيرًا مقاسًا في البيانات الحالية.",
       decisionFinding: "تُستخدم الفروق لترتيب مواد الأولوية للمراجعة، ولا تُفسر سببيًا بطبيعة المادة دون دليل إضافي.",
       claimType: "inference",
       confidence: "متوسطة",
       educationalImpact: "يوجه ذلك الموارد نحو المواد ذات الأولوية دون بناء تفسير سببي غير مقاس.",
       recommendedAction: "تحليل المواد الأدنى على مستوى المهارات والمفردات ومراجعة أدوات القياس قبل تفسير سبب الفروق.",
       alternativeExplanations: ["قد ترتبط الفروق بعوامل في المحتوى أو التقويم أو خبرات التعلم، ولا يمكن ترجيح أحدها من الدرجات وحدها."],
-      limitations: uniqueCleanStrings(["طبيعة المادة «تطبيقية/نظرية» ليست متغيرًا مقاسًا في المصدر الحالي.", ...cleanStringArray(unit.limitations, 2, 300)], 2),
-      dataRequests: uniqueCleanStrings(["بيانات موثقة عن بنية التقويم والمهارات والممارسات المرتبطة بكل مادة.", ...cleanStringArray(unit.dataRequests, 2, 300)], 2),
+      limitations: uniqueCleanStrings(["طبيعة المادة «عملية/تطبيقية/نظرية» ليست متغيرًا مقاسًا في المصدر الحالي.", ...cleanStringArray(unit.limitations, 2, 300)], 3),
+      dataRequests: natureRequests,
+      inferenceTaint: {
+        applied: true,
+        kind: "subject_nature",
+        claimType: "inference",
+        confidence: "متوسطة",
+        constructs: ["تصنيف طبيعة المادة"],
+        dataRequests: natureRequests,
+      },
     };
   });
 
   const cautions = uniqueCleanStrings([
     ...cleanStringArray(decision.additionalCautions, 2, 260),
-    ...(guardedCount ? ["فُعّلت حراسة الاستدلال: الفروق في الدرجات لا تُحوّل إلى أسباب نفسية أو اجتماعية أو تدريسية دون دليل مباشر."] : []),
+    ...(guardedCount ? ["فُعّلت حراسة الاستدلال: الفروق في الدرجات لا تُحوّل إلى أسباب نفسية أو اجتماعية أو تدريسية أو إلى تفسير سببي بطبيعة المادة دون دليل مباشر."] : []),
   ], 3);
 
   return {
@@ -2181,11 +2246,17 @@ function expandPrimaryDecision(decision: JsonRecord, payload: JsonRecord): JsonR
     const severity = String(unit.severity || "medium");
     const refs = cleanRefs(unit.evidenceRefs, allowed, 6);
     const group = groups.length ? groups[Math.min(index, groups.length - 1)] : null;
+    const taint = normalizeInferenceTaint(unit.inferenceTaint);
+    const basisClaimType = ["fact", "inference", "hypothesis"].includes(String(taint?.claimType || unit.claimType)) ? String(taint?.claimType || unit.claimType) : "inference";
+    const basisConfidence = ["مرتفعة", "متوسطة", "منخفضة"].includes(String(taint?.confidence || unit.confidence)) ? String(taint?.confidence || unit.confidence) : "متوسطة";
+    const guardedConstructs = cleanStringArray(taint?.constructs, 4, 140);
+    const isHypothesis = basisClaimType === "hypothesis";
+
     let metricMode = "custom";
     let targetValue = 0;
     let targetSegmentId = "";
     let targetGroupIds: string[] = [];
-    if (group) {
+    if (group && !isHypothesis) {
       targetGroupIds = [group.id];
       targetSegmentId = group.id;
       if (group.id === "mastery") {
@@ -2201,36 +2272,75 @@ function expandPrimaryDecision(decision: JsonRecord, payload: JsonRecord): JsonR
         targetValue = 20;
       }
     }
+
     const title = cleanString(unit.title, 180) || `أولوية ${index + 1}`;
     const action = cleanString(unit.recommendedAction, 620) || `تنفيذ تدخل موجه لمعالجة ${title}.`;
-    const base: JsonRecord = {
-      priority: severity === "high" ? "عالية" : severity === "low" ? "منخفضة" : "متوسطة",
-      issue: cleanString(unit.decisionFinding || unit.title, 260) || title,
-      targetGroup: group ? group.label : scoreLike ? `الفئة المرتبطة بأولوية «${title}»` : `الفئة المرتبطة بدليل «${title}»`,
-      targetGroupIds,
-      action,
-      implementationSteps: [
-        `تثبيت خط الأساس المرتبط بأولوية «${title}» من المؤشرات الحالية.`,
+    let base: JsonRecord;
+
+    if (isHypothesis) {
+      const hypothesisLabel = guardedConstructs.join(" و") || title.replace(/^فرضية\s+تحتاج\s+تحققًا\s*[:：-]?\s*/i, "") || "الفرضية المطروحة";
+      const verifyAction = `جمع بيانات مباشرة مستقلة للتحقق من ${hypothesisLabel} قبل استخدامه في تفسير التحصيل أو توجيه تدخل سببي.`;
+      base = {
+        priority: "تحقق قبل التدخل",
+        issue: `فرضية تحتاج تحققًا: ${hypothesisLabel}`,
+        targetGroup: `الحالات المرتبطة بفرضية «${hypothesisLabel}» دون افتراض ثبوتها`,
+        targetGroupIds: [],
+        action: verifyAction,
+        implementationSteps: [
+          `اختيار أداة أو مصدر بيانات مباشر يقيس ${hypothesisLabel} بصورة مستقلة عن درجات التحصيل.`,
+          verifyAction,
+          "مراجعة العلاقة وصفيًا مع نتائج التحصيل وتقرير قبول الفرضية أو رفضها دون تحويل الارتباط إلى سببية.",
+        ],
+        responsibleRole: owner,
+        timeframe: "أسبوعان",
+        successIndicator: `توفر دليل مباشر مستقل يسمح بقبول فرضية «${hypothesisLabel}» أو رفضها دون الاستناد إلى الدرجات وحدها.`,
+        successMetric: { mode: "evidence_verification", targetValue: 1, targetSegmentId: "" },
+        monitoringMethod: "توثيق أداة القياس وجودة الدليل وقرار التحقق، مع الفصل بين الارتباط والوصف السببي.",
+        contingency: "إذا لم يتوفر دليل مباشر مناسب، تبقى الفرضية غير معتمدة ولا تستخدم لتوجيه تدخل سببي.",
+        resources: cleanStringArray(taint?.dataRequests, 2, 260).length ? cleanStringArray(taint?.dataRequests, 2, 260) : ["أداة قياس مباشرة مناسبة", "سجل تحقق"],
+        evidenceRefs: refs,
+      };
+    } else {
+      base = {
+        priority: severity === "high" ? "عالية" : severity === "low" ? "منخفضة" : "متوسطة",
+        issue: cleanString(unit.decisionFinding || unit.title, 260) || title,
+        targetGroup: group ? group.label : scoreLike ? `الفئة المرتبطة بأولوية «${title}»` : `الفئة المرتبطة بدليل «${title}»`,
+        targetGroupIds,
         action,
-        "مراجعة القياس المرحلي وتعديل شدة التدخل وفق النتيجة الموثقة.",
-      ],
-      responsibleRole: owner,
-      timeframe: severity === "high" ? "4 أسابيع" : "6 أسابيع",
-      successIndicator: `تحسن موثق في المؤشر المرتبط بأولوية «${title}» مقارنة بخط الأساس.`,
-      successMetric: { mode: metricMode, targetValue, targetSegmentId },
-      monitoringMethod: "مقارنة المؤشر نفسه بين خط الأساس والقياس المرحلي والقياس النهائي.",
-      contingency: "إذا لم يظهر تحسن في القياس المرحلي، تُراجع شدة التدخل وطريقة التنفيذ قبل القياس النهائي.",
-      resources: ["أدوات القياس المعتمدة", "سجلات المتابعة"],
-      evidenceRefs: refs,
+        implementationSteps: [
+          `تثبيت خط الأساس المرتبط بأولوية «${title}» من المؤشرات الحالية.`,
+          action,
+          "مراجعة القياس المرحلي وتعديل شدة التدخل وفق النتيجة الموثقة.",
+        ],
+        responsibleRole: owner,
+        timeframe: severity === "high" ? "4 أسابيع" : "6 أسابيع",
+        successIndicator: `تحسن موثق في المؤشر المرتبط بأولوية «${title}» مقارنة بخط الأساس.`,
+        successMetric: { mode: metricMode, targetValue, targetSegmentId },
+        monitoringMethod: "مقارنة المؤشر نفسه بين خط الأساس والقياس المرحلي والقياس النهائي.",
+        contingency: "إذا لم يظهر تحسن في القياس المرحلي، تُراجع شدة التدخل وطريقة التنفيذ قبل القياس النهائي.",
+        resources: ["أدوات القياس المعتمدة", "سجلات المتابعة"],
+        evidenceRefs: refs,
+      };
+    }
+
+    base = {
+      ...base,
+      basisClaimType,
+      basisConfidence,
+      inferenceGuardApplied: Boolean(taint?.applied),
+      guardedConstructs,
+      sourceAnalysisUnitTitle: title,
     };
     interventions.push(base);
   }
 
   const refs = decisionEvidenceRefs(decision, payload);
+  const basisClaimTypes = [...new Set(units.map(item => String(item.claimType || "inference")).filter(value => ["fact", "inference", "hypothesis"].includes(value)))];
+  const anyInferenceGuard = units.some(item => Boolean(normalizeInferenceTaint(item.inferenceTaint)?.applied));
   const monitoringPlan = [
-    { stage: "خط الأساس", timing: "الآن", measure: "تثبيت المؤشرات الحالية التي بُني عليها القرار قبل بدء التدخل.", owner, evidenceRefs: refs },
-    { stage: "متابعة مرحلية", timing: "بعد 3 أسابيع", measure: "إعادة قياس المؤشرات نفسها ومقارنة الحركة بالفئات أو القضايا المستهدفة.", owner, evidenceRefs: refs },
-    { stage: "قياس أثر نهائي", timing: "نهاية فترة التدخل", measure: "مقارنة النتيجة النهائية بخط الأساس واتخاذ قرار الاستمرار أو التعديل أو الإغلاق.", owner, evidenceRefs: refs },
+    { stage: "خط الأساس", timing: "الآن", measure: "تثبيت المؤشرات الحالية التي بُني عليها القرار قبل بدء التدخل، مع إبقاء الفرضيات غير المقاسة منفصلة عن المؤشرات المؤكدة.", owner, evidenceRefs: refs, basisClaimTypes, inferenceGuardApplied: anyInferenceGuard },
+    { stage: "متابعة مرحلية", timing: "بعد 3 أسابيع", measure: "إعادة قياس المؤشرات نفسها ومراجعة أدلة التحقق المستقلة قبل ترقية أي فرضية إلى تفسير معتمد.", owner, evidenceRefs: refs, basisClaimTypes, inferenceGuardApplied: anyInferenceGuard },
+    { stage: "قياس أثر نهائي", timing: "نهاية فترة التدخل", measure: "مقارنة النتيجة النهائية بخط الأساس وتوثيق ما بقي وصفًا وما أصبح مدعومًا بدليل مستقل قبل اتخاذ قرار الاستمرار أو التعديل أو الإغلاق.", owner, evidenceRefs: refs, basisClaimTypes, inferenceGuardApplied: anyInferenceGuard },
   ];
 
   return {

@@ -1,6 +1,6 @@
 {
   "app": "تقارير",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "phase": "Decision Core AI Architecture",
   "releaseName": "Educational Inference Guardrails",
   "buildType": "static-github-pages-plus-supabase-edge-function",
@@ -214,7 +214,7 @@
     "legacyAnalyzeThinkingBudget": 1024,
     "classificationThinkingBudget": 0,
     "reconciliationContractVersion": "6.6.0",
-    "edgeFunctionVersion": "0.16.2",
+    "edgeFunctionVersion": "0.16.3",
     "fastEnhancementModel": "gemini-3.5-flash-lite",
     "fastEnhancementThinkingBudget": 192,
     "fastEnhancementMaxOutputTokens": 2600,
