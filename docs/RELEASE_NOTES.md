@@ -1,3 +1,10 @@
+## v1.2.34 — Retryable Edge Recovery & Cache Coherence
+
+- يعيد العميل تلقائيًا طلب `analyze_primary` مرة واحدة عندما ترجع Edge استجابة HTTP قابلة للإعادة مثل `GEMINI_TRANSIENT` أو `GEMINI_RATE_LIMIT` بدل إجبار المستخدم على الضغط يدويًا.
+- تبقى أخطاء النقل لها إعادة المحاولة الحالية، ولا تتغير العقود التحليلية أو حسابات الأدلة.
+- توحيد نسخة التطبيق ووسوم cache-busting العامة على `1.2.34` لضمان وصول JavaScript الجديد إلى المتصفح بعد النشر.
+- Regression جديد يثبت مسار Health → 503 retryable → إعادة تلقائية → نجاح، وحارس يمنع اختلاف نسخة الأصول العامة عن `package.json`.
+
 ## v1.2.33 — Real PDF Analyzed Grade Metadata Recovery
 
 - إصلاح End-to-End لمشكلة عرض نطاق المدرسة `8-10` بدل الصف المحلل `الثامن` في التقارير المستخرجة من PDF الوزاري.

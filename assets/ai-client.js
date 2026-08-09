@@ -3,7 +3,7 @@
 
   const STORAGE_KEY = "taqareer.ai.config.v1";
   const ACCESS_KEY = "taqareer.ai.access-code.v1";
-  const CLIENT_VERSION = "1.2.25";
+  const CLIENT_VERSION = "1.2.34";
   const HEALTH_MAX_AGE_MS = 120000;
   const defaults = window.TAQAREER_CONFIG || {};
   let healthState = {
@@ -235,6 +235,16 @@
           const transportError = networkError(config, error);
           setHealth({ status: "failed", endpoint: config.endpoint, errorCode: transportError.code, geminiReady: false });
           throw transportError;
+        }
+        // Edge يميز أخطاء السعة/الازدحام المؤقتة صراحة بـ retryable=true.
+        // كان العميل يحفظ هذه العلامة ثم يرمي الخطأ مباشرة، فيجبر المستخدم على
+        // الضغط مرة أخرى يدويًا. نستهلك هنا المحاولة الثانية المسموح بها فقط
+        // للطلبات التي طلبت networkRetry، مع مهلة قصيرة حتى لا نعيد الطلب داخل
+        // نفس موجة الازدحام فورًا.
+        if (attempt < maxAttempts && options.networkRetry === true && Boolean(error?.retryable)) {
+          setHealth({ status: "checking", endpoint: config.endpoint, errorCode: String(error?.code || ""), geminiReady: false });
+          await delay(900 + Math.round(Math.random() * 500));
+          continue;
         }
         throw error;
       } finally {
