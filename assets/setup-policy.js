@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.3.1";
+  const VERSION = "1.3.2";
 
   const FAMILY_LABELS = Object.freeze({
     adaptive_profile_analysis: "بناء تحليل تكيفي وفق البنية الدلالية",

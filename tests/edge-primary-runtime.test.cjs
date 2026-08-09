@@ -351,3 +351,115 @@ test('decision-core architecture is bounded by construction', () => {
   assert.ok(DECISION_TIMEOUT + FALLBACK_TIMEOUT <= DECISION_DEADLINE);
   assert.doesNotMatch(edgeSource.slice(edgeSource.indexOf('async function analyzePrimary('), edgeSource.indexOf('function errorInfo(')), /Promise\.allSettled|requestPrimarySegment|repairPrimarySegment|rescueTransientPrimarySegment/);
 });
+
+test('End-to-End: score inference guard downgrades unsupported causal and psychological claims before the report contract', async () => {
+  const scorePayload = payload();
+  scorePayload.recognizedType = { id: 'multi_subject_results', nameAr: 'نتائج طلاب فردية متعددة المواد' };
+  scorePayload.availableEvidenceRefs = [
+    'metric:n', 'metric:overallMean', 'metric:subjectGap', 'metric:weakestSubjectMean', 'metric:strongestSubjectMean', 'metric:sd',
+  ];
+  scorePayload.evidenceAnalysis = {
+    metrics: [
+      { id: 'n', value: 319 },
+      { id: 'overallMean', value: 82.7 },
+      { id: 'subjectGap', value: 18.4 },
+      { id: 'weakestSubjectMean', value: 67.7 },
+      { id: 'strongestSubjectMean', value: 96.1 },
+      { id: 'sd', value: 10.1 },
+    ],
+    charts: [],
+    scopeContext: { analysisMode: 'all', selectedSubject: '', rankingPolicy: 'school' },
+    evidenceCatalog: [],
+  };
+  scorePayload.data = { mode: 'table', headers: [], rowCount: 319, sentRowCount: 0, sampleRows: [] };
+
+  const unsafeDecision = {
+    executive: {
+      title: 'تفوق المواد التطبيقية يعكس ثقة أعلى',
+      summary: 'ارتفاع المواد التطبيقية مقارنة بالمواد النظرية يدل على دافعية وثقة ذاتية أعلى لدى الطلبة.',
+      overallJudgement: 'تعزيز الدافعية والثقة هو سبب التحسن.',
+      confidence: 'مرتفعة',
+      evidenceRefs: ['metric:overallMean', 'metric:subjectGap'],
+    },
+    findings: [
+      {
+        title: 'تفوق المواد التطبيقية على النظرية',
+        diagnosticAnalysis: 'ارتفاع المواد التطبيقية يثبت أن طبيعة المادة التطبيقية هي سبب التفوق.',
+        decisionFinding: 'الفرق سببه طبيعة المواد التطبيقية والنظرية.',
+        claimType: 'fact', evidenceRefs: ['metric:subjectGap'], confidence: 'مرتفعة', severity: 'medium',
+        educationalImpact: 'ينبغي نقل خصائص المواد التطبيقية إلى النظرية.',
+        recommendedAction: 'مراجعة المواد الأقل أداءً.', limitation: '', dataRequest: '',
+      },
+      {
+        title: 'الثقة والدافعية',
+        diagnosticAnalysis: 'النتائج المرتفعة تدل على ثقة ذاتية ودافعية قوية لدى الطلبة.',
+        decisionFinding: 'الثقة الذاتية المرتفعة سبب مباشر للتفوق.',
+        claimType: 'fact', evidenceRefs: ['metric:overallMean'], confidence: 'مرتفعة', severity: 'low',
+        educationalImpact: 'الثقة المرتفعة تحسن التعلم في المواد الأعلى.',
+        recommendedAction: 'تعزيز الثقة والدافعية.', limitation: '', dataRequest: '',
+      },
+      {
+        title: 'فجوة المتوسطات',
+        diagnosticAnalysis: 'تظهر المؤشرات فجوة وصفية بين أعلى متوسط وأدنى متوسط عبر المواد.',
+        decisionFinding: 'تحدد الفجوة مواد أولوية للمراجعة دون تفسير سببها.',
+        claimType: 'fact', evidenceRefs: ['metric:subjectGap', 'metric:weakestSubjectMean'], confidence: 'مرتفعة', severity: 'high',
+        educationalImpact: 'يساعد ترتيب المواد على توجيه موارد التحسين.',
+        recommendedAction: 'تحليل المادة الأدنى على مستوى المهارات والمفردات.', limitation: 'الدرجات لا تحدد المهارة.', dataRequest: 'تحليل مفردات المادة الأدنى.',
+      },
+    ],
+    additionalCautions: [],
+    missingDataRequests: [],
+  };
+
+  const runtime = await createRuntime([geminiRaw(unsafeDecision)]);
+  const { status, body } = await invoke(runtime, scorePayload);
+  assert.equal(status, 200);
+  assert.equal(runtime.getCalls(), 1);
+  assert.equal(body.serverTiming.inferenceGuardApplied, true);
+  assert.equal(body.serverTiming.guardedInferenceUnits, 2);
+
+  assert.match(body.result.executive.summary, /فروقًا وصفية/);
+  assert.doesNotMatch(body.result.executive.summary, /دافعية|ثقة ذاتية|سبب التحسن/);
+
+  const nature = body.result.findings.find(item => item.title === 'تفاوت وصفي بين المواد');
+  assert.ok(nature, 'subject-nature claim must be rewritten as descriptive cross-subject variance');
+  assert.equal(nature.claimType, 'inference');
+  assert.equal(nature.confidence, 'متوسطة');
+  assert.match(nature.statement, /لا تُفسر سببيًا بطبيعة المادة/);
+  assert.ok(nature.limitations.some(value => /ليست متغيرًا مقاسًا/.test(value)));
+
+  const hypothesis = body.result.findings.find(item => item.claimType === 'hypothesis');
+  assert.ok(hypothesis, 'latent psychological claim must be downgraded to a hypothesis');
+  assert.equal(hypothesis.confidence, 'منخفضة');
+  assert.match(hypothesis.statement, /فرضية تفسيرية فقط/);
+  assert.ok(hypothesis.limitations.some(value => /لا تقيس هذا العامل مباشرة/.test(value)));
+
+  const safeFact = body.result.findings.find(item => item.title === 'فجوة المتوسطات');
+  assert.ok(safeFact, 'supported descriptive finding must survive the guard');
+  assert.equal(safeFact.claimType, 'fact');
+  assert.equal(safeFact.confidence, 'مرتفعة');
+
+  const reportSandbox = { window: {}, console, Intl, Date, Math, Set, Map, structuredClone, Array, Object, String, Number, RegExp, JSON };
+  vm.createContext(reportSandbox);
+  for (const file of ['display-terms.js', 'analysis-reconciliation.js', 'report-system.js']) {
+    vm.runInContext(fs.readFileSync(path.join(root, 'assets', file), 'utf8'), reportSandbox, { filename: file });
+  }
+  const local = {
+    typeId: 'multi_subject_results', kind: 'multi_subject_results',
+    metrics: scorePayload.evidenceAnalysis.metrics.map(item => ({ ...item, label: item.id, format: 'number', evidenceRef: `metric:${item.id}` })),
+    charts: [], evidenceMap: Object.fromEntries(scorePayload.availableEvidenceRefs.map(ref => [ref, ref])),
+    findings: [], qualityTools: [], improvementPlan: [], monitoringPlan: [], diagnosticSections: [], limitations: [],
+    scopeContext: { analysisMode: 'all', selectedSubject: '' },
+  };
+  const reconciled = reportSandbox.window.TaqareerReconciliation.composePrimary(local, body.result, { availableEvidenceRefs: scorePayload.availableEvidenceRefs });
+  const html = reportSandbox.window.TaqareerReports.buildReportHtml({
+    analysis: reconciled, type: { id: 'multi_subject_results', name: 'نتائج طلاب فردية متعددة المواد' },
+    sourceName: 'ministry-results.pdf', sourceMeta: { metadata: { school: 'مدرسة اختبار', analyzedGrade: 'الثامن' } },
+    quality: { completeness: 100 }, recognitionStatus: 'معتمد',
+  }, { autoPrint: false });
+  assert.match(html, /تفاوت وصفي بين المواد/);
+  assert.match(html, /فرضية تحتاج تحققًا/);
+  assert.match(html, /مؤكد من البيانات/);
+  assert.doesNotMatch(html, /الثقة الذاتية المرتفعة سبب مباشر للتفوق/);
+  assert.doesNotMatch(html, /طبيعة المادة التطبيقية هي سبب التفوق/);
+});

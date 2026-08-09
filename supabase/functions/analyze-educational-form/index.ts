@@ -1,4 +1,4 @@
-const EDGE_VERSION = "0.16.1";
+const EDGE_VERSION = "0.16.2";
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 const DEFAULT_MODEL = "gemini-3.6-flash";
 const DEFAULT_FAST_MODEL = "gemini-3.5-flash-lite";
@@ -21,7 +21,7 @@ const PRIMARY_ACTION_ATTEMPT_TIMEOUT_MS = 13_000;
 const PRIMARY_REPAIR_ATTEMPT_TIMEOUT_MS = 11_000;
 const PRIMARY_TRANSIENT_RESCUE_ATTEMPT_TIMEOUT_MS = 8_000;
 const PRIMARY_MIN_REMAINING_MS = 2_500;
-// v0.16.1: مسار القرار المقاوم لفشل المزود. طلب AI أساسي واحد + fallback واحد فقط،
+// v0.16.2: حراس استدلال تربوي على نواة القرار؛ يبقى طلب AI أساسي واحد + fallback واحد فقط،
 // دون fan-out متعدد المقاطع أو سلاسل repair/rescue.
 const DEFAULT_DECISION_MODEL = "gemini-3.5-flash-lite";
 const DEFAULT_DECISION_FALLBACK_MODEL = "gemini-3.6-flash";
@@ -297,7 +297,7 @@ const PRIMARY_REASONING_SCHEMA: JsonRecord = {
   required: ["contractVersion", "analysisProfile", "executive", "analysisUnits", "methodChecks", "additionalCautions", "missingDataRequests", "suggestedNewType"],
 };
 
-// v0.16.1: عقد قرار مصغر. Gemini لا يعيد ملف التحليل الكامل؛ يكتب فقط
+// v0.16.2: عقد قرار مصغر. Gemini لا يعيد ملف التحليل الكامل؛ يكتب فقط
 // الحكم التنفيذي ووحدات القرار، ثم يبني الخادم بقية العقد حتميًا.
 const PRIMARY_DECISION_SCHEMA: JsonRecord = {
   type: "object",
@@ -1527,6 +1527,7 @@ function validatePrimaryAnalysis(result: unknown, payload: JsonRecord, mode: "pr
   const scopeGuardedInterventions = interventions.filter(item => item.scopeGuard && typeof item.scopeGuard === "object" && Boolean((item.scopeGuard as JsonRecord).applied)).length;
   const adjustedScopeTargets = interventions.filter(item => item.scopeGuard && typeof item.scopeGuard === "object" && Boolean((item.scopeGuard as JsonRecord).adjusted)).length;
   const profileInput = input.analysisProfile && typeof input.analysisProfile === "object" ? input.analysisProfile as JsonRecord : {};
+  const inferenceGuard = input.inferenceGuard && typeof input.inferenceGuard === "object" ? input.inferenceGuard as JsonRecord : {};
   const suggested = input.suggestedNewType && typeof input.suggestedNewType === "object" ? input.suggestedNewType as JsonRecord : {};
   return {
     contractVersion: "6.6.0",
@@ -1575,6 +1576,8 @@ function validatePrimaryAnalysis(result: unknown, payload: JsonRecord, mode: "pr
       nonDuplicativeDecisionContract: true,
       serverOwnedInterventionMath: Boolean(scoreContext),
       validationMode: mode,
+      inferenceGuardApplied: Boolean(inferenceGuard.applied),
+      guardedInferenceUnits: Math.max(0, Math.trunc(toFiniteNumber(inferenceGuard.guardedUnits) ?? 0)),
     },
   };
 }
@@ -1842,12 +1845,15 @@ function primaryDecisionInstructions(): string {
 1) executive: حكم تنفيذي موجز مرتبط بالمراجع المتاحة.
 2) findings: وحدتان أو ثلاث فقط، مختلفة فعلًا. لكل وحدة: تحليل تشخيصي، استنتاج قراري مختلف عنه، دليل حرفي من evidenceRefs، أثر تربوي، وإجراء عملي.
 3) لا تسمِّ مهارة أو سببًا غير مثبت من درجات كلية، ولا تحول الارتباط إلى سببية.
-4) لا تستخدم أسماء أشخاص أو بيانات شخصية ولا تعِد ترتيب الطلبة.
-5) إذا كان الملف متعدد المواد فالتزم analysisMode وselectedSubject وسياسة rankingPolicy الموجودة في scopeContext.
-6) اجعل diagnosticAnalysis بين 100 و190 حرفًا، وdecisionFinding بين 45 و100 حرف، وeducationalImpact وrecommendedAction بين 35 و90 حرفًا، والملخص التنفيذي بين 100 و220 حرفًا.
-7) limitation وdataRequest جملة قصيرة فقط. additionalCautions وmissingDataRequests بحد أقصى عنصرين.
-8) استخدم evidenceRefs الموجودة حرفيًا فقط.
-9) أعد JSON خامًا فقط دون مقدمات.
+4) في ملفات الدرجات: لا تستنتج الثقة الذاتية أو الدافعية أو المشاركة أو القلق أو الأسباب النفسية/الاجتماعية أو جودة التدريس أو صعوبة المنهج/الاختبار من الدرجات وحدها. إن ذكرت عاملًا من هذه العوامل فاجعله claimType=hypothesis وثقة منخفضة مع limitation وdataRequest صريحين.
+5) في الملفات متعددة المواد: لا تفسر الفروق بسبب كون المادة «تطبيقية» أو «نظرية» ما لم تكن هذه السمة موجودة صراحة في المصدر. صف الفروق بين المواد فقط ورتب الأولويات دون تفسير سببي.
+6) لا تضع فرضيات نفسية أو سببية غير مقاسة داخل executive؛ الملخص التنفيذي يقتصر على المؤشرات المؤكدة والاستنتاجات القرارّية المدعومة.
+7) لا تستخدم أسماء أشخاص أو بيانات شخصية ولا تعِد ترتيب الطلبة.
+8) إذا كان الملف متعدد المواد فالتزم analysisMode وselectedSubject وسياسة rankingPolicy الموجودة في scopeContext.
+9) اجعل diagnosticAnalysis بين 100 و190 حرفًا، وdecisionFinding بين 45 و100 حرف، وeducationalImpact وrecommendedAction بين 35 و90 حرفًا، والملخص التنفيذي بين 100 و220 حرفًا.
+10) limitation وdataRequest جملة قصيرة فقط. additionalCautions وmissingDataRequests بحد أقصى عنصرين.
+11) استخدم evidenceRefs الموجودة حرفيًا فقط.
+12) أعد JSON خامًا فقط دون مقدمات.
 
 الخادم سيبني analysisProfile والتدخلات والمتابعة والحراس الحسابية بعد استجابتك. لا تكتبها أنت.`;
 }
@@ -1912,10 +1918,128 @@ function deterministicPrimaryProfile(payload: JsonRecord): JsonRecord {
   };
 }
 
+const SCORE_INFERENCE_SENSITIVE_RULES = [
+  { id: "self_confidence", pattern: /الثق[ةه]\s*(?:الذاتي[ةه])?/i, label: "الثقة الذاتية", dataRequest: "مقياس مباشر للثقة الذاتية أو بيانات نوعية موثقة" },
+  { id: "motivation", pattern: /الدافعي[ةه]|الحافز\s+للتعلم/i, label: "الدافعية", dataRequest: "أداة مباشرة لقياس الدافعية أو اتجاهات التعلم" },
+  { id: "participation", pattern: /المشارك[ةه]\s*(?:الصفي[ةه]|الإيجابي[ةه])?/i, label: "المشاركة", dataRequest: "سجل مشاركة أو ملاحظة صفية مباشرة" },
+  { id: "anxiety", pattern: /القلق|النفسي[ةه]?|الاجتماعي[ةه]?|الأسري[ةه]?/i, label: "عامل نفسي أو اجتماعي", dataRequest: "بيانات مباشرة ومناسبة عن العامل النفسي أو الاجتماعي محل الفرضية" },
+  { id: "instruction", pattern: /جود[ةه]\s+التدريس|أسلوب\s+التدريس|استراتيجي(?:ة|ات)\s+التدريس/i, label: "الممارسات التدريسية", dataRequest: "ملاحظة صفية أو بيانات مباشرة عن الممارسات التدريسية" },
+  { id: "difficulty", pattern: /صعوب[ةه]\s+(?:المنهج|الاختبار|الأسئل[ةه])/i, label: "صعوبة المحتوى أو أداة القياس", dataRequest: "تحليل مفردات وأداة القياس أو بيانات صعوبة مباشرة" },
+];
+
+function isScoreLikeDecisionPayload(payload: JsonRecord): boolean {
+  const recognized = payload.recognizedType && typeof payload.recognizedType === "object" ? payload.recognizedType as JsonRecord : {};
+  return ["student_results", "single_subject", "assessment_component", "level_distribution", "multi_subject_results", "cross_subject"].includes(String(recognized.id || ""));
+}
+
+function subjectNatureClassificationMentioned(text: string): boolean {
+  const normalized = normalizeForComparison(text);
+  const hasApplied = /تطبيقي/.test(normalized);
+  const hasTheoretical = /نظري/.test(normalized);
+  return (hasApplied && hasTheoretical) || /المواد?\s+(?:التطبيقي|النظري)/.test(normalized);
+}
+
+function scoreSensitiveConstructs(text: string): { label: string; dataRequest: string }[] {
+  return SCORE_INFERENCE_SENSITIVE_RULES
+    .filter(rule => rule.pattern.test(String(text || "")))
+    .map(rule => ({ label: rule.label, dataRequest: rule.dataRequest }));
+}
+
+function uniqueCleanStrings(values: string[], limit = 3): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const value of values) {
+    const clean = cleanString(value, 300);
+    const key = normalizeForComparison(clean);
+    if (!clean || !key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(clean);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+function safeScoreExecutiveText(value: unknown): string {
+  const text = cleanString(value, 760);
+  if (!text) return text;
+  const sensitive = scoreSensitiveConstructs(text);
+  const nature = subjectNatureClassificationMentioned(text);
+  if (!sensitive.length && !nature) return text;
+  return "تظهر البيانات فروقًا وصفية في النتائج تحدد مواد أو فئات أولوية للمراجعة، ولا تسمح الدرجات الحالية بإثبات أسباب نفسية أو اجتماعية أو تدريسية أو تفسير الفروق بطبيعة المادة دون بيانات إضافية.";
+}
+
+function applyEducationalInferenceGuardrails(decision: JsonRecord, payload: JsonRecord): JsonRecord {
+  if (!isScoreLikeDecisionPayload(payload)) return decision;
+  const executive = decision.executive && typeof decision.executive === "object" ? decision.executive as JsonRecord : {};
+  const units = Array.isArray(decision.analysisUnits) ? decision.analysisUnits as JsonRecord[] : [];
+  let guardedCount = 0;
+  const guardedUnits = units.map(unit => {
+    const narrative = [unit.title, unit.diagnosticAnalysis, unit.decisionFinding, unit.educationalImpact].map(String).join(" ");
+    const sensitive = scoreSensitiveConstructs(narrative);
+    const nature = subjectNatureClassificationMentioned(narrative);
+    if (!sensitive.length && !nature) return unit;
+    guardedCount += 1;
+
+    if (sensitive.length) {
+      const labels = uniqueCleanStrings(sensitive.map(item => item.label), 3);
+      const requests = uniqueCleanStrings([
+        ...sensitive.map(item => item.dataRequest),
+        ...cleanStringArray(unit.dataRequests, 2, 300),
+      ], 2);
+      const labelText = labels.join(" و") || "العامل غير المقاس";
+      return {
+        ...unit,
+        title: "فرضية تفسيرية تحتاج تحققًا",
+        diagnosticAnalysis: `ذُكر عامل غير مقاس (${labelText})، لكن درجات التحصيل الحالية لا تسمح بإثباته أو نسبة الفروق إليه.`,
+        decisionFinding: `يبقى ${labelText} فرضية تفسيرية فقط حتى تتوافر بيانات مباشرة تدعمها.`,
+        claimType: "hypothesis",
+        confidence: "منخفضة",
+        educationalImpact: "لا يبرر هذا الافتراض تدخلًا سببيًا أو حكمًا على الطلبة أو المعلمين قبل التحقق المباشر.",
+        recommendedAction: `جمع بيانات مباشرة للتحقق من ${labelText} وربطها بالتحصيل قبل اعتماد تفسير أو تدخل سببي.`,
+        alternativeExplanations: ["قد ترتبط الفروق ببنية التقويم أو المهارات المقاسة أو عوامل أخرى غير متاحة في البيانات الحالية."],
+        limitations: uniqueCleanStrings(["الدرجات الكلية لا تقيس هذا العامل مباشرة ولا تثبت أنه سبب للفروق.", ...cleanStringArray(unit.limitations, 2, 300)], 2),
+        dataRequests: requests.length ? requests : ["جمع دليل مباشر مستقل عن درجات التحصيل للتحقق من الفرضية."],
+      };
+    }
+
+    return {
+      ...unit,
+      title: "تفاوت وصفي بين المواد",
+      diagnosticAnalysis: "تظهر المؤشرات فروقًا وصفية بين المواد. تصنيف المواد إلى «تطبيقية» أو «نظرية» وتفسير الفروق بهذا التصنيف ليس متغيرًا مقاسًا في البيانات الحالية.",
+      decisionFinding: "تُستخدم الفروق لترتيب مواد الأولوية للمراجعة، ولا تُفسر سببيًا بطبيعة المادة دون دليل إضافي.",
+      claimType: "inference",
+      confidence: "متوسطة",
+      educationalImpact: "يوجه ذلك الموارد نحو المواد ذات الأولوية دون بناء تفسير سببي غير مقاس.",
+      recommendedAction: "تحليل المواد الأدنى على مستوى المهارات والمفردات ومراجعة أدوات القياس قبل تفسير سبب الفروق.",
+      alternativeExplanations: ["قد ترتبط الفروق بعوامل في المحتوى أو التقويم أو خبرات التعلم، ولا يمكن ترجيح أحدها من الدرجات وحدها."],
+      limitations: uniqueCleanStrings(["طبيعة المادة «تطبيقية/نظرية» ليست متغيرًا مقاسًا في المصدر الحالي.", ...cleanStringArray(unit.limitations, 2, 300)], 2),
+      dataRequests: uniqueCleanStrings(["بيانات موثقة عن بنية التقويم والمهارات والممارسات المرتبطة بكل مادة.", ...cleanStringArray(unit.dataRequests, 2, 300)], 2),
+    };
+  });
+
+  const cautions = uniqueCleanStrings([
+    ...cleanStringArray(decision.additionalCautions, 2, 260),
+    ...(guardedCount ? ["فُعّلت حراسة الاستدلال: الفروق في الدرجات لا تُحوّل إلى أسباب نفسية أو اجتماعية أو تدريسية دون دليل مباشر."] : []),
+  ], 3);
+
+  return {
+    ...decision,
+    executive: {
+      ...executive,
+      title: safeScoreExecutiveText(executive.title),
+      summary: safeScoreExecutiveText(executive.summary),
+      overallJudgement: safeScoreExecutiveText(executive.overallJudgement),
+    },
+    analysisUnits: guardedUnits,
+    additionalCautions: cautions,
+    inferenceGuard: { applied: guardedCount > 0, guardedUnits: guardedCount, scoreLike: true },
+  };
+}
+
 function normalizePrimaryDecisionCore(core: JsonRecord, payload: JsonRecord): JsonRecord {
   const executive = core.executive && typeof core.executive === "object" ? core.executive as JsonRecord : {};
   const findings = (Array.isArray(core.findings) ? core.findings as JsonRecord[] : []).slice(0, 3);
-  return {
+  const normalized: JsonRecord = {
     contractVersion: "6.6.0",
     analysisProfile: deterministicPrimaryProfile(payload),
     executive: {
@@ -1945,6 +2069,7 @@ function normalizePrimaryDecisionCore(core: JsonRecord, payload: JsonRecord): Js
     missingDataRequests: cleanStringArray(core.missingDataRequests, 2, 260),
     suggestedNewType: { needed: false, nameAr: "", purpose: "" },
   };
+  return applyEducationalInferenceGuardrails(normalized, payload);
 }
 
 function evidenceMetricMap(payload: JsonRecord): Map<string, JsonRecord> {
@@ -2195,6 +2320,8 @@ async function analyzePrimary(payload: JsonRecord): Promise<JsonRecord> {
           adjustedNumericTargets: validation.adjustedNumericTargets || 0,
           scopeGuardedInterventions: validation.scopeGuardedInterventions || 0,
           adjustedScopeTargets: validation.adjustedScopeTargets || 0,
+          inferenceGuardApplied: Boolean(validation.inferenceGuardApplied),
+          guardedInferenceUnits: validation.guardedInferenceUnits || 0,
         },
       };
     } catch (error) {

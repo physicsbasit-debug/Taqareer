@@ -132,3 +132,34 @@ test('official report completes with a clearly labeled local evidence fallback w
   assert.doesNotMatch(html, /تحليل غير مكتمل/);
   assert.match(html, /قراءة محلية موثوقة للنتائج/);
 });
+
+test('official report visibly distinguishes facts, supported inferences, and hypotheses requiring verification', () => {
+  const analysis = {
+    metrics: [{ id: 'm1', label: 'مؤشر', value: 82.7, format: 'number', evidenceRef: 'metric:m1' }],
+    charts: [], qualityTools: [], improvementPlan: [], monitoringPlan: [], limitations: [],
+    diagnosticSections: [
+      { id: 'd1', title: 'مؤشر مباشر', analysis: 'المتوسط محسوب من البيانات.', claimType: 'fact', evidenceRefs: ['metric:m1'], confidence: 'مرتفعة', implications: [], alternativeExplanations: [], limitations: [], dataRequests: [] },
+      { id: 'd2', title: 'قراءة محدودة', analysis: 'قد يحتاج التفاوت إلى تمايز في الدعم.', claimType: 'inference', evidenceRefs: ['metric:m1'], confidence: 'متوسطة', implications: [], alternativeExplanations: [], limitations: [], dataRequests: [] },
+      { id: 'd3', title: 'عامل غير مقاس', analysis: 'فرضية تحتاج بيانات مباشرة.', claimType: 'hypothesis', evidenceRefs: ['metric:m1'], confidence: 'منخفضة', implications: [], alternativeExplanations: [], limitations: ['لا يقاس العامل مباشرة.'], dataRequests: ['بيانات مباشرة'] },
+    ],
+    findings: [
+      { id: 'f1', title: 'مؤكد', statement: 'المؤشر مرتفع.', claimType: 'fact', evidenceRefs: ['metric:m1'], confidence: 'مرتفعة', severity: 'low', educationalImpact: 'يوصف المستوى.', recommendedAction: 'المتابعة.', limitations: [] },
+      { id: 'f2', title: 'استنتاج', statement: 'قد يلزم تمايز.', claimType: 'inference', evidenceRefs: ['metric:m1'], confidence: 'متوسطة', severity: 'medium', educationalImpact: 'يوجه الدعم.', recommendedAction: 'تقسيم الدعم.', limitations: [] },
+      { id: 'f3', title: 'فرضية', statement: 'العامل يحتاج تحققًا.', claimType: 'hypothesis', evidenceRefs: ['metric:m1'], confidence: 'منخفضة', severity: 'medium', educationalImpact: 'لا يعتمد سببيًا.', recommendedAction: 'جمع دليل مباشر.', limitations: ['غير مقاس'] },
+    ],
+    executiveTitle: 'اختبار طبقات اليقين', executiveSummary: 'عرض مستويات الاستدلال بوضوح.',
+    analysisProfile: { method: 'اختبار', dataSufficiency: 'كافية وصفيًا', dimensions: [], decisionUses: [] },
+    _reconciliation: { aiPrimary: true, aiApplied: true },
+  };
+  const context = {
+    analysis,
+    type: { id: 'single_subject', name: 'نتائج مادة دراسية' },
+    sourceName: 'results.pdf',
+    sourceMeta: { metadata: { school: 'مدرسة اختبار', analyzedGrade: 'الثامن', subject: 'العلوم' } },
+    quality: { completeness: 100 }, recognitionStatus: 'معتمد',
+  };
+  const html = sandbox.window.TaqareerReports.buildReportHtml(context, { autoPrint: false });
+  assert.match(html, /مؤكد من البيانات/);
+  assert.match(html, /استنتاج مدعوم/);
+  assert.match(html, /فرضية تحتاج تحققًا/);
+});
