@@ -56,12 +56,13 @@ test('decision prompt owns diagnosis and recommendations while server owns inter
   const start = edge.indexOf('function primaryDecisionInstructions');
   const end = edge.indexOf('function compactPrimaryDecisionPayload', start);
   const prompt = edge.slice(start, end);
-  assert.match(prompt, /نواة القرار الوحيدة/);
+  assert.match(prompt, /نواة قرار تربوي قصيرة/);
   assert.match(prompt, /recommendedAction/);
-  assert.match(prompt, /الخادم يبني التدخلات والمتابعة/);
   assert.match(prompt, /لا تعِد الحسابات/);
-  assert.match(prompt, /لا يوجد مقطع action ولا repair ولا segment rescue/);
-  assert.match(edge, /const PRIMARY_DECISION_SCHEMA: JsonRecord = PRIMARY_REASONING_SCHEMA/);
+  assert.match(prompt, /الخادم سيبني analysisProfile والتدخلات والمتابعة/);
+  assert.match(edge, /const PRIMARY_DECISION_SCHEMA: JsonRecord = \{/);
+  assert.match(edge, /findings: \{[\s\S]*?minItems: 2,[\s\S]*?maxItems: 3,/);
+  assert.doesNotMatch(edge.slice(edge.indexOf("const PRIMARY_DECISION_SCHEMA"), edge.indexOf("const PRIMARY_ACTION_SCHEMA")), /analysisProfile:|interventions:|monitoringPlan:/);
   assert.match(edge, /function expandPrimaryDecision/);
   assert.match(edge, /const monitoringPlan = \[/);
   assert.match(edge, /applyScoreInterventionGuard/);
@@ -70,7 +71,7 @@ test('decision prompt owns diagnosis and recommendations while server owns inter
 
 test('schema and validators keep evidence depth without requiring an impossible second score group', () => {
   const edge = read('supabase/functions/analyze-educational-form/index.ts');
-  assert.match(edge, /analysisUnits: \{[\s\S]*?minItems: 2,[\s\S]*?maxItems: 3,/);
+  assert.match(edge, /findings: \{[\s\S]*?minItems: 2,[\s\S]*?maxItems: 3,/);
   assert.match(edge, /mode === "primary" && richEvidence \? 3 : 2/);
   assert.match(edge, /const requiredDistinctScoreGroups = scoreContext \? Math\.min\(2, Math\.max\(1, availableScoreGroups\)\) : 2/);
   assert.match(edge, /numericGuardedInterventions/);
@@ -82,9 +83,12 @@ test('schema and validators keep evidence depth without requiring an impossible 
 test('model configuration remains future-family compatible and rate limits stop fan-out', () => {
   const edge = read('supabase/functions/analyze-educational-form/index.ts');
   const client = read('assets/ai-client.js');
-  assert.match(edge, /configuredModelChain\("GEMINI_ANALYSIS_MODEL", "GEMINI_REASONING_FALLBACK_MODELS"/);
-  assert.match(edge, /configuredModelChain\("GEMINI_FAST_MODEL", "GEMINI_FAST_FALLBACK_MODELS"/);
-  assert.match(edge, /if \(kind === "rate_limit"\) throw/);
+  assert.match(edge, /GEMINI_DECISION_MODEL/);
+  assert.match(edge, /GEMINI_DECISION_FALLBACK_MODELS/);
+  assert.match(edge, /DEFAULT_DECISION_MODEL = "gemini-3\.5-flash-lite"/);
+  assert.match(edge, /DEFAULT_DECISION_FALLBACK_MODEL = "gemini-3\.6-flash"/);
+  assert.match(edge, /if \(kind === "rate_limit"\) break/);
+  assert.match(edge, /localEvidenceFallbackDecision/);
   assert.doesNotMatch(edge, /\^gemini-3/);
   assert.match(client, /code === "GEMINI_RATE_LIMIT" \|\| status === 429/);
 });
@@ -96,4 +100,5 @@ test('decision-core cache is bounded and fingerprinted by evidence', () => {
   assert.match(orchestrator, /cacheFingerprint\(payload\)/);
   assert.match(orchestrator, /force \? null : readCachedAnalysis/);
   assert.match(orchestrator, /writeCachedAnalysis\(cacheKey, response\)/);
+  assert.match(orchestrator, /outcome\?\.serverTiming\?\.localFallbackUsed/);
 });

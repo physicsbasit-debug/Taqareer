@@ -770,7 +770,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "1.3.0",
+      appVersion: "1.3.1",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -1657,7 +1657,7 @@
     if (!window.TaqareerReconciliation?.composePrimary) throw new Error("محرك التحقق من التحليل الذكي غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "1.3.0",
+      appVersion: "1.3.1",
       pipeline: {
         mode: "ai-decision-core-v1",
         instruction: "المحرك المحلي يحسب المؤشرات والرسوم. يبني Gemini نواة القرار التشخيصية مرة واحدة، ثم يبني الخادم التدخلات والمتابعة من القرار والأرقام الحتمية ويطبق حراس الأدلة قبل العرض."
@@ -1861,7 +1861,16 @@
     state.reconciledAnalysis = window.TaqareerReconciliation.composePrimary(state.analysis, outcome.result, {
       availableEvidenceRefs: payload.availableEvidenceRefs || []
     });
-    state.aiUsed = true;
+    const localFallbackUsed = Boolean(outcome?.serverTiming?.localFallbackUsed);
+    if (state.reconciledAnalysis?._reconciliation) {
+      state.reconciledAnalysis._reconciliation.localFallbackUsed = localFallbackUsed;
+      state.reconciledAnalysis._reconciliation.aiApplied = !localFallbackUsed;
+      state.reconciledAnalysis._reconciliation.analysisMode = localFallbackUsed ? "local-evidence-fallback" : "ai-primary";
+    }
+    state.aiUsed = !localFallbackUsed;
+    state.aiWarning = localFallbackUsed
+      ? "تعذر الإثراء الذكي الخارجي في هذه المحاولة؛ اكتمل التقرير بقراءة محلية موثوقة من الحسابات والأدلة، ويمكن إعادة الإثراء لاحقًا دون إعادة رفع الملف."
+      : "";
     state.performance.cacheHit = Boolean(outcome.cacheHit);
     state.performance.payloadChars = outcome.payloadChars;
     state.performance.segmentTimings = {};
@@ -1870,7 +1879,6 @@
     state.performance.aiServerTiming = { aiPrimary: true, ...(outcome.serverTiming || {}), cacheHit: Boolean(outcome.cacheHit) };
     recordSpan({ name: "التحليل الذكي الأساسي", durationMs: outcome.durationMs, aiPrimary: true });
     state.aiError = "";
-    state.aiWarning = "";
     return state.reconciledAnalysis;
   }
 
@@ -2214,6 +2222,7 @@
     const descriptiveOnly = a.scaleSemantics?.direction === "descriptive-only";
     const delta = state.aiResult;
     const aiApplied = Boolean(a?._reconciliation?.aiApplied);
+    const localFallbackUsed = Boolean(a?._reconciliation?.localFallbackUsed);
     const metrics = (a.metrics || []).slice(0, 8);
     $("metrics").innerHTML = metrics.map(item => `<div class="metric"><small>${escapeHtml(item.label)}</small><strong>${escapeHtml(formatMetricValue(item))}</strong><span>${escapeHtml(item.note || "")}</span></div>`).join("");
 
@@ -2245,7 +2254,7 @@
     $("diagnosticSectionsGrid").innerHTML = diagnosticSections.map(section => {
       const evidence = humanizeEvidenceRefs(section.evidenceRefs || []);
       const implications = Array.isArray(section.implications) ? section.implications : [];
-      const source = descriptiveOnly ? "تحليل وصفي" : "تحليل تربوي موثق";
+      const source = descriptiveOnly ? "تحليل وصفي" : localFallbackUsed ? "قراءة محلية موثوقة" : "تحليل تربوي موثق";
       const alternatives = Array.isArray(section.alternativeExplanations) ? section.alternativeExplanations : [];
       const requests = Array.isArray(section.dataRequests) ? section.dataRequests : [];
       return `<article class="diagnostic-section-card"><div class="diagnostic-section-meta"><span>${source}</span><span>ثقة ${escapeHtml(section.confidence || "متوسطة")}</span></div><h5>${escapeHtml(section.title || "قراءة تفسيرية")}</h5><p>${escapeHtml(publicText(section.analysis || ""))}</p>${evidence && evidence !== "لم يحدد مرجع دليل واضح." ? `<div class="soft-note">الدليل: ${escapeHtml(evidence)}</div>` : ""}${implications.length ? `<h6>الآثار العملية</h6><ul>${implications.map(item=>`<li>${escapeHtml(publicText(item))}</li>`).join("")}</ul>` : ""}${alternatives.length ? `<h6>تفسيرات بديلة محتملة</h6><ul>${alternatives.map(item=>`<li>${escapeHtml(publicText(item))}</li>`).join("")}</ul>` : ""}${requests.length ? `<h6>بيانات مطلوبة للتحقق</h6><ul>${requests.map(item=>`<li>${escapeHtml(publicText(item))}</li>`).join("")}</ul>` : ""}</article>`;
@@ -2253,12 +2262,18 @@
 
     // التحسين الخارجي جزء تلقائي من مسار التحليل ولا يظهر للمستخدم كمرحلة مستقلة.
     // تبقى واجهة النتائج هادئة: لا رسائل انتظار، لا أسماء مزودين، ولا أزرار إعادة.
-    $("analysisModeChip").textContent = descriptiveOnly ? "تحليل وصفي مكتمل" : "تحليل تربوي مكتمل";
+    $("analysisModeChip").textContent = descriptiveOnly ? "تحليل وصفي مكتمل" : localFallbackUsed ? "تحليل محلي مكتمل" : "تحليل تربوي مكتمل";
     $("analysisModeChip").className = "success-chip";
     const notice = $("aiResultNotice");
-    notice.innerHTML = "";
-    notice.classList.add("hidden");
     notice.classList.remove("error", "warning");
+    if (localFallbackUsed && state.aiWarning) {
+      notice.textContent = state.aiWarning;
+      notice.classList.remove("hidden");
+      notice.classList.add("warning");
+    } else {
+      notice.innerHTML = "";
+      notice.classList.add("hidden");
+    }
     renderPerformanceSummary();
 
     $("executiveTitle").textContent = a.executiveTitle;
@@ -2266,7 +2281,7 @@
 
     const findings = (a.findings || []).slice(0, 18);
     $("findings").innerHTML = findings.map((f,i)=>{
-      const sourceLabel=descriptiveOnly ? "تحليل وصفي" : "تحليل تربوي موثق";
+      const sourceLabel=descriptiveOnly ? "تحليل وصفي" : localFallbackUsed ? "قراءة محلية موثوقة" : "تحليل تربوي موثق";
       const severity=f.severity||"medium";
       const limitations=f.limitations||[];
       const limitationHtml=limitations.length?`<h5>الحدود</h5><p>${limitations.map(escapeHtml).join("، ")}</p>`:"";
@@ -2338,7 +2353,7 @@
   function exportAnalysis() {
     const payload = {
       app: "تقارير",
-      version: "1.3.0",
+      version: "1.3.1",
       generatedAt: new Date().toISOString(),
       source: state.sourceName,
       sourceMeta: state.sourceMeta,
@@ -2351,7 +2366,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v1.3.0.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v1.3.1.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }

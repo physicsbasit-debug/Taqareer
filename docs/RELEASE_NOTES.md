@@ -1,3 +1,10 @@
+# v1.3.1 — Resilient Decision Core v2
+
+- صُغّر عقد Gemini إلى حكم تنفيذي و2–3 وحدات قرار فقط؛ يبني الخادم الملف الكامل حتميًا.
+- أصبح `gemini-3.5-flash-lite` هو نموذج القرار الأساسي و`gemini-3.6-flash` fallback واحدًا، مع إعدادات مستقلة `GEMINI_DECISION_MODEL` و`GEMINI_DECISION_FALLBACK_MODELS`.
+- عند تعذر المزود أو رفض العقد بعد المحاولتين، لا يتوقف التقرير: يبني الخادم قراءة محلية موثوقة من الحسابات والأدلة ويعلّمها صراحة كـlocal fallback. أخطاء الإعداد والمفتاح تبقى مانعة ولا تُخفى.
+- بروتوكول التنسيق الداخلي أصبح `6.8.0` وEdge `V0.16.1`.
+
 # v1.3.0 — Single Decision Core Architecture
 
 - إعادة بناء جذرية لمسار `analyze_primary` بعد فشل v1.2.48 حيًا بالمهلة: أزيلت سلسلة `reasoning + action + repair + segment rescue` من runtime الأساسي بدل تعديل Retry أو الثواني مرة أخرى.

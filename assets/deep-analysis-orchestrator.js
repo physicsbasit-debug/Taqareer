@@ -3,8 +3,8 @@
 
   // Phase 2-A: الذكاء الاصطناعي هو مالك التحليل التربوي، بينما يبقى
   // المحرك المحلي مسؤولًا عن الحسابات والرسوم وحزمة الأدلة فقط.
-  const VERSION = "1.3.0";
-  const PROTOCOL_VERSION = "6.7.0";
+  const VERSION = "1.3.1";
+  const PROTOCOL_VERSION = "6.8.0";
   const CACHE_KEY = "taqareer-ai-decision-core-cache-v1";
   const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
   const CACHE_MAX_ITEMS = 6;
@@ -173,7 +173,7 @@
 
   function writeCachedAnalysis(key, outcome) {
     const storage = cacheStorage();
-    if (!storage || !outcome?.result) return;
+    if (!storage || !outcome?.result || outcome?.serverTiming?.localFallbackUsed) return;
     try {
       const now = Date.now();
       const parsed = JSON.parse(storage.getItem(CACHE_KEY) || "[]");
@@ -218,7 +218,7 @@
         mode: "ai-decision-core-v1",
         ownership: {
           calculationsAndCharts: "local-evidence-engine",
-          diagnosisFindingsInterventions: "gemini-primary-analyst",
+          diagnosisFindingsInterventions: "gemini-primary-with-local-evidence-fallback",
           validationAndEvidenceGates: "server-and-client",
         },
         goal: "إنتاج تحليل تربوي أصيل ومخصص للسياق من الأدلة، لا تحسين قوالب محلية سابقة.",

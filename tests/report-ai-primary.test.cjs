@@ -92,3 +92,43 @@ test('official report prefers analyzed grade over school grade range without dis
   assert.match(html, /الصف \/ الفئة<\/span><strong>الثامن<\/strong>/);
   assert.match(html, /الباسط للبنين \(8-10\)/);
 });
+
+test('official report completes with a clearly labeled local evidence fallback when external AI is unavailable', () => {
+  const analysis = {
+    metrics: [{ id: 'mean', label: 'المتوسط', value: 76.4, format: 'number', note: '', evidenceRef: 'metric:mean' }],
+    charts: [],
+    findings: [{
+      id: 'f-local-1',
+      title: 'قراءة محلية للأداء',
+      statement: 'تستند القراءة إلى الحسابات والأدلة المحلية المتاحة.',
+      evidenceRefs: ['metric:mean'],
+      confidence: 'مرتفعة',
+      severity: 'medium',
+      educationalImpact: 'تحدد اتجاهًا عامًا قابلًا للمراجعة.',
+      recommendedAction: 'مراجعة الفئات ذات الأداء الأدنى.',
+      limitations: [],
+    }],
+    qualityTools: [], improvementPlan: [], monitoringPlan: [], limitations: [], diagnosticSections: [],
+    executiveTitle: 'قراءة محلية موثوقة للنتائج',
+    executiveSummary: 'اكتمل التقرير من الحسابات والأدلة الحتمية دون الاعتماد على استجابة خارجية في هذه المحاولة.',
+    analysisProfile: { method: 'تحليل محلي حتمي', dataSufficiency: 'كافية وصفيًا', dimensions: [], decisionUses: [] },
+    _reconciliation: { aiPrimary: true, aiApplied: false, localFallbackUsed: true, analysisMode: 'local-evidence-fallback' },
+  };
+  const context = {
+    analysis,
+    type: { id: 'single_subject', name: 'نتائج مادة دراسية' },
+    sourceName: 'results.pdf',
+    sourceMeta: { metadata: { school: 'مدرسة اختبار', analyzedGrade: 'الثامن', subject: 'العلوم' } },
+    quality: { completeness: 100 },
+    recognitionStatus: 'معتمد',
+  };
+
+  const report = sandbox.window.TaqareerReports.buildReportData(context);
+  assert.equal(report.localFallbackUsed, true);
+  assert.equal(report.aiUsed, false);
+
+  const html = sandbox.window.TaqareerReports.buildReportHtml(context, { autoPrint: false });
+  assert.match(html, /تحليل تربوي محلي موثوق/);
+  assert.doesNotMatch(html, /تحليل غير مكتمل/);
+  assert.match(html, /قراءة محلية موثوقة للنتائج/);
+});

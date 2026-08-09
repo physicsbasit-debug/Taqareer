@@ -25,8 +25,8 @@ function modelUrlPattern(model) {
 }
 
 const EDGE_VERSION = sourceStringConst('EDGE_VERSION');
-const DEFAULT_ANALYSIS_MODEL = sourceStringConst('DEFAULT_ANALYSIS_MODEL');
-const DEFAULT_FAST_MODEL = sourceStringConst('DEFAULT_FAST_MODEL');
+const DEFAULT_DECISION_MODEL = sourceStringConst('DEFAULT_DECISION_MODEL');
+const DEFAULT_DECISION_FALLBACK_MODEL = sourceStringConst('DEFAULT_DECISION_FALLBACK_MODEL');
 const DECISION_DEADLINE = sourceNumericConst('PRIMARY_DECISION_DEADLINE_MS');
 const DECISION_TIMEOUT = sourceNumericConst('PRIMARY_DECISION_ATTEMPT_TIMEOUT_MS');
 const FALLBACK_TIMEOUT = sourceNumericConst('PRIMARY_DECISION_FALLBACK_TIMEOUT_MS');
@@ -80,30 +80,25 @@ function unit(index, title, refs, severity = 'high') {
 
 function decisionResult() {
   return {
-    contractVersion: '6.6.0',
-    analysisProfile: {
-      method: 'تحليل علاقات الإتقان والتوزيع وفرص التدخل من الأدلة الرقمية.',
-      dataAdequacy: 'كافية لاتخاذ قرار وصفي متمايز وغير كافية لتسمية مهارة بعينها.',
-      dimensions: ['الإتقان', 'التفاوت', 'قابلية التدخل'],
-      decisionUses: ['ترتيب الأولويات', 'تصميم تدخلات متمايزة', 'متابعة الأثر'],
-    },
     executive: {
       title: 'فجوة واسعة مع فرصة تدخل متمايز',
-      summary: 'تجمع الأدلة بين انخفاض واضح في الإتقان وتفاوت يحتاج استجابة متدرجة، مع الحفاظ على الحدود التفسيرية للدرجات الكلية وعدم تسمية مهارات غير مثبتة.',
+      summary: 'تجمع الأدلة بين انخفاض واضح في الإتقان وتفاوت يحتاج استجابة متدرجة، مع الحفاظ على الحدود التفسيرية للدرجات الكلية.',
       overallJudgement: 'تدخل متمايز مع قياس مرحلي',
       confidence: 'مرتفعة',
       evidenceRefs: ['metric:masteryPct', 'metric:deepGapCount', 'metric:sd'],
-      limitations: ['لا تحدد الدرجات الكلية المفاهيم المتسببة في الفجوة.'],
     },
-    analysisUnits: [
-      unit(1, 'مستوى الإتقان', ['metric:masteryPct', 'metric:deepGapCount']),
-      unit(2, 'التفاوت', ['metric:sd', 'metric:cv', 'metric:mean', 'metric:median'], 'medium'),
-      unit(3, 'فرصة الرفع', ['metric:nearMasteryCount', 'metric:moderateGapCount'], 'medium'),
-    ],
-    methodChecks: [{ name: 'فحص التشتت', reason: 'يفحص تمثيل المتوسط للفئات.', interpretation: 'التفاوت يدعم التمايز في الاستجابة.', requiredData: [], evidenceRefs: ['metric:sd', 'metric:cv'] }],
+    findings: [
+      { ...unit(1, 'مستوى الإتقان', ['metric:masteryPct', 'metric:deepGapCount']), limitation: 'لا تحدد الدرجات الكلية المفاهيم المتسببة في الفجوة.', dataRequest: 'تحليل مفردات الاختبار عند الحاجة.' },
+      { ...unit(2, 'التفاوت', ['metric:sd', 'metric:cv', 'metric:mean', 'metric:median'], 'medium'), limitation: 'التشتت لا يثبت سبب الفروق.', dataRequest: 'مقارنة نتائج سابقة إذا توفرت.' },
+      { ...unit(3, 'فرصة الرفع', ['metric:nearMasteryCount', 'metric:moderateGapCount'], 'medium'), limitation: 'الفئات مبنية على الدرجات الحالية.', dataRequest: 'قياس مرحلي بعد التدخل.' },
+    ].map(item => ({
+      title: item.title, diagnosticAnalysis: item.diagnosticAnalysis, decisionFinding: item.decisionFinding,
+      claimType: item.claimType, evidenceRefs: item.evidenceRefs, confidence: item.confidence, severity: item.severity,
+      educationalImpact: item.educationalImpact, recommendedAction: item.recommendedAction,
+      limitation: item.limitation, dataRequest: item.dataRequest,
+    })),
     additionalCautions: ['لا تحول الارتباط إلى سبب.'],
-    missingDataRequests: ['تحليل مفردات الاختبار لتحديد المهارات.'],
-    suggestedNewType: { needed: false, nameAr: '', purpose: '' },
+    missingDataRequests: ['تحليل مفردات الاختبار لتحديد المهارات عند الحاجة.'],
   };
 }
 
@@ -238,24 +233,46 @@ test('End-to-End: transient capacity switches once to a distinct fallback and ne
   assert.equal(body.serverTiming.repairUsed, false);
   assert.equal(body.serverTiming.rescueUsed, false);
   const urls = runtime.getUrls();
-  assert.match(urls[0], modelUrlPattern(DEFAULT_ANALYSIS_MODEL));
-  assert.match(urls[1], modelUrlPattern(DEFAULT_FAST_MODEL));
+  assert.match(urls[0], modelUrlPattern(DEFAULT_DECISION_MODEL));
+  assert.match(urls[1], modelUrlPattern(DEFAULT_DECISION_FALLBACK_MODEL));
   const schemas = runtime.getRequestBodies().map(text => JSON.parse(text).generationConfig.responseJsonSchema.properties);
-  assert.ok(schemas.every(properties => properties.executive && properties.analysisUnits && !properties.interventions && !properties.monitoringPlan));
+  assert.ok(schemas.every(properties => properties.executive && properties.findings && !properties.analysisUnits && !properties.interventions && !properties.monitoringPlan));
 });
 
-test('End-to-End: provider 429 stops immediately with no model fan-out', async () => {
+test('End-to-End: when both bounded decision models return 503 the report completes through local evidence fallback', async () => {
+  const runtime = await createRuntime([
+    httpError(503, 'primary capacity unavailable'),
+    httpError(503, 'fallback capacity unavailable'),
+  ]);
+  const { status, body } = await invoke(runtime);
+  assert.equal(status, 200);
+  assert.equal(runtime.getCalls(), 2);
+  assert.equal(body.provider, 'local-evidence-fallback');
+  assert.equal(body.model, 'local-evidence-engine');
+  assert.equal(body.serverTiming.localFallbackUsed, true);
+  assert.equal(body.serverTiming.providerFailureKind, 'capacity');
+  assert.deepEqual(body.serverTiming.attemptedModelNames, [DEFAULT_DECISION_MODEL, DEFAULT_DECISION_FALLBACK_MODEL]);
+  assert.ok(body.result.diagnosticSections.length >= 2);
+  assert.ok(body.result.interventions.length >= 2);
+  assert.equal(body.result.monitoringPlan.length, 3);
+});
+
+test('End-to-End: provider 429 stops model fan-out and returns a local evidence fallback', async () => {
   const runtime = await createRuntime([httpError(429, 'RESOURCE_EXHAUSTED quota exceeded', { 'retry-after': '30' })]);
   const { status, body } = await invoke(runtime);
-  assert.equal(status, 429);
-  assert.equal(body.errorCode, 'GEMINI_RATE_LIMIT');
+  assert.equal(status, 200);
   assert.equal(runtime.getCalls(), 1);
-  assert.equal(body.diagnostic?.providerKind, 'rate_limit');
+  assert.equal(body.provider, 'local-evidence-fallback');
+  assert.equal(body.serverTiming.localFallbackUsed, true);
+  assert.equal(body.serverTiming.providerFailureKind, 'rate_limit');
+  assert.ok(body.result.diagnosticSections.length >= 2);
+  assert.ok(body.result.interventions.length >= 2);
+  assert.equal(body.result.monitoringPlan.length, 3);
 });
 
 test('End-to-End: a contract-invalid primary result uses one fallback only and preserves bounded request count', async () => {
   const invalid = decisionResult();
-  invalid.analysisUnits = invalid.analysisUnits.slice(0, 1);
+  invalid.findings = invalid.findings.slice(0, 1);
   const runtime = await createRuntime([geminiRaw(invalid), geminiRaw(decisionResult())]);
   const { status, body } = await invoke(runtime);
   assert.equal(status, 200);
@@ -271,8 +288,8 @@ test('configured future model families are honored by the bounded decision core'
     httpError(503, 'temporary capacity'),
     geminiRaw(decisionResult()),
   ], {
-    GEMINI_ANALYSIS_MODEL: futurePrimary,
-    GEMINI_FAST_MODEL: futureFallback,
+    GEMINI_DECISION_MODEL: futurePrimary,
+    GEMINI_DECISION_FALLBACK_MODELS: futureFallback,
   });
   const { status } = await invoke(runtime);
   assert.equal(status, 200);
@@ -289,11 +306,10 @@ test('single non-empty score group does not create an impossible distinct-group 
   p.availableEvidenceRefs = ['metric:n', 'metric:deepGapCount', 'metric:masteryCount', 'metric:masteryPct'];
   const decision = decisionResult();
   decision.executive.evidenceRefs = ['metric:deepGapCount'];
-  decision.analysisUnits = [
-    unit(1, 'الفجوة العميقة', ['metric:deepGapCount']),
-    unit(2, 'حجم العينة', ['metric:n'], 'medium'),
+  decision.findings = [
+    { ...decision.findings[0], title: 'الفجوة العميقة', evidenceRefs: ['metric:deepGapCount'] },
+    { ...decision.findings[1], title: 'حجم العينة', evidenceRefs: ['metric:n'], severity: 'medium' },
   ];
-  decision.methodChecks = [];
   const runtime = await createRuntime([geminiRaw(decision)]);
   const { status, body } = await invoke(runtime, p);
   assert.equal(status, 200);
@@ -317,8 +333,10 @@ test('server-side decision core keeps multi-visit interventions inside the obser
   p.availableEvidenceRefs = ['metric:n', 'metric:mean', 'metric:sd'];
   const decision = decisionResult();
   decision.executive.evidenceRefs = ['metric:mean', 'metric:sd'];
-  decision.analysisUnits = [unit(1, 'اتجاه الزيارات', ['metric:mean']), unit(2, 'تفاوت الزيارات', ['metric:sd'], 'medium')];
-  decision.methodChecks = [];
+  decision.findings = [
+    { ...decision.findings[0], title: 'اتجاه الزيارات', evidenceRefs: ['metric:mean'] },
+    { ...decision.findings[1], title: 'تفاوت الزيارات', evidenceRefs: ['metric:sd'], severity: 'medium' },
+  ];
   const runtime = await createRuntime([geminiRaw(decision)]);
   const { status, body } = await invoke(runtime, p);
   assert.equal(status, 200);

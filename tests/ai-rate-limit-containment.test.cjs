@@ -10,7 +10,8 @@ const client = fs.readFileSync(path.join(root, 'assets/ai-client.js'), 'utf8');
 test('rate limits are not treated as model-switch capacity failures', () => {
   assert.match(edge, /function modelFailureKind\(/, 'Edge must classify Gemini failures by kind');
   assert.match(edge, /kind === "rate_limit"/, 'Rate limit must be a dedicated failure kind');
-  assert.match(edge, /if \(kind === "rate_limit"\) throw/, '429 must stop model fan-out immediately');
+  assert.match(edge, /if \(kind === "rate_limit"\) break/, '429 must stop model fan-out immediately and fall back locally');
+  assert.match(edge, /localEvidenceFallbackDecision/, 'rate limit must degrade to the deterministic local report instead of another provider call');
 });
 
 test('decision core is capped at two distinct model candidates and has no runtime rescue chain', () => {

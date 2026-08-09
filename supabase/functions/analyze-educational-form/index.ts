@@ -1,4 +1,4 @@
-const EDGE_VERSION = "0.16.0";
+const EDGE_VERSION = "0.16.1";
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 const DEFAULT_MODEL = "gemini-3.6-flash";
 const DEFAULT_FAST_MODEL = "gemini-3.5-flash-lite";
@@ -21,12 +21,14 @@ const PRIMARY_ACTION_ATTEMPT_TIMEOUT_MS = 13_000;
 const PRIMARY_REPAIR_ATTEMPT_TIMEOUT_MS = 11_000;
 const PRIMARY_TRANSIENT_RESCUE_ATTEMPT_TIMEOUT_MS = 8_000;
 const PRIMARY_MIN_REMAINING_MS = 2_500;
-// v0.16.0: مسار القرار الواحد. طلب AI أساسي واحد + fallback واحد فقط،
+// v0.16.1: مسار القرار المقاوم لفشل المزود. طلب AI أساسي واحد + fallback واحد فقط،
 // دون fan-out متعدد المقاطع أو سلاسل repair/rescue.
-const PRIMARY_DECISION_DEADLINE_MS = 38_000;
-const PRIMARY_DECISION_ATTEMPT_TIMEOUT_MS = 23_000;
-const PRIMARY_DECISION_FALLBACK_TIMEOUT_MS = 13_000;
-const PRIMARY_DECISION_MAX_OUTPUT_TOKENS = 2_000;
+const DEFAULT_DECISION_MODEL = "gemini-3.5-flash-lite";
+const DEFAULT_DECISION_FALLBACK_MODEL = "gemini-3.6-flash";
+const PRIMARY_DECISION_DEADLINE_MS = 30_000;
+const PRIMARY_DECISION_ATTEMPT_TIMEOUT_MS = 14_000;
+const PRIMARY_DECISION_FALLBACK_TIMEOUT_MS = 14_000;
+const PRIMARY_DECISION_MAX_OUTPUT_TOKENS = 1_500;
 const PRIMARY_DECISION_MAX_MODELS = 2;
 
 type JsonRecord = Record<string, unknown>;
@@ -295,9 +297,52 @@ const PRIMARY_REASONING_SCHEMA: JsonRecord = {
   required: ["contractVersion", "analysisProfile", "executive", "analysisUnits", "methodChecks", "additionalCautions", "missingDataRequests", "suggestedNewType"],
 };
 
-// v0.16.0: عقد نواة القرار هو عقد reasoning المختصر نفسه. الخادم يوسّعه
-// لاحقًا إلى التدخلات والمتابعة دون طلب Gemini ثانٍ.
-const PRIMARY_DECISION_SCHEMA: JsonRecord = PRIMARY_REASONING_SCHEMA;
+// v0.16.1: عقد قرار مصغر. Gemini لا يعيد ملف التحليل الكامل؛ يكتب فقط
+// الحكم التنفيذي ووحدات القرار، ثم يبني الخادم بقية العقد حتميًا.
+const PRIMARY_DECISION_SCHEMA: JsonRecord = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    executive: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        title: { type: "string" },
+        summary: { type: "string" },
+        overallJudgement: { type: "string" },
+        confidence: { type: "string", enum: ["مرتفعة", "متوسطة", "منخفضة"] },
+        evidenceRefs: { type: "array", minItems: 1, maxItems: 5, items: { type: "string" } },
+      },
+      required: ["title", "summary", "overallJudgement", "confidence", "evidenceRefs"],
+    },
+    findings: {
+      type: "array",
+      minItems: 2,
+      maxItems: 3,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          title: { type: "string" },
+          diagnosticAnalysis: { type: "string" },
+          decisionFinding: { type: "string" },
+          claimType: { type: "string", enum: ["fact", "inference", "hypothesis"] },
+          evidenceRefs: { type: "array", minItems: 1, maxItems: 5, items: { type: "string" } },
+          confidence: { type: "string", enum: ["مرتفعة", "متوسطة", "منخفضة"] },
+          severity: { type: "string", enum: ["high", "medium", "low"] },
+          educationalImpact: { type: "string" },
+          recommendedAction: { type: "string" },
+          limitation: { type: "string" },
+          dataRequest: { type: "string" },
+        },
+        required: ["title", "diagnosticAnalysis", "decisionFinding", "claimType", "evidenceRefs", "confidence", "severity", "educationalImpact", "recommendedAction", "limitation", "dataRequest"],
+      },
+    },
+    additionalCautions: { type: "array", maxItems: 2, items: { type: "string" } },
+    missingDataRequests: { type: "array", maxItems: 2, items: { type: "string" } },
+  },
+  required: ["executive", "findings", "additionalCautions", "missingDataRequests"],
+};
 
 const PRIMARY_ACTION_SCHEMA: JsonRecord = {
   type: "object",
@@ -587,7 +632,7 @@ async function geminiRequestWithFallback(
       const kind = modelFailureKind(error);
       // 429 يعني حد معدل/حصة. تبديل النموذج فورًا يضاعف ضغط المشروع وقد يمدد المشكلة؛
       // نوقف fan-out ونحافظ على 429 كما هو حتى يطبق العميل backoff مناسبًا.
-      if (kind === "rate_limit") throw annotateGeminiFallbackFailure(error, attemptedModelNames, "rate_limit");
+      if (kind === "rate_limit") break;
       const canSwitchModel = kind === "unavailable" || kind === "capacity" || kind === "timeout" || kind === "network";
       if (!canSwitchModel || index === models.length - 1) {
         throw annotateGeminiFallbackFailure(error, attemptedModelNames, fallbackReason);
@@ -1782,45 +1827,29 @@ function validationRepairTargets(message: string): PrimarySegmentName[] {
 }
 
 function primaryDecisionModels(): string[] {
-  const preferred = configuredModelChain(
-    "GEMINI_ANALYSIS_MODEL",
-    "GEMINI_REASONING_FALLBACK_MODELS",
-    DEFAULT_ANALYSIS_MODEL,
-    ["gemini-3.5-flash-lite"],
-  );
-  const fast = configuredModelChain(
-    "GEMINI_FAST_MODEL",
-    "GEMINI_FAST_FALLBACK_MODELS",
-    DEFAULT_FAST_MODEL,
-    ["gemini-3.5-flash-lite"],
-  );
-  return [...new Set([...preferred.slice(0, 1), ...fast])]
-    .map(normalizeModelName)
-    .filter(Boolean)
-    .slice(0, PRIMARY_DECISION_MAX_MODELS);
+  return configuredModelChain(
+    "GEMINI_DECISION_MODEL",
+    "GEMINI_DECISION_FALLBACK_MODELS",
+    DEFAULT_DECISION_MODEL,
+    [DEFAULT_DECISION_FALLBACK_MODEL],
+  ).slice(0, PRIMARY_DECISION_MAX_MODELS);
 }
 
 function primaryDecisionInstructions(): string {
-  return `أنت نواة القرار التربوي الوحيدة في تطبيق «تقارير». ستصلك مؤشرات ورسوم وأدلة محسوبة حتميًا من كامل البيانات. لا تعِد الحسابات ولا تنشئ خطة متابعة رقمية؛ الخادم يبني التدخلات والمتابعة من قرارك ومن الأرقام الموثوقة.
+  return `أنت نواة قرار تربوي قصيرة في تطبيق «تقارير». الحسابات والمؤشرات والرسوم صحيحة ومحسوبة حتميًا؛ لا تعِد الحسابات ولا تنشئ جدول متابعة أو أرقامًا مستهدفة.
 
-أعد JSON وفق مخطط القرار فقط، وباختصار مهني:
+أعد JSON وفق المخطط المصغر فقط:
 1) executive: حكم تنفيذي موجز مرتبط بالمراجع المتاحة.
-2) analysisProfile: طريقة القراءة، كفاية البيانات، أبعاد القرار واستخداماته.
-3) analysisUnits: وحدتان أو ثلاث وحدات مختلفة فعلًا. في كل وحدة افصل diagnosticAnalysis عن decisionFinding، واربطها بـ evidenceRefs الموجودة حرفيًا فقط.
-4) recommendedAction في كل وحدة يجب أن يكون إجراءً تربويًا عمليًا ومحددًا بما يكفي ليحوّله الخادم إلى تدخل تنفيذي. لا تضع أعدادًا مستهدفة من عندك.
-5) methodChecks: صفر إلى أداتين فقط إذا غيّرت الأداة معنى القرار.
-6) لا تحول الارتباط إلى سبب، ولا تسمِّ مهارة أو مفهومًا بعينه إذا كانت البيانات درجات كلية فقط. اطلب تحليل مفردات أو اختبارًا تشخيصيًا عند الحاجة.
-7) لا تستخدم أسماء الأشخاص أو البيانات الشخصية، ولا تعِد ترتيب الطلبة أو حساب المراكز.
-8) إذا كان recognizedType.id = multi_subject_results فالتزم حرفيًا بـ evidenceAnalysis.scopeContext.analysisMode وselectedSubject وسياسة rankingPolicy المقفلة.
-9) إذا كان recognizedType.id = supervision_multi_visit فالتزم بنطاق الزيارات والعينة، والمقياس المعكوس 1 متميز و5 يحتاج إلى تدخل، ولا تعمم على المدرسة كلها.
-10) إذا كان source.meta.documentContext.aggregatedReport = true فتعامل مع التعارضات كتباين سياقي ما لم تثبت أنها لنفس الشخص والزيارة والزمن.
-11) استخدم بيانات الترويسة المنظمة داخل source.meta.metadata عندما تكون موجودة.
-12) اجعل diagnosticAnalysis بين 140 و260 حرفًا، وdecisionFinding بين 60 و140 حرفًا، وeducationalImpact وrecommendedAction بين 45 و120 حرفًا، والملخص التنفيذي بين 140 و280 حرفًا.
-13) additionalCautions وmissingDataRequests مختصرة ولا تتجاوز ما تدعمه الأدلة.
-14) عند نوع غير معروف فقط يمكن suggestedNewType.needed = true؛ لا تخترع نوعًا جديدًا لملف معروف.
-15) أعد JSON خامًا فقط، بلا مقدمات أو شرح خارج المخطط.
+2) findings: وحدتان أو ثلاث فقط، مختلفة فعلًا. لكل وحدة: تحليل تشخيصي، استنتاج قراري مختلف عنه، دليل حرفي من evidenceRefs، أثر تربوي، وإجراء عملي.
+3) لا تسمِّ مهارة أو سببًا غير مثبت من درجات كلية، ولا تحول الارتباط إلى سببية.
+4) لا تستخدم أسماء أشخاص أو بيانات شخصية ولا تعِد ترتيب الطلبة.
+5) إذا كان الملف متعدد المواد فالتزم analysisMode وselectedSubject وسياسة rankingPolicy الموجودة في scopeContext.
+6) اجعل diagnosticAnalysis بين 100 و190 حرفًا، وdecisionFinding بين 45 و100 حرف، وeducationalImpact وrecommendedAction بين 35 و90 حرفًا، والملخص التنفيذي بين 100 و220 حرفًا.
+7) limitation وdataRequest جملة قصيرة فقط. additionalCautions وmissingDataRequests بحد أقصى عنصرين.
+8) استخدم evidenceRefs الموجودة حرفيًا فقط.
+9) أعد JSON خامًا فقط دون مقدمات.
 
-هذه هي نواة القرار الوحيدة في التشغيل. لا يوجد مقطع action ولا repair ولا segment rescue لاحق من Gemini.`;
+الخادم سيبني analysisProfile والتدخلات والمتابعة والحراس الحسابية بعد استجابتك. لا تكتبها أنت.`;
 }
 
 function compactPrimaryDecisionPayload(payload: JsonRecord): JsonRecord {
@@ -1862,6 +1891,134 @@ function primaryOwnerRole(payload: JsonRecord): string {
   if (["student_results", "single_subject", "assessment_component", "level_distribution", "cross_subject"].includes(typeId)) return "معلم المادة";
   if (typeId === "supervision_multi_visit" || typeId === "supervision_indicator" || typeId === "supervision_narrative") return "المشرف التربوي وإدارة المدرسة";
   return "فريق العمل المسؤول";
+}
+
+function deterministicPrimaryProfile(payload: JsonRecord): JsonRecord {
+  const recognized = payload.recognizedType && typeof payload.recognizedType === "object" ? payload.recognizedType as JsonRecord : {};
+  const evidence = payload.evidenceAnalysis && typeof payload.evidenceAnalysis === "object" ? payload.evidenceAnalysis as JsonRecord : {};
+  const metrics = Array.isArray(evidence.metrics) ? evidence.metrics as JsonRecord[] : [];
+  const scope = evidence.scopeContext && typeof evidence.scopeContext === "object" ? evidence.scopeContext as JsonRecord : {};
+  const typeName = cleanString(recognized.nameAr || recognized.id || "البيانات", 180) || "البيانات";
+  const selectedSubject = cleanString(scope.selectedSubject, 120);
+  const dimensions = ["المستوى العام", "التفاوت", "أولوية التدخل"];
+  if (String(recognized.id || "") === "multi_subject_results" && !selectedSubject) dimensions[0] = "الفروق بين المواد";
+  return {
+    method: `تحليل تربوي قائم على المؤشرات الحتمية والرسوم الخاصة بـ${selectedSubject || typeName}.`,
+    dataAdequacy: metrics.length >= 4
+      ? "البيانات كافية لقراءة المستوى والتفاوت وتحديد أولويات متابعة، ولا تكفي وحدها لإثبات أسباب أو مهارات دقيقة."
+      : "البيانات محدودة؛ تستخدم القراءة المؤشرات المتاحة فقط مع إبراز الحاجة إلى أدلة إضافية.",
+    dimensions,
+    decisionUses: ["ترتيب الأولويات", "توجيه التدخل", "متابعة الأثر"],
+  };
+}
+
+function normalizePrimaryDecisionCore(core: JsonRecord, payload: JsonRecord): JsonRecord {
+  const executive = core.executive && typeof core.executive === "object" ? core.executive as JsonRecord : {};
+  const findings = (Array.isArray(core.findings) ? core.findings as JsonRecord[] : []).slice(0, 3);
+  return {
+    contractVersion: "6.6.0",
+    analysisProfile: deterministicPrimaryProfile(payload),
+    executive: {
+      title: cleanString(executive.title, 220),
+      summary: cleanString(executive.summary, 760),
+      overallJudgement: cleanString(executive.overallJudgement, 360),
+      confidence: cleanString(executive.confidence, 40) || "متوسطة",
+      evidenceRefs: Array.isArray(executive.evidenceRefs) ? executive.evidenceRefs : [],
+      limitations: [],
+    },
+    analysisUnits: findings.map(item => ({
+      title: cleanString(item.title, 180),
+      diagnosticAnalysis: cleanString(item.diagnosticAnalysis, 760),
+      decisionFinding: cleanString(item.decisionFinding, 360),
+      claimType: cleanString(item.claimType, 40) || "inference",
+      evidenceRefs: Array.isArray(item.evidenceRefs) ? item.evidenceRefs : [],
+      confidence: cleanString(item.confidence, 40) || "متوسطة",
+      severity: cleanString(item.severity, 40) || "medium",
+      educationalImpact: cleanString(item.educationalImpact, 360),
+      recommendedAction: cleanString(item.recommendedAction, 360),
+      alternativeExplanations: [],
+      limitations: cleanString(item.limitation, 300) ? [cleanString(item.limitation, 300)] : [],
+      dataRequests: cleanString(item.dataRequest, 300) ? [cleanString(item.dataRequest, 300)] : [],
+    })),
+    methodChecks: [],
+    additionalCautions: cleanStringArray(core.additionalCautions, 2, 260),
+    missingDataRequests: cleanStringArray(core.missingDataRequests, 2, 260),
+    suggestedNewType: { needed: false, nameAr: "", purpose: "" },
+  };
+}
+
+function evidenceMetricMap(payload: JsonRecord): Map<string, JsonRecord> {
+  const evidence = payload.evidenceAnalysis && typeof payload.evidenceAnalysis === "object" ? payload.evidenceAnalysis as JsonRecord : {};
+  const metrics = Array.isArray(evidence.metrics) ? evidence.metrics as JsonRecord[] : [];
+  return new Map(metrics.map(item => [String(item.id || ""), item]).filter(([id]) => Boolean(id)));
+}
+
+function localEvidenceFallbackDecision(payload: JsonRecord, cause: unknown, attemptedModelNames: string[]): JsonRecord {
+  const allowed = [...allowedRefsFromPayload(payload)];
+  const refs = allowed.filter(ref => ref.startsWith("metric:")).concat(allowed.filter(ref => !ref.startsWith("metric:")));
+  if (!refs.length) refs.push("metric:localEvidence");
+  const refAt = (index: number): string[] => [refs[Math.min(index, refs.length - 1)] || refs[0]];
+  const metrics = evidenceMetricMap(payload);
+  const metric = (id: string): JsonRecord | null => metrics.get(id) || null;
+  const metricText = (ids: string[]): string => ids.map(id => {
+    const item = metric(id);
+    if (!item) return "";
+    const label = cleanString(item.label || id, 120) || id;
+    const value = item.value === null || item.value === undefined ? "" : String(item.value);
+    return value ? `${label} ${value}` : label;
+  }).filter(Boolean).join("، ");
+  const baseSummary = metricText(["mean", "median", "masteryPct", "sd", "n"]);
+  const units = [
+    {
+      title: "المستوى العام للأداء",
+      diagnosticAnalysis: `تعتمد القراءة المحلية على المؤشرات المحسوبة من كامل البيانات${baseSummary ? `، ومنها ${baseSummary}` : ""}. وهي تصف المستوى العام دون افتراض أسباب غير مقاسة.`,
+      decisionFinding: "تُبنى أولوية التدخل الأولى على المستوى العام كما ظهر في المؤشرات الحتمية.",
+      claimType: "fact", evidenceRefs: refAt(0), confidence: "مرتفعة", severity: "medium",
+      educationalImpact: "يوجه ذلك شدة الدعم المطلوبة قبل الانتقال إلى تفسير أكثر تفصيلًا.",
+      recommendedAction: "اعتماد قياس قصير للفئة المستهدفة ثم تطبيق دعم متدرج وفق النتيجة.",
+      alternativeExplanations: [], limitations: ["تعذر الإثراء الذكي الخارجي في هذه المحاولة."], dataRequests: [],
+    },
+    {
+      title: "التفاوت وتوزيع النتائج",
+      diagnosticAnalysis: `تستخدم القراءة توزيع النتائج ومؤشرات التشتت المتاحة${metricText(["sd", "min", "max", "cv"]) ? `، ومنها ${metricText(["sd", "min", "max", "cv"])}` : ""} لتحديد مدى تجانس الأداء بين الفئات.`,
+      decisionFinding: "تفاوت النتائج يستدعي تمييز الاستجابة التعليمية بدل تطبيق تدخل موحد على الجميع.",
+      claimType: "inference", evidenceRefs: refAt(1), confidence: "متوسطة", severity: "medium",
+      educationalImpact: "يساعد التمايز في توجيه الوقت والموارد إلى الفئات الأكثر حاجة دون إهمال المتقنين.",
+      recommendedAction: "تقسيم المتعلمين إلى فئات دعم ومتابعة باستخدام حدود الأداء المحسوبة محليًا.",
+      alternativeExplanations: [], limitations: ["لا تكشف الدرجة الكلية وحدها سبب التفاوت."], dataRequests: ["تحليل مفردات أو اختبار تشخيصي عند الحاجة."],
+    },
+    {
+      title: "أولوية المتابعة وإعادة القياس",
+      diagnosticAnalysis: "تربط القراءة المحلية الفئات الحالية بخطة متابعة تحفظ خط الأساس وتعيد قياس المؤشرات نفسها بعد التدخل، من دون اختراع أهداف رقمية غير محسوبة.",
+      decisionFinding: "الأولوية الثالثة هي تثبيت متابعة مرحلية قابلة للمقارنة مع خط الأساس قبل الحكم على أثر التدخل.",
+      claimType: "inference", evidenceRefs: refAt(2), confidence: "متوسطة", severity: "medium",
+      educationalImpact: "يمنع ذلك اعتماد تدخلات مستمرة بلا دليل على التحسن أو الحاجة إلى التعديل.",
+      recommendedAction: "تثبيت خط أساس ثم قياس مرحلي ونهائي باستخدام المؤشرات نفسها والفئات نفسها.",
+      alternativeExplanations: [], limitations: ["هذه قراءة احتياطية محلية عند تعذر خدمة الذكاء الاصطناعي."], dataRequests: [],
+    },
+  ];
+  return {
+    contractVersion: "6.6.0",
+    analysisProfile: deterministicPrimaryProfile(payload),
+    executive: {
+      title: "قراءة تربوية محلية موثوقة من الأدلة المتاحة",
+      summary: `تعذر الإثراء الذكي الخارجي في هذه المحاولة، لذلك بُنيت القراءة من الحسابات والمؤشرات الحتمية المحفوظة دون اعتماد نتيجة ناقصة من المزود.${baseSummary ? ` أبرز المؤشرات: ${baseSummary}.` : ""}`,
+      overallJudgement: "اعتماد قراءة محلية مؤقتة مع إمكانية إعادة الإثراء الذكي لاحقًا دون إعادة رفع الملف.",
+      confidence: "متوسطة",
+      evidenceRefs: refs.slice(0, Math.min(5, refs.length)),
+      limitations: ["لم يُستخدم تفسير مولد من Gemini في هذه المحاولة."],
+    },
+    analysisUnits: units,
+    methodChecks: [],
+    additionalCautions: ["تعذر الإثراء الذكي الخارجي؛ لا تنسب القراءة المحلية أسبابًا غير مثبتة."],
+    missingDataRequests: [],
+    suggestedNewType: { needed: false, nameAr: "", purpose: "" },
+    _localFallback: {
+      used: true,
+      reason: modelFailureKind(cause),
+      attemptedModelNames: [...attemptedModelNames],
+    },
+  };
 }
 
 function decisionEvidenceRefs(decision: JsonRecord, payload: JsonRecord): string[] {
@@ -1993,7 +2150,8 @@ async function analyzePrimary(payload: JsonRecord): Promise<JsonRecord> {
       );
       const candidate = candidateResult(response.raw);
       if (candidate.finishReason === "MAX_TOKENS") throw new Error("توقف نواة القرار عند حد الإخراج.");
-      const decision = parsePrimarySegment("reasoning", candidate.text);
+      const core = parseJsonObject(candidate.text);
+      const decision = normalizePrimaryDecisionCore(core, decisionPayload);
       const expanded = expandPrimaryDecision(decision, decisionPayload);
       const result = validatePrimaryAnalysis(expanded, decisionPayload, "rescue");
       const validation = result.validation && typeof result.validation === "object" ? result.validation as JsonRecord : {};
@@ -2020,6 +2178,7 @@ async function analyzePrimary(payload: JsonRecord): Promise<JsonRecord> {
           attemptedModelNames: [...attemptedModelNames],
           fallbackUsed: index > 0,
           fallbackReason: index > 0 ? (firstValidationError ? "decision_contract_fallback" : "decision_transport_fallback") : "",
+          localFallbackUsed: false,
           repairUsed: false,
           rescueUsed: false,
           serverDeadlineMs: PRIMARY_DECISION_DEADLINE_MS,
@@ -2042,7 +2201,7 @@ async function analyzePrimary(payload: JsonRecord): Promise<JsonRecord> {
       lastError = error;
       const kind = modelFailureKind(error);
       const status = geminiErrorStatus(error);
-      if (kind === "rate_limit") throw annotateGeminiFallbackFailure(error, attemptedModelNames, "rate_limit");
+      if (kind === "rate_limit") break;
       if (status === 401 || status === 403) throw error;
       if (/GEMINI_API_KEY|api key|مفتاح.*غير صالح/i.test(geminiErrorMessage(error))) throw error;
       firstValidationError = geminiErrorMessage(error);
@@ -2051,12 +2210,53 @@ async function analyzePrimary(payload: JsonRecord): Promise<JsonRecord> {
   }
 
   const message = geminiErrorMessage(lastError) || "تعذر بناء نواة القرار الذكي ضمن المسار المحدود.";
-  const status = geminiErrorStatus(lastError) || (modelIsTransientlyBusy(lastError) ? 503 : 502);
-  throw geminiRequestError(`فشل مسار القرار الذكي المحدود بعد ${attemptedModelNames.length} نموذج/نماذج فقط: ${message}`, status, {
-    failureKind: modelFailureKind(lastError),
-    retryAfterMs: geminiErrorRetryAfterMs(lastError),
-    attemptedModelNames,
-  });
+  const status = geminiErrorStatus(lastError);
+  const kind = modelFailureKind(lastError);
+  const configurationFailure = status === 401 || status === 403 || status === 404
+    || /GEMINI_API_KEY|api key|مفتاح.*غير صالح|unknown model|unsupported model/i.test(message);
+  if (configurationFailure) {
+    throw geminiRequestError(`تعذر تشغيل نواة القرار بسبب إعداد المزود: ${message}`, status || 502, {
+      failureKind: kind,
+      retryAfterMs: geminiErrorRetryAfterMs(lastError),
+      attemptedModelNames,
+    });
+  }
+
+  // فشل المزود الخارجي لا يمنع التقرير. نبني نتيجة محلية موثوقة من الأدلة
+  // الحتمية نفسها، مع وسم صريح بأنها fallback محلي وليست استجابة Gemini.
+  const localDecision = localEvidenceFallbackDecision(decisionPayload, lastError, attemptedModelNames);
+  const expanded = expandPrimaryDecision(localDecision, decisionPayload);
+  const result = validatePrimaryAnalysis(expanded, decisionPayload, "rescue");
+  return {
+    result,
+    model: "local-evidence-engine",
+    usage: { decision: null },
+    requestId: "",
+    provider: "local-evidence-fallback",
+    serverTiming: {
+      aiPrimary: false,
+      decisionCore: true,
+      decisionCoreVersion: 2,
+      localFallbackUsed: true,
+      providerFailureKind: kind,
+      providerStatus: status || 0,
+      geminiMs: Math.round(performance.now() - startedAt),
+      payloadChars: JSON.stringify(decisionPayload).length,
+      inputCompacted: JSON.stringify(decisionPayload).length < JSON.stringify(payload).length,
+      originalPayloadChars: JSON.stringify(payload).length,
+      outputCharacters: 0,
+      finishReason: "LOCAL_FALLBACK",
+      attemptedModels: attemptedModelNames.length,
+      attemptedModelNames: [...attemptedModelNames],
+      fallbackUsed: attemptedModelNames.length > 1,
+      fallbackReason: kind || "provider_failure",
+      repairUsed: false,
+      rescueUsed: false,
+      serverDeadlineMs: PRIMARY_DECISION_DEADLINE_MS,
+      primaryAttemptTimeoutMs: PRIMARY_DECISION_ATTEMPT_TIMEOUT_MS,
+      fallbackAttemptTimeoutMs: PRIMARY_DECISION_FALLBACK_TIMEOUT_MS,
+    },
+  };
 }
 
 function errorInfo(error: unknown): { status: number; errorCode: string; retryable: boolean } {

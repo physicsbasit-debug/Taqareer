@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.3.0";
+  const VERSION = "1.3.1";
 
   function escapeHtml(value) {
     return String(value ?? "").replace(/[&<>'"]/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" }[char]));
@@ -176,7 +176,7 @@
       decisionUse:(localProfile.decisionUse||localProfile.decisionUses||[]).map(item=>safePublicLabel(item,"استخدام تحليلي")),
       assumptions:(localProfile.assumptions||[]).map(item=>safePublicLabel(item,"افتراض تحليلي"))
     };
-    return{meta,analysis,findings,tools,plan,monitoring,metrics,charts,limitations,diagnosticSections,profile,privateTables:analysis.privateTables||null,aiUsed:Boolean(analysis?._reconciliation?.aiApplied),generatedAt:new Date(),type:context.type,quality:context.quality||{},recognitionStatus:context.recognitionStatus||""};
+    return{meta,analysis,findings,tools,plan,monitoring,metrics,charts,limitations,diagnosticSections,profile,privateTables:analysis.privateTables||null,aiUsed:Boolean(analysis?._reconciliation?.aiApplied),localFallbackUsed:Boolean(analysis?._reconciliation?.localFallbackUsed),generatedAt:new Date(),type:context.type,quality:context.quality||{},recognitionStatus:context.recognitionStatus||""};
   }
 
   function familyOf(data){return data.analysis?.analysisProfile?.family||data.analysis?.family||"generic";}
@@ -352,7 +352,7 @@
       : [["نوع الاستمارة",context.type?.name||"—"],["المدرسة",meta.school||"غير محددة في الملف"],["المادة",meta.subject||"غير محددة"],["الصف / الفئة",meta.grade||"غير محدد"],["العام / الفترة",[meta.academicYear,meta.period].filter(Boolean).join(" - ")||"غير محدد"],["مصدر البيانات",sourceDisplay]];
     const metaHtml=`<div class="meta-grid${metaEntries.length===7?" meta-grid-7":""}">${metaEntries.map(([label,value])=>`<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join("")}</div>`;
     const primaryVisualLoad=primaryCharts.reduce((sum,chart)=>sum+(Array.isArray(chart.data)?chart.data.length:0),0);
-    const exec=`<div class="executive-page-layout${primaryVisualLoad>=12?" executive-dense-charts":""}"><div class="report-title"><div><span>التقرير التحليلي الرسمي</span><h1>${escapeHtml(title)}</h1><p>${escapeHtml(subtitle)}</p></div><div class="report-date"><small>تاريخ التقرير</small><strong>${escapeHtml(formatDate(data.generatedAt))}</strong></div></div>${metaHtml}<div class="section-heading"><div><span>01</span><h2>الملخص التنفيذي</h2></div><p>القراءة العليا للقرار قبل الانتقال إلى الطبقات الإحصائية والتشخيصية.</p></div><div class="executive-grid"><article class="executive-summary"><small>الحكم التنفيذي</small><h2>${escapeHtml(analysis.executiveTitle||title)}</h2><p>${escapeHtml(analysis.executiveSummary||"")}</p></article><article class="analysis-status"><small>حالة التحليل</small><strong>${data.aiUsed?"تحليل تربوي موثق":"تحليل غير مكتمل"}</strong><p>${escapeHtml(data.profile.dataSufficiency||"كفاية البيانات غير محددة")}</p></article></div><div class="metric-grid core-metrics">${metricGroups.core.map(metricCard).join("")}</div>${primaryCharts.length?`<div class="chart-grid primary-charts">${primaryCharts.map((chart,i)=>chartCard(chart,i+1)).join("")}</div>`:""}</div>`;
+    const exec=`<div class="executive-page-layout${primaryVisualLoad>=12?" executive-dense-charts":""}"><div class="report-title"><div><span>التقرير التحليلي الرسمي</span><h1>${escapeHtml(title)}</h1><p>${escapeHtml(subtitle)}</p></div><div class="report-date"><small>تاريخ التقرير</small><strong>${escapeHtml(formatDate(data.generatedAt))}</strong></div></div>${metaHtml}<div class="section-heading"><div><span>01</span><h2>الملخص التنفيذي</h2></div><p>القراءة العليا للقرار قبل الانتقال إلى الطبقات الإحصائية والتشخيصية.</p></div><div class="executive-grid"><article class="executive-summary"><small>الحكم التنفيذي</small><h2>${escapeHtml(analysis.executiveTitle||title)}</h2><p>${escapeHtml(analysis.executiveSummary||"")}</p></article><article class="analysis-status"><small>حالة التحليل</small><strong>${data.aiUsed?"تحليل تربوي موثق":data.localFallbackUsed?"تحليل تربوي محلي موثوق":"تحليل غير مكتمل"}</strong><p>${escapeHtml(data.profile.dataSufficiency||"كفاية البيانات غير محددة")}</p></article></div><div class="metric-grid core-metrics">${metricGroups.core.map(metricCard).join("")}</div>${primaryCharts.length?`<div class="chart-grid primary-charts">${primaryCharts.map((chart,i)=>chartCard(chart,i+1)).join("")}</div>`:""}</div>`;
     pages.push({section:"الملخص التنفيذي",content:exec});
 
     if(metricGroups.advanced.length||advancedChartSplit.first.length||advancedChartSplit.restPages.length){
