@@ -1448,6 +1448,19 @@
     return output;
   }
 
+  function orderRecoveredMultiSubjectNameParts(parts) {
+    const cleaned = dedupeMultiSubjectNameParts(parts);
+    if (cleaned.length !== 2) return cleaned;
+    const [first, second] = cleaned;
+    const coreLike = value => {
+      const text = cleanMetadataValue(value || "");
+      return multiSubjectNameTokenCount(text) >= 3 || /(?:^|\s)(?:بن|بنت)(?:\s|$)/.test(text);
+    };
+    const suffixLike = value => multiSubjectNameTokenCount(value) <= 2 && !coreLike(value);
+    if (suffixLike(first) && coreLike(second)) return [second, first];
+    return cleaned;
+  }
+
   function recoverMultiSubjectFullName(rawItems, parsed) {
     if (!parsed?.serial || !Array.isArray(rawItems) || !rawItems.length) return parsed?.name || "";
     const rtlOrigin = parsed.rtlOrigin || "left";
@@ -1495,7 +1508,7 @@
       const tokenDelta = multiSubjectNameTokenCount(b.clean) - multiSubjectNameTokenCount(a.clean);
       return tokenDelta || b.x - a.x;
     }).map(entry => entry.clean);
-    const recoveredParts = dedupeMultiSubjectNameParts([embeddedName, ...orderParts(mainParts), ...orderParts(tailParts)]);
+    const recoveredParts = orderRecoveredMultiSubjectNameParts([embeddedName, ...orderParts(mainParts), ...orderParts(tailParts)]);
     const recovered = recoveredParts.join(" ").replace(/\s+/g, " ").trim();
     const current = cleanMetadataValue(parsed.name || "");
     return multiSubjectNameTokenCount(recovered) >= multiSubjectNameTokenCount(current) && recovered.length >= current.length

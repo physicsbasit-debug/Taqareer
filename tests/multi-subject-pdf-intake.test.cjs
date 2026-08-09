@@ -336,3 +336,58 @@ test('multi-subject PDF reconstructs the full student name when the surname is o
   assert.match(html, /سالم بن راشد بن ناصر التجريبي/);
   assert.doesNotMatch(html, /<td>التجريبي<\/td>/);
 });
+
+function surnameOnSerialBandStudentItems(serial, y, fullNamePrefix, surname) {
+  const items = [
+    item(String(serial), 1010, y, 16),
+    item(surname, 945, y, 60),
+    item(fullNamePrefix, 910, y + 3.2, 180),
+    item('عماني', 815, y + 3.2, 38),
+    item('منقول', 765, y + 3.2, 42),
+  ];
+  subjects.forEach(([, center], index) => {
+    const score = serial === 1 ? (index === 0 ? '100' : '99') : String(80 + (index % 5));
+    const numeric = Number(score);
+    const level = numeric >= 90 ? 'أ' : numeric >= 80 ? 'ب' : numeric >= 65 ? 'ج' : numeric >= 50 ? 'د' : 'هـ';
+    items.push(item(score, center + 8, y + (index % 2 === 0 ? 3.8 : -3.2), 14));
+    items.push(item(level, center - 8, y + (index % 2 === 0 ? -3.2 : 3.8), 12));
+  });
+  return items;
+}
+
+function surnameOnSerialBandPageItems() {
+  const items = pdfJsFragmentedHeaderItems(6, 1);
+  items.push(...surnameOnSerialBandStudentItems(1, 500, 'خالد بن سالم بن ناصر', 'الافتراضي'));
+  items.push(...surnameOnSerialBandStudentItems(2, 475, 'راشد بن ماجد بن سعيد', 'النموذجي'));
+  [3, 4, 5, 6].forEach((serial, index) => items.push(...studentItems(serial, 450 - index * 25, false)));
+  return items;
+}
+
+test('multi-subject PDF always appends the tribe name after the core student name even when PDF.js puts the tribe on the serial band', async () => {
+  const sandbox = load();
+  installPdfMock(sandbox, [surnameOnSerialBandPageItems()]);
+  sandbox.window.TaqareerPdfIntakeV2.normalizePdfPages = () => ({
+    tables: [{ structure: { pagination: { missingPages: [1], expectedPages: [1], parsedPages: [] } } }],
+    diagnostics: { reviewTableCount: 1 }, metadata: {},
+  });
+  sandbox.window.TaqareerPdfIntakeV2.datasetsFromCanonical = () => [];
+
+  const source = await sandbox.window.TaqareerDocuments.readPdf(fakeFile);
+  const dataset = source.datasets.find(entry => entry.id === source.preferredDatasetId);
+  assert.equal(dataset.rows[0]['اسم الطالب'], 'خالد بن سالم بن ناصر الافتراضي');
+  assert.equal(dataset.rows[1]['اسم الطالب'], 'راشد بن ماجد بن سعيد النموذجي');
+
+  const profile = sandbox.window.TaqareerAnalysisProfiler.profileTable({ headers: dataset.headers, rows: dataset.rows, sourceMeta: dataset.meta });
+  const analysis = sandbox.window.TaqareerDeepAnalytics.analyzeEvidence({
+    typeId: 'multi_subject_results', headers: dataset.headers, rows: dataset.rows, sourceMeta: dataset.meta, analysisProfile: profile,
+    analysisOptions: { mode: 'all', includeSubjectTopTen: true, includeSchoolRanking: true },
+  });
+  assert.equal(analysis.privateTables.schoolTopTen[0].name, 'خالد بن سالم بن ناصر الافتراضي');
+
+  const html = sandbox.window.TaqareerReports.buildReportHtml({
+    analysis, type: { id: 'multi_subject_results', name: 'نتائج طلاب فردية متعددة المواد' },
+    sourceName: fakeFile.name, sourceMeta: dataset.meta, quality: { completeness: 100 }, recognitionStatus: 'معتمد',
+  }, { autoPrint: false, reportMode: 'full' });
+  assert.match(html, /خالد بن سالم بن ناصر الافتراضي/);
+  assert.doesNotMatch(html, /الافتراضي خالد بن سالم بن ناصر/);
+});
