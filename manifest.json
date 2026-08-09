@@ -1,8 +1,8 @@
 {
   "app": "تقارير",
-  "version": "1.2.33",
-  "phase": "End-to-End PDF Grade Metadata Recovery",
-  "releaseName": "Real PDF Analyzed Grade Metadata Recovery",
+  "version": "1.2.36",
+  "phase": "Final Print Polish",
+  "releaseName": "RTL Source Label & Executive Chart Footer Clearance",
   "buildType": "static-github-pages-plus-supabase-edge-function",
   "supportedInputs": {
     "table": [

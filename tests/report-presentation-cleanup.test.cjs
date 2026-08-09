@@ -46,7 +46,7 @@ test('official report hides technical PDF source labels while preserving raw sou
   assert.equal(data.meta.sourceName, context.sourceName, 'raw provenance must remain unchanged internally');
 
   const html = reports.buildReportHtml(context, { autoPrint: false });
-  assert.match(html, /مصدر البيانات<\/span><strong>ملف PDF • 14 صفحة<\/strong>/);
+  assert.match(html, /مصدر البيانات<\/span><strong>ملف بي دي إف • 14 صفحة<\/strong>/);
   assert.doesNotMatch(html, /مصدر البيانات<\/span><strong>[^<]*جدول PDF منظم/);
   assert.doesNotMatch(html, /مصدر البيانات<\/span><strong>[^<]*الصفحات 1/);
   assert.match(html, /الصف \/ الفئة<\/span><strong>الثامن<\/strong>/);
