@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.2.34";
+  const VERSION = "1.2.35";
 
   function escapeHtml(value) {
     return String(value ?? "").replace(/[&<>'"]/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" }[char]));
@@ -28,6 +28,21 @@
   function safeAnalysisMethod(value,fallback="تحليل تربوي متخصص"){ return displayTerms()?.analysisMethod?.(value,fallback) || (()=>{const text=String(value??"").trim();return /^[A-Za-z][A-Za-z0-9]*(?:[_-][A-Za-z0-9]+)+$/.test(text)||/^(?:TQR-)/i.test(text)?fallback:(text||fallback);})(); }
   function safePublicLabel(value,fallback="بيان تحليلي"){ return displayTerms()?.publicLabel?.(value,fallback) || (()=>{const text=String(value??"").trim();return /^[A-Za-z][A-Za-z0-9]*(?:[_-][A-Za-z0-9]+)+$/.test(text)||/^(?:TQR-)/i.test(text)?fallback:(text||fallback);})(); }
   function safePublicText(value,fallback=""){ return displayTerms()?.publicText?.(value,fallback) || (()=>{let text=String(value??"").replace(/\s+/g," ").trim();text=text.replace(/\blevel\s+distribution\b/gi,"توزيع مستويات الأداء").replace(/\bsemanas?\b/gi,"أسابيع").replace(/\bweeks?\b/gi,"أسابيع").replace(/\bmonths?\b/gi,"أشهر").replace(/\bundefined\b/gi,"").replace(/\s+([،؛:.])/g,"$1").replace(/\s+/g," ").trim();return text||fallback;})(); }
+  function reportSourceLabel(context={}){
+    const sourceMeta=context.sourceMeta&&typeof context.sourceMeta==="object"?context.sourceMeta:{};
+    const raw=String(context.sourceName||"").trim();
+    const sourceType=String(sourceMeta.sourceType||"").toLowerCase();
+    const pages=Array.isArray(sourceMeta.pages)?[...new Set(sourceMeta.pages.map(Number).filter(Number.isFinite))]:[];
+    const pageCount=pages.length||Number(sourceMeta.pageCount)||0;
+    const pageSuffix=pageCount>0?` • ${pageCount===1?"صفحة واحدة":pageCount===2?"صفحتان":`${pageCount} صفحة`}`:"";
+    if(sourceType==="pdf"||/\.pdf(?:\s|$|[·•])/i.test(raw))return `ملف PDF${pageSuffix}`;
+    if(["xlsx","xlsm","excel"].includes(sourceType)||/\.(?:xlsx|xlsm)(?:\s|$|[·•])/i.test(raw))return "ملف Excel";
+    if(sourceType==="docx"||/\.docx(?:\s|$|[·•])/i.test(raw))return "ملف Word";
+    if(["csv","tsv","txt"].includes(sourceType)||/\.(?:csv|tsv|txt)(?:\s|$|[·•])/i.test(raw))return "ملف بيانات";
+    if(["image","png","jpg","jpeg","webp"].includes(sourceType)||/\.(?:png|jpe?g|webp)(?:\s|$|[·•])/i.test(raw))return "صورة مرفوعة";
+    let clean=raw.replace(/\s*[·•]\s*(?:جدول PDF منظم|الصفحات?\s*[0-9،,\-–— ]+|صفحة\s*\d+).*$/i,"").replace(/\s*[·•]\s*(?:sheet|ورقة)\s*\d+.*$/i,"").trim();
+    return safePublicText(clean||"ملف مرفوع","ملف مرفوع");
+  }
   function safeTextList(items){ return Array.isArray(items)?items.map(item=>safePublicText(item,"")).filter(Boolean):[]; }
   function chunkBalanced(items,maxPerPage){
     if(!items.length) return [];
@@ -308,7 +323,7 @@
   }
 
   function buildReportHtml(context,options={}){
-    const data=buildReportData(context),analysis=data.analysis,meta=data.meta,autoPrint=options.autoPrint===true,reportMode=options.reportMode==="executive"?"executive":"full",metricGroups=selectMetricGroups(data),title=reportTitle(data,context),subtitle=clampText(meta.title||context.sourceName,240);
+    const data=buildReportData(context),analysis=data.analysis,meta=data.meta,autoPrint=options.autoPrint===true,reportMode=options.reportMode==="executive"?"executive":"full",metricGroups=selectMetricGroups(data),title=reportTitle(data,context),sourceDisplay=reportSourceLabel(context),subtitle=clampText(meta.title||sourceDisplay,240);
     validateChartContract(data);
     const pages=[];
     const multiVisitReport=analysis.kind==="supervision_multi_visit"||analysis.typeId==="supervision_multi_visit"||context.type?.id==="supervision_multi_visit";
@@ -330,7 +345,7 @@
       if(chartWeight(candidate)===1&&candidateRows<=6){compactSupplementalChart=candidate;advancedChartSplit.restPages.length=0;}
     }
 
-    const metaHtml=`<div class="meta-grid"><div><span>نوع الاستمارة</span><strong>${escapeHtml(context.type?.name||"—")}</strong></div><div><span>المدرسة</span><strong>${escapeHtml(meta.school||"غير محددة في الملف")}</strong></div><div><span>المادة</span><strong>${escapeHtml(meta.subject||"غير محددة")}</strong></div><div><span>الصف / الفئة</span><strong>${escapeHtml(meta.grade||"غير محدد")}</strong></div><div><span>العام / الفترة</span><strong>${escapeHtml([meta.academicYear,meta.period].filter(Boolean).join(" - ")||"غير محدد")}</strong></div><div><span>مصدر البيانات</span><strong>${escapeHtml(meta.sourceName)}</strong></div></div>`;
+    const metaHtml=`<div class="meta-grid"><div><span>نوع الاستمارة</span><strong>${escapeHtml(context.type?.name||"—")}</strong></div><div><span>المدرسة</span><strong>${escapeHtml(meta.school||"غير محددة في الملف")}</strong></div><div><span>المادة</span><strong>${escapeHtml(meta.subject||"غير محددة")}</strong></div><div><span>الصف / الفئة</span><strong>${escapeHtml(meta.grade||"غير محدد")}</strong></div><div><span>العام / الفترة</span><strong>${escapeHtml([meta.academicYear,meta.period].filter(Boolean).join(" - ")||"غير محدد")}</strong></div><div><span>مصدر البيانات</span><strong>${escapeHtml(sourceDisplay)}</strong></div></div>`;
     const primaryRowCount=primaryCharts.reduce((sum,chart)=>sum+(chart.type==="bar"&&Array.isArray(chart.data)?chart.data.length:0),0);
     const exec=`<div class="executive-page-layout${primaryRowCount>=12?" executive-dense-charts":""}"><div class="report-title"><div><span>التقرير التحليلي الرسمي</span><h1>${escapeHtml(title)}</h1><p>${escapeHtml(subtitle)}</p></div><div class="report-date"><small>تاريخ التقرير</small><strong>${escapeHtml(formatDate(data.generatedAt))}</strong></div></div>${metaHtml}<div class="section-heading"><div><span>01</span><h2>الملخص التنفيذي</h2></div><p>القراءة العليا للقرار قبل الانتقال إلى الطبقات الإحصائية والتشخيصية.</p></div><div class="executive-grid"><article class="executive-summary"><small>الحكم التنفيذي</small><h2>${escapeHtml(analysis.executiveTitle||title)}</h2><p>${escapeHtml(analysis.executiveSummary||"")}</p></article><article class="analysis-status"><small>حالة التحليل</small><strong>${data.aiUsed?"تحليل تربوي موثق":"تحليل غير مكتمل"}</strong><p>${escapeHtml(data.profile.dataSufficiency||"كفاية البيانات غير محددة")}</p></article></div><div class="metric-grid core-metrics">${metricGroups.core.map(metricCard).join("")}</div>${primaryCharts.length?`<div class="chart-grid primary-charts">${primaryCharts.map((chart,i)=>chartCard(chart,i+1)).join("")}</div>`:""}</div>`;
     pages.push({section:"الملخص التنفيذي",content:exec});
@@ -402,7 +417,8 @@ function updatePagination(){const sheets=[...document.querySelectorAll(".report-
 const SPLITTABLE_SELECTOR=".chart-grid,.diagnostic-grid,.findings-grid,.plan-cards,.tools-grid,.timeline,.governance-grid,.metric-grid";
 function isSplittableContainer(node){return Boolean(node?.matches?.(SPLITTABLE_SELECTOR)&&node.children.length)}
 function refreshFragment(container){container.classList.add("flow-fragment");if(container.classList.contains("plan-cards")){[...container.classList].filter(name=>/^plan-cards-[123]$/.test(name)).forEach(name=>container.classList.remove(name));container.classList.add("plan-cards-"+Math.min(3,Math.max(1,container.children.length)))}return container}
-function setSheetSections(sheet,section){const values=(sheet.dataset.flowSections||"").split("|").map(value=>value.trim()).filter(Boolean);if(section&&!values.includes(section))values.push(section);sheet.dataset.flowSections=values.join("|");sheet.dataset.section=values.join(" / ");const label=sheet.querySelector(".page-section small");if(label)label.textContent=values.length>2?values[0]+" + "+(values.length-1)+" أقسام":(values.join(" / ")||sectionName(sheet))}
+function publicFlowSectionName(value){const names={"الاستنتاجات التشخيصية":"الاستنتاجات","خطة التحسين والتدخل":"خطة التحسين","المتابعة والحوكمة":"المتابعة","القراءة التفسيرية":"القراءة التفسيرية","التحليل المتقدم":"التحليل المتقدم","الرسوم المتخصصة":"الرسوم المتخصصة"};return names[value]||value}
+function setSheetSections(sheet,section){const values=(sheet.dataset.flowSections||"").split("|").map(value=>value.trim()).filter(Boolean);if(section&&!values.includes(section))values.push(section);sheet.dataset.flowSections=values.join("|");sheet.dataset.section=values.join(" / ");const label=sheet.querySelector(".page-section small");if(label)label.textContent=(values.map(publicFlowSectionName).join(" / ")||sectionName(sheet))}
 function createFlowSheet(template,anchor,section){const sheet=template.cloneNode(true),content=sheet.querySelector(".page-content");sheet.classList.add("report-sheet-flow-packed");sheet.dataset.packable="1";sheet.dataset.flowSections="";content.replaceChildren();anchor.parentNode.insertBefore(sheet,anchor);setSheetSections(sheet,section);return sheet}
 function continuationLabel(heading,section){const box=document.createElement("div");box.className="flow-continuation-label";const tag=document.createElement("span"),title=document.createElement("strong");tag.textContent="متابعة";title.textContent=heading?.querySelector("h2")?.textContent?.trim()||section||"استكمال التحليل";box.append(tag,title);return box}
 function tryAppend(sheet,nodes){const content=sheet.querySelector(".page-content");nodes.filter(Boolean).forEach(node=>content.appendChild(node));void sheet.offsetHeight;if(pageFits(sheet))return true;nodes.filter(Boolean).forEach(node=>node.remove());return false}
