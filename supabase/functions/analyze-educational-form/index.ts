@@ -1,4 +1,4 @@
-const EDGE_VERSION = "0.15.9";
+const EDGE_VERSION = "0.16.0";
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 const DEFAULT_MODEL = "gemini-3.6-flash";
 const DEFAULT_FAST_MODEL = "gemini-3.5-flash-lite";
@@ -21,6 +21,13 @@ const PRIMARY_ACTION_ATTEMPT_TIMEOUT_MS = 13_000;
 const PRIMARY_REPAIR_ATTEMPT_TIMEOUT_MS = 11_000;
 const PRIMARY_TRANSIENT_RESCUE_ATTEMPT_TIMEOUT_MS = 8_000;
 const PRIMARY_MIN_REMAINING_MS = 2_500;
+// v0.16.0: مسار القرار الواحد. طلب AI أساسي واحد + fallback واحد فقط،
+// دون fan-out متعدد المقاطع أو سلاسل repair/rescue.
+const PRIMARY_DECISION_DEADLINE_MS = 38_000;
+const PRIMARY_DECISION_ATTEMPT_TIMEOUT_MS = 23_000;
+const PRIMARY_DECISION_FALLBACK_TIMEOUT_MS = 13_000;
+const PRIMARY_DECISION_MAX_OUTPUT_TOKENS = 2_000;
+const PRIMARY_DECISION_MAX_MODELS = 2;
 
 type JsonRecord = Record<string, unknown>;
 
@@ -287,6 +294,10 @@ const PRIMARY_REASONING_SCHEMA: JsonRecord = {
   },
   required: ["contractVersion", "analysisProfile", "executive", "analysisUnits", "methodChecks", "additionalCautions", "missingDataRequests", "suggestedNewType"],
 };
+
+// v0.16.0: عقد نواة القرار هو عقد reasoning المختصر نفسه. الخادم يوسّعه
+// لاحقًا إلى التدخلات والمتابعة دون طلب Gemini ثانٍ.
+const PRIMARY_DECISION_SCHEMA: JsonRecord = PRIMARY_REASONING_SCHEMA;
 
 const PRIMARY_ACTION_SCHEMA: JsonRecord = {
   type: "object",
@@ -1432,7 +1443,9 @@ function validatePrimaryAnalysis(result: unknown, payload: JsonRecord, mode: "pr
 
   const targetGroups = new Set(interventions.map(item => normalizeForComparison(item.targetGroup)).filter(Boolean));
   const interventionSignatures = new Set(interventions.map(item => normalizeForComparison(`${item.targetGroup} ${item.issue}`)).filter(Boolean));
-  if (interventions.length >= 2 && ((scoreLike && targetGroups.size < 2) || (!scoreLike && interventionSignatures.size < 2))) {
+  const availableScoreGroups = scoreContext ? scoreContext.groups.filter(group => group.count > 0).length : 0;
+  const requiredDistinctScoreGroups = scoreContext ? Math.min(2, Math.max(1, availableScoreGroups)) : 2;
+  if (interventions.length >= 2 && ((scoreLike && targetGroups.size < requiredDistinctScoreGroups) || (!scoreLike && interventionSignatures.size < 2))) {
     throw new Error("التدخلات الذكية لم تقدم تمايزًا حقيقيًا بين الفئات أو القضايا المستهدفة.");
   }
 
@@ -1768,195 +1781,282 @@ function validationRepairTargets(message: string): PrimarySegmentName[] {
   return ["reasoning", "action"];
 }
 
-async function analyzePrimary(payload: JsonRecord): Promise<JsonRecord> {
-  const startedAt = performance.now();
-  const deadlineAt = startedAt + PRIMARY_ANALYSIS_DEADLINE_MS;
-  const initialPhaseDeadlineAt = Math.min(deadlineAt, startedAt + PRIMARY_INITIAL_PHASE_DEADLINE_MS);
-  const transientRescueDeadlineAt = Math.min(deadlineAt, startedAt + PRIMARY_TRANSIENT_RESCUE_PHASE_DEADLINE_MS);
+function primaryDecisionModels(): string[] {
+  const preferred = configuredModelChain(
+    "GEMINI_ANALYSIS_MODEL",
+    "GEMINI_REASONING_FALLBACK_MODELS",
+    DEFAULT_ANALYSIS_MODEL,
+    ["gemini-3.5-flash-lite"],
+  );
+  const fast = configuredModelChain(
+    "GEMINI_FAST_MODEL",
+    "GEMINI_FAST_FALLBACK_MODELS",
+    DEFAULT_FAST_MODEL,
+    ["gemini-3.5-flash-lite"],
+  );
+  return [...new Set([...preferred.slice(0, 1), ...fast])]
+    .map(normalizeModelName)
+    .filter(Boolean)
+    .slice(0, PRIMARY_DECISION_MAX_MODELS);
+}
 
-  // الطلبان أصغر ويعملان بالتوازي، لكن المرحلة الأولى لها سقف مستقل.
-  // هذا يحجز وقتًا فعليًا لإنقاذ المقطع المتعثر بدل الوصول إلى rescue بعد استنزاف المهلة الكلية.
-  const segmentSettled = await Promise.allSettled([
-    requestPrimarySegment("reasoning", payload, initialPhaseDeadlineAt),
-    requestPrimarySegment("action", payload, initialPhaseDeadlineAt),
-  ]);
+function primaryDecisionInstructions(): string {
+  return `أنت نواة القرار التربوي الوحيدة في تطبيق «تقارير». ستصلك مؤشرات ورسوم وأدلة محسوبة حتميًا من كامل البيانات. لا تعِد الحسابات ولا تنشئ خطة متابعة رقمية؛ الخادم يبني التدخلات والمتابعة من قرارك ومن الأرقام الموثوقة.
 
-  const segmentNames: PrimarySegmentName[] = ["reasoning", "action"];
-  const initialSegmentErrors: Partial<Record<PrimarySegmentName, string>> = {};
-  const transientRescuedSegments = new Set<PrimarySegmentName>();
-  const segmentRuns: Partial<Record<PrimarySegmentName, PrimarySegmentRun>> = {};
-  const transientFailures: Array<{ segment: PrimarySegmentName; error: unknown }> = [];
-  let failedInitialAttemptedModels = 0;
+أعد JSON وفق مخطط القرار فقط، وباختصار مهني:
+1) executive: حكم تنفيذي موجز مرتبط بالمراجع المتاحة.
+2) analysisProfile: طريقة القراءة، كفاية البيانات، أبعاد القرار واستخداماته.
+3) analysisUnits: وحدتان أو ثلاث وحدات مختلفة فعلًا. في كل وحدة افصل diagnosticAnalysis عن decisionFinding، واربطها بـ evidenceRefs الموجودة حرفيًا فقط.
+4) recommendedAction في كل وحدة يجب أن يكون إجراءً تربويًا عمليًا ومحددًا بما يكفي ليحوّله الخادم إلى تدخل تنفيذي. لا تضع أعدادًا مستهدفة من عندك.
+5) methodChecks: صفر إلى أداتين فقط إذا غيّرت الأداة معنى القرار.
+6) لا تحول الارتباط إلى سبب، ولا تسمِّ مهارة أو مفهومًا بعينه إذا كانت البيانات درجات كلية فقط. اطلب تحليل مفردات أو اختبارًا تشخيصيًا عند الحاجة.
+7) لا تستخدم أسماء الأشخاص أو البيانات الشخصية، ولا تعِد ترتيب الطلبة أو حساب المراكز.
+8) إذا كان recognizedType.id = multi_subject_results فالتزم حرفيًا بـ evidenceAnalysis.scopeContext.analysisMode وselectedSubject وسياسة rankingPolicy المقفلة.
+9) إذا كان recognizedType.id = supervision_multi_visit فالتزم بنطاق الزيارات والعينة، والمقياس المعكوس 1 متميز و5 يحتاج إلى تدخل، ولا تعمم على المدرسة كلها.
+10) إذا كان source.meta.documentContext.aggregatedReport = true فتعامل مع التعارضات كتباين سياقي ما لم تثبت أنها لنفس الشخص والزيارة والزمن.
+11) استخدم بيانات الترويسة المنظمة داخل source.meta.metadata عندما تكون موجودة.
+12) اجعل diagnosticAnalysis بين 140 و260 حرفًا، وdecisionFinding بين 60 و140 حرفًا، وeducationalImpact وrecommendedAction بين 45 و120 حرفًا، والملخص التنفيذي بين 140 و280 حرفًا.
+13) additionalCautions وmissingDataRequests مختصرة ولا تتجاوز ما تدعمه الأدلة.
+14) عند نوع غير معروف فقط يمكن suggestedNewType.needed = true؛ لا تخترع نوعًا جديدًا لملف معروف.
+15) أعد JSON خامًا فقط، بلا مقدمات أو شرح خارج المخطط.
 
-  for (let index = 0; index < segmentSettled.length; index += 1) {
-    const segment = segmentNames[index];
-    const settled = segmentSettled[index];
-    if (settled.status === "fulfilled") {
-      segmentRuns[segment] = settled.value;
-      continue;
-    }
-    const message = settled.reason instanceof Error ? settled.reason.message : String(settled.reason || "خطأ غير معروف");
-    initialSegmentErrors[segment] = cleanString(message, 520);
-    failedInitialAttemptedModels += Math.max(1, Number((settled.reason as GeminiFallbackError)?.attemptedModels || 1));
-    const failureKind = modelFailureKind(settled.reason);
-    // لا نحول 429 إلى سلسلة fallback/rescue. هذا حد معدل/حصة ويجب الحفاظ عليه
-    // كي لا يضاعف الطلب الواحد عدد استدعاءات Gemini ويزيد مدة الحظر.
-    if (failureKind === "rate_limit") throw settled.reason;
-    if (!modelIsTransientlyBusy(settled.reason)) {
-      throw new Error(`فشل مقطع ${segment} بعد استجابة Gemini غير قابلة للإنقاذ الشبكي: ${message}`);
-    }
-    transientFailures.push({ segment, error: settled.reason });
-  }
+هذه هي نواة القرار الوحيدة في التشغيل. لا يوجد مقطع action ولا repair ولا segment rescue لاحق من Gemini.`;
+}
 
-  if (transientFailures.length) {
-    const rescueSettled = await Promise.allSettled(
-      transientFailures.map(item => rescueTransientPrimarySegment(
-        item.segment,
-        payload,
-        transientRescueDeadlineAt,
-        geminiErrorAttemptedModels(item.error),
-      )),
-    );
-    for (let index = 0; index < rescueSettled.length; index += 1) {
-      const failed = transientFailures[index];
-      const rescued = rescueSettled[index];
-      if (rescued.status === "fulfilled") {
-        segmentRuns[failed.segment] = rescued.value;
-        transientRescuedSegments.add(failed.segment);
-        continue;
-      }
-      const rescueMessage = rescued.reason instanceof Error ? rescued.reason.message : String(rescued.reason || "خطأ غير معروف");
-      const firstMessage = initialSegmentErrors[failed.segment] || "تعثر شبكي أولي";
-      const status = geminiErrorStatus(rescued.reason) || geminiErrorStatus(failed.error) || 503;
-      const combinedAttempts = [...new Set([
-        ...geminiErrorAttemptedModels(failed.error),
-        ...geminiErrorAttemptedModels(rescued.reason),
-      ])];
-      throw geminiRequestError(
-        `فشل مقطع ${failed.segment} بعد إنقاذ شبكي معزول. المحاولة الأولى: ${firstMessage}. محاولة الإنقاذ: ${rescueMessage}`,
-        status,
-        {
-          failureKind: modelFailureKind(rescued.reason),
-          retryAfterMs: geminiErrorRetryAfterMs(rescued.reason) || geminiErrorRetryAfterMs(failed.error),
-          attemptedModelNames: combinedAttempts,
-        },
-      );
-    }
-  }
+function compactPrimaryDecisionPayload(payload: JsonRecord): JsonRecord {
+  const recognized = payload.recognizedType && typeof payload.recognizedType === "object" ? payload.recognizedType as JsonRecord : {};
+  const typeId = String(recognized.id || "");
+  const scoreLike = new Set(["student_results", "single_subject", "assessment_component", "level_distribution", "multi_subject_results", "cross_subject"]);
+  if (!scoreLike.has(typeId)) return payload;
 
-  const reasoning = segmentRuns.reasoning;
-  const action = segmentRuns.action;
-  if (!reasoning || !action) {
-    throw new Error("لم تكتمل مقاطع التحليل الأساسية بعد مسار الإنقاذ.");
-  }
-
-  let reasoningRun = reasoning;
-  let actionRun = action;
-  let combined = mergePrimarySegments(reasoningRun.value, actionRun.value);
-  let checked = tryValidatePrimaryObject(combined, payload, "primary");
-  const firstValidationError = checked.error instanceof Error ? checked.error.message : "";
-  let postValidationRepairUsed = false;
-  let rescueValidationError = "";
-  const repairedSegments = new Set<PrimarySegmentName>([
-    ...(reasoningRun.repaired ? ["reasoning" as const] : []),
-    ...(actionRun.repaired ? ["action" as const] : []),
-  ]);
-
-  if (!checked.result) {
-    postValidationRepairUsed = true;
-    const targets = validationRepairTargets(firstValidationError);
-    const repairs = await Promise.all(targets.map(async segment => {
-      const previous = segment === "reasoning" ? reasoningRun.value : actionRun.value;
-      return repairPrimarySegment(segment, payload, previous, firstValidationError, deadlineAt);
-    }));
-    for (const repaired of repairs) {
-      repairedSegments.add(repaired.segment);
-      if (repaired.segment === "reasoning") reasoningRun = repaired;
-      else actionRun = repaired;
-    }
-    combined = mergePrimarySegments(reasoningRun.value, actionRun.value);
-    checked = tryValidatePrimaryObject(combined, payload, "rescue");
-    rescueValidationError = checked.error instanceof Error ? checked.error.message : "";
-  }
-
-  if (!checked.result) {
-    const detail = checked.error instanceof Error ? checked.error.message : "نتيجة غير مكتملة";
-    throw new Error(`فشل إصلاح مقاطع عقد التحليل بعد استجابات Gemini: ${detail}`);
-  }
-
-  const result = checked.result;
-  const validation = result.validation && typeof result.validation === "object" ? result.validation as JsonRecord : {};
-  const reasoningThoughtTokens = usageCount(reasoningRun.raw, "thoughtsTokenCount");
-  const actionThoughtTokens = usageCount(actionRun.raw, "thoughtsTokenCount");
-  const reasoningCandidateTokens = usageCount(reasoningRun.raw, "candidatesTokenCount");
-  const actionCandidateTokens = usageCount(actionRun.raw, "candidatesTokenCount");
-  const totalAttemptedModels = failedInitialAttemptedModels + reasoningRun.attemptedModels + actionRun.attemptedModels + reasoningRun.repairAttemptedModels + actionRun.repairAttemptedModels;
-  const transientRescueUsed = transientRescuedSegments.size > 0;
-  const rescueUsed = transientRescueUsed || repairedSegments.size > 0 || postValidationRepairUsed;
-
+  const data = payload.data && typeof payload.data === "object" ? payload.data as JsonRecord : {};
+  const refs = (Array.isArray(payload.availableEvidenceRefs) ? payload.availableEvidenceRefs : [])
+    .map(String)
+    .filter(ref => !ref.startsWith("row:"));
   return {
-    result,
-    model: `${String(reasoningRun.raw.modelVersion || reasoningRun.modelUsed)} + ${String(actionRun.raw.modelVersion || actionRun.modelUsed)}`,
-    usage: {
-      reasoning: reasoningRun.raw.usageMetadata || null,
-      action: actionRun.raw.usageMetadata || null,
+    ...payload,
+    data: {
+      mode: cleanString(data.mode || "table", 40) || "table",
+      headers: [],
+      sampleRows: [],
+      rowCount: Math.max(0, Math.trunc(toFiniteNumber(data.rowCount) ?? 0)),
+      sentRowCount: 0,
+      maskedHeaders: Array.isArray(data.maskedHeaders) ? data.maskedHeaders : [],
+      sampling: "metrics-and-charts-only",
+      truncated: true,
     },
-    requestId: reasoningRun.requestId || actionRun.requestId,
-    provider: "gemini",
-    serverTiming: {
-      aiPrimary: true,
-      segmentedPrimary: true,
-      parallelSegments: true,
-      geminiMs: Math.round(performance.now() - startedAt),
-      payloadChars: JSON.stringify(payload).length,
-      outputCharacters: reasoningRun.candidateText.length + actionRun.candidateText.length,
-      finishReason: `${reasoningRun.finishReason}/${actionRun.finishReason}`,
-      firstFinishReason: `${reasoningRun.finishReason}/${actionRun.finishReason}`,
-      thinkingLevel: "segmented-low-minimal",
-      maxOutputTokens: primarySegmentOutputLimit("reasoning") + primarySegmentOutputLimit("action"),
-      rescueUsed,
-      transientRescueUsed,
-      transientRescuedSegments: [...transientRescuedSegments],
-      transientInitialAttemptedModels: failedInitialAttemptedModels,
-      repairedSegments: [...repairedSegments],
-      firstValidationError: cleanString(firstValidationError, 520),
-      rescueValidationError: cleanString(rescueValidationError, 520),
-      repairContextUsed: repairedSegments.size > 0 || postValidationRepairUsed,
-      fallbackUsed: transientRescueUsed || reasoningRun.fallbackUsed || actionRun.fallbackUsed,
-      fallbackReason: [
-        transientRescueUsed ? "segment_transient_rescue" : "",
-        reasoningRun.fallbackReason,
-        actionRun.fallbackReason,
-      ].filter(Boolean).join(","),
-      attemptedModels: totalAttemptedModels,
-      reasoningModel: reasoningRun.modelUsed,
-      actionModel: actionRun.modelUsed,
-      serverDeadlineMs: PRIMARY_ANALYSIS_DEADLINE_MS,
-      initialPhaseDeadlineMs: PRIMARY_INITIAL_PHASE_DEADLINE_MS,
-      transientRescuePhaseDeadlineMs: PRIMARY_TRANSIENT_RESCUE_PHASE_DEADLINE_MS,
-      reservedPostRescueMs: PRIMARY_ANALYSIS_DEADLINE_MS - PRIMARY_TRANSIENT_RESCUE_PHASE_DEADLINE_MS,
-      primaryAttemptTimeoutMs: Math.max(PRIMARY_REASONING_ATTEMPT_TIMEOUT_MS, PRIMARY_ACTION_ATTEMPT_TIMEOUT_MS),
-      reasoningAttemptTimeoutMs: PRIMARY_REASONING_ATTEMPT_TIMEOUT_MS,
-      actionAttemptTimeoutMs: PRIMARY_ACTION_ATTEMPT_TIMEOUT_MS,
-      rescueAttemptTimeoutMs: PRIMARY_REPAIR_ATTEMPT_TIMEOUT_MS,
-      transientRescueAttemptTimeoutMs: PRIMARY_TRANSIENT_RESCUE_ATTEMPT_TIMEOUT_MS,
-      firstThoughtTokens: reasoningThoughtTokens + actionThoughtTokens,
-      firstCandidateTokens: reasoningCandidateTokens + actionCandidateTokens,
-      finalThoughtTokens: reasoningThoughtTokens + actionThoughtTokens,
-      finalCandidateTokens: reasoningCandidateTokens + actionCandidateTokens,
-      acceptedAnalysisUnits: validation.acceptedAnalysisUnits || 0,
-      acceptedDiagnosticSections: validation.acceptedDiagnosticSections || 0,
-      acceptedFindings: validation.acceptedFindings || 0,
-      acceptedInterventions: validation.acceptedInterventions || 0,
-      acceptedMonitoringStages: validation.acceptedMonitoringStages || 0,
-      acceptedQualityTools: validation.acceptedQualityTools || 0,
-      distinctTargetGroups: validation.distinctTargetGroups || 0,
-      numericGuardedInterventions: validation.numericGuardedInterventions || 0,
-      adjustedNumericTargets: validation.adjustedNumericTargets || 0,
-      scopeGuardedInterventions: validation.scopeGuardedInterventions || 0,
-      adjustedScopeTargets: validation.adjustedScopeTargets || 0,
+    availableEvidenceRefs: refs,
+    evidenceReferenceGuide: {
+      metrics: "metric:NAME مؤشر محسوب حتميًا من كامل البيانات",
+      rows: "لا تُستخدم مراجع الصفوف في ملفات الدرجات داخل مسار القرار المختصر",
     },
   };
+}
+
+function primaryOwnerRole(payload: JsonRecord): string {
+  const recognized = payload.recognizedType && typeof payload.recognizedType === "object" ? payload.recognizedType as JsonRecord : {};
+  const typeId = String(recognized.id || "");
+  const evidence = payload.evidenceAnalysis && typeof payload.evidenceAnalysis === "object" ? payload.evidenceAnalysis as JsonRecord : {};
+  const scope = evidence.scopeContext && typeof evidence.scopeContext === "object" ? evidence.scopeContext as JsonRecord : {};
+  if (typeId === "multi_subject_results") return String(scope.analysisMode || "") === "subject" ? "معلم المادة" : "فريق المواد والمعلمون المعنيون";
+  if (["student_results", "single_subject", "assessment_component", "level_distribution", "cross_subject"].includes(typeId)) return "معلم المادة";
+  if (typeId === "supervision_multi_visit" || typeId === "supervision_indicator" || typeId === "supervision_narrative") return "المشرف التربوي وإدارة المدرسة";
+  return "فريق العمل المسؤول";
+}
+
+function decisionEvidenceRefs(decision: JsonRecord, payload: JsonRecord): string[] {
+  const allowed = allowedRefsFromPayload(payload);
+  const executive = decision.executive && typeof decision.executive === "object" ? decision.executive as JsonRecord : {};
+  const units = Array.isArray(decision.analysisUnits) ? decision.analysisUnits as JsonRecord[] : [];
+  return [...new Set([
+    ...cleanRefs(executive.evidenceRefs, allowed, 5),
+    ...units.flatMap(item => cleanRefs(item.evidenceRefs, allowed, 5)),
+  ])].slice(0, 5);
+}
+
+function scoreGroupSeeds(payload: JsonRecord): InterventionGroup[] {
+  const context = scoreInterventionContext(payload);
+  if (!context) return [];
+  const priority = ["deep_gap", "moderate_gap", "near_mastery", "mastery"];
+  const map = new Map(context.groups.map(group => [group.id, group]));
+  return priority.map(id => map.get(id)).filter((item): item is InterventionGroup => Boolean(item && item.count > 0));
+}
+
+function expandPrimaryDecision(decision: JsonRecord, payload: JsonRecord): JsonRecord {
+  const units = (Array.isArray(decision.analysisUnits) ? decision.analysisUnits as JsonRecord[] : []).slice(0, 3);
+  const recognized = payload.recognizedType && typeof payload.recognizedType === "object" ? payload.recognizedType as JsonRecord : {};
+  const typeId = String(recognized.id || "");
+  const numericScoreType = ["student_results", "single_subject", "assessment_component"].includes(typeId);
+  const scoreLike = ["student_results", "single_subject", "assessment_component", "level_distribution", "multi_subject_results", "cross_subject"].includes(typeId);
+  const groups = numericScoreType ? scoreGroupSeeds(payload) : [];
+  const owner = primaryOwnerRole(payload);
+  const allowed = allowedRefsFromPayload(payload);
+  const interventions: JsonRecord[] = [];
+  const wanted = Math.max(2, Math.min(3, units.length));
+
+  for (let index = 0; index < wanted; index += 1) {
+    const unit = units[index] || units[units.length - 1] || {};
+    const severity = String(unit.severity || "medium");
+    const refs = cleanRefs(unit.evidenceRefs, allowed, 6);
+    const group = groups.length ? groups[Math.min(index, groups.length - 1)] : null;
+    let metricMode = "custom";
+    let targetValue = 0;
+    let targetSegmentId = "";
+    let targetGroupIds: string[] = [];
+    if (group) {
+      targetGroupIds = [group.id];
+      targetSegmentId = group.id;
+      if (group.id === "mastery") {
+        metricMode = "mastery_maintenance";
+        targetValue = 90;
+      } else if (group.id === "near_mastery") {
+        const context = scoreInterventionContext(payload);
+        metricMode = "mastery_gain";
+        targetValue = context ? Math.min(100, context.baselineMasteryRate + 5) : 0;
+        targetSegmentId = "";
+      } else {
+        metricMode = "segment_reduction";
+        targetValue = 20;
+      }
+    }
+    const title = cleanString(unit.title, 180) || `أولوية ${index + 1}`;
+    const action = cleanString(unit.recommendedAction, 620) || `تنفيذ تدخل موجه لمعالجة ${title}.`;
+    const base: JsonRecord = {
+      priority: severity === "high" ? "عالية" : severity === "low" ? "منخفضة" : "متوسطة",
+      issue: cleanString(unit.decisionFinding || unit.title, 260) || title,
+      targetGroup: group ? group.label : scoreLike ? `الفئة المرتبطة بأولوية «${title}»` : `الفئة المرتبطة بدليل «${title}»`,
+      targetGroupIds,
+      action,
+      implementationSteps: [
+        `تثبيت خط الأساس المرتبط بأولوية «${title}» من المؤشرات الحالية.`,
+        action,
+        "مراجعة القياس المرحلي وتعديل شدة التدخل وفق النتيجة الموثقة.",
+      ],
+      responsibleRole: owner,
+      timeframe: severity === "high" ? "4 أسابيع" : "6 أسابيع",
+      successIndicator: `تحسن موثق في المؤشر المرتبط بأولوية «${title}» مقارنة بخط الأساس.`,
+      successMetric: { mode: metricMode, targetValue, targetSegmentId },
+      monitoringMethod: "مقارنة المؤشر نفسه بين خط الأساس والقياس المرحلي والقياس النهائي.",
+      contingency: "إذا لم يظهر تحسن في القياس المرحلي، تُراجع شدة التدخل وطريقة التنفيذ قبل القياس النهائي.",
+      resources: ["أدوات القياس المعتمدة", "سجلات المتابعة"],
+      evidenceRefs: refs,
+    };
+    interventions.push(base);
+  }
+
+  const refs = decisionEvidenceRefs(decision, payload);
+  const monitoringPlan = [
+    { stage: "خط الأساس", timing: "الآن", measure: "تثبيت المؤشرات الحالية التي بُني عليها القرار قبل بدء التدخل.", owner, evidenceRefs: refs },
+    { stage: "متابعة مرحلية", timing: "بعد 3 أسابيع", measure: "إعادة قياس المؤشرات نفسها ومقارنة الحركة بالفئات أو القضايا المستهدفة.", owner, evidenceRefs: refs },
+    { stage: "قياس أثر نهائي", timing: "نهاية فترة التدخل", measure: "مقارنة النتيجة النهائية بخط الأساس واتخاذ قرار الاستمرار أو التعديل أو الإغلاق.", owner, evidenceRefs: refs },
+  ];
+
+  return {
+    ...decision,
+    interventions,
+    monitoringPlan,
+  };
+}
+
+async function analyzePrimary(payload: JsonRecord): Promise<JsonRecord> {
+  const startedAt = performance.now();
+  const deadlineAt = startedAt + PRIMARY_DECISION_DEADLINE_MS;
+  const decisionPayload = compactPrimaryDecisionPayload(payload);
+  const models = primaryDecisionModels();
+  const attemptedModelNames: string[] = [];
+  let lastError: unknown = null;
+  let firstValidationError = "";
+
+  for (let index = 0; index < models.length; index += 1) {
+    const model = normalizeModelName(models[index]);
+    attemptedModelNames.push(model);
+    const remainingMs = deadlineAt - performance.now();
+    if (remainingMs <= PRIMARY_MIN_REMAINING_MS) break;
+    const attemptTimeoutMs = index === 0
+      ? Math.min(PRIMARY_DECISION_ATTEMPT_TIMEOUT_MS, Math.max(1_000, remainingMs - 700))
+      : Math.min(PRIMARY_DECISION_FALLBACK_TIMEOUT_MS, Math.max(1_000, remainingMs - 700));
+    const rejectionNote = firstValidationError
+      ? `\nالمحاولة السابقة لم تحقق العقد بسبب: ${cleanString(firstValidationError, 420)}. صحح هذا السبب تحديدًا.`
+      : "";
+    try {
+      const response = await geminiRequest(
+        model,
+        primaryRequestBody(
+          decisionPayload,
+          `${primaryDecisionInstructions()}${rejectionNote}`,
+          PRIMARY_DECISION_SCHEMA,
+          index === 0 ? "low" : "minimal",
+          PRIMARY_DECISION_MAX_OUTPUT_TOKENS,
+        ),
+        1,
+        { attemptTimeoutMs, deadlineAt, minRemainingMs: PRIMARY_MIN_REMAINING_MS },
+      );
+      const candidate = candidateResult(response.raw);
+      if (candidate.finishReason === "MAX_TOKENS") throw new Error("توقف نواة القرار عند حد الإخراج.");
+      const decision = parsePrimarySegment("reasoning", candidate.text);
+      const expanded = expandPrimaryDecision(decision, decisionPayload);
+      const result = validatePrimaryAnalysis(expanded, decisionPayload, "rescue");
+      const validation = result.validation && typeof result.validation === "object" ? result.validation as JsonRecord : {};
+      return {
+        result,
+        model: String(response.raw.modelVersion || model),
+        usage: { decision: response.raw.usageMetadata || null },
+        requestId: response.requestId,
+        provider: "gemini",
+        serverTiming: {
+          aiPrimary: true,
+          decisionCore: true,
+          segmentedPrimary: false,
+          parallelSegments: false,
+          geminiMs: Math.round(performance.now() - startedAt),
+          payloadChars: JSON.stringify(decisionPayload).length,
+          inputCompacted: JSON.stringify(decisionPayload).length < JSON.stringify(payload).length,
+          originalPayloadChars: JSON.stringify(payload).length,
+          outputCharacters: candidate.text.length,
+          finishReason: candidate.finishReason,
+          thinkingLevel: index === 0 ? "low" : "minimal",
+          maxOutputTokens: PRIMARY_DECISION_MAX_OUTPUT_TOKENS,
+          attemptedModels: attemptedModelNames.length,
+          attemptedModelNames: [...attemptedModelNames],
+          fallbackUsed: index > 0,
+          fallbackReason: index > 0 ? (firstValidationError ? "decision_contract_fallback" : "decision_transport_fallback") : "",
+          repairUsed: false,
+          rescueUsed: false,
+          serverDeadlineMs: PRIMARY_DECISION_DEADLINE_MS,
+          primaryAttemptTimeoutMs: PRIMARY_DECISION_ATTEMPT_TIMEOUT_MS,
+          fallbackAttemptTimeoutMs: PRIMARY_DECISION_FALLBACK_TIMEOUT_MS,
+          acceptedAnalysisUnits: validation.acceptedAnalysisUnits || 0,
+          acceptedDiagnosticSections: validation.acceptedDiagnosticSections || 0,
+          acceptedFindings: validation.acceptedFindings || 0,
+          acceptedInterventions: validation.acceptedInterventions || 0,
+          acceptedMonitoringStages: validation.acceptedMonitoringStages || 0,
+          acceptedQualityTools: validation.acceptedQualityTools || 0,
+          distinctTargetGroups: validation.distinctTargetGroups || 0,
+          numericGuardedInterventions: validation.numericGuardedInterventions || 0,
+          adjustedNumericTargets: validation.adjustedNumericTargets || 0,
+          scopeGuardedInterventions: validation.scopeGuardedInterventions || 0,
+          adjustedScopeTargets: validation.adjustedScopeTargets || 0,
+        },
+      };
+    } catch (error) {
+      lastError = error;
+      const kind = modelFailureKind(error);
+      const status = geminiErrorStatus(error);
+      if (kind === "rate_limit") throw annotateGeminiFallbackFailure(error, attemptedModelNames, "rate_limit");
+      if (status === 401 || status === 403) throw error;
+      if (/GEMINI_API_KEY|api key|مفتاح.*غير صالح/i.test(geminiErrorMessage(error))) throw error;
+      firstValidationError = geminiErrorMessage(error);
+      if (index >= models.length - 1) break;
+    }
+  }
+
+  const message = geminiErrorMessage(lastError) || "تعذر بناء نواة القرار الذكي ضمن المسار المحدود.";
+  const status = geminiErrorStatus(lastError) || (modelIsTransientlyBusy(lastError) ? 503 : 502);
+  throw geminiRequestError(`فشل مسار القرار الذكي المحدود بعد ${attemptedModelNames.length} نموذج/نماذج فقط: ${message}`, status, {
+    failureKind: modelFailureKind(lastError),
+    retryAfterMs: geminiErrorRetryAfterMs(lastError),
+    attemptedModelNames,
+  });
 }
 
 function errorInfo(error: unknown): { status: number; errorCode: string; retryable: boolean } {
@@ -1974,7 +2074,7 @@ function errorInfo(error: unknown): { status: number; errorCode: string; retryab
 
 function publicErrorMessage(info: { errorCode: string }, rawMessage: string): string {
   if (info.errorCode === "GEMINI_TRANSIENT") {
-    return "خدمة التحليل الذكي مزدحمة مؤقتًا. جرّب التطبيق تلقائيًا النماذج البديلة وإعادة الطلب، لكن الخدمة لم تستجب الآن. أعد المحاولة بعد قليل.";
+    return "خدمة التحليل الذكي لم تستجب ضمن المسار المحدود. جرّب الخادم النموذج الأساسي ثم fallback واحدًا فقط دون إطلاق سلسلة طلبات إضافية. أعد المحاولة بعد قليل.";
   }
   if (info.errorCode === "GEMINI_RATE_LIMIT") {
     return "تم بلوغ حد طلبات الذكاء الاصطناعي مؤقتًا. انتظر قليلًا ثم أعد المحاولة.";
@@ -1986,7 +2086,7 @@ function publicErrorMessage(info: { errorCode: string }, rawMessage: string): st
     return "لم يكتمل عقد التحليل الذكي ضمن حد الإخراج المعتمد.";
   }
   if (info.errorCode === "GEMINI_CONTRACT_REJECTED") {
-    return "وصلت استجابة التحليل، لكن حتى مسار إصلاح العقد لم يحقق معايير الجودة كاملة. بقيت الحسابات والأدلة محفوظة ويمكن إعادة المحاولة مباشرة.";
+    return "وصلت استجابة من نواة القرار، لكنها لم تحقق عقد الجودة بعد النموذج الأساسي وfallback المحدود. بقيت الحسابات والأدلة محفوظة ويمكن إعادة المحاولة مباشرة.";
   }
   if (info.errorCode === "REQUEST_NOT_RETRYABLE") return rawMessage;
   return "تعذر إكمال التحليل الذكي الآن. لم يعتمد التطبيق نتيجة ناقصة.";

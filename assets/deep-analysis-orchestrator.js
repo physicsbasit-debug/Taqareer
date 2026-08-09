@@ -3,8 +3,11 @@
 
   // Phase 2-A: الذكاء الاصطناعي هو مالك التحليل التربوي، بينما يبقى
   // المحرك المحلي مسؤولًا عن الحسابات والرسوم وحزمة الأدلة فقط.
-  const VERSION = "1.2.25";
-  const PROTOCOL_VERSION = "6.6.0";
+  const VERSION = "1.3.0";
+  const PROTOCOL_VERSION = "6.7.0";
+  const CACHE_KEY = "taqareer-ai-decision-core-cache-v1";
+  const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+  const CACHE_MAX_ITEMS = 6;
   const LABELS = Object.freeze({ primary: "التحليل التربوي المتقدم" });
   const TASK_LABELS = Object.freeze({ "analysis.primary": "التحليل التربوي المتقدم" });
 
@@ -131,21 +134,88 @@
     };
   }
 
+  function scoreLikeType(typeId) {
+    return ["student_results", "single_subject", "assessment_component", "level_distribution", "multi_subject_results", "cross_subject"].includes(String(typeId || ""));
+  }
+
+  function fnv1a(value) {
+    let hash = 0x811c9dc5;
+    const text = String(value || "");
+    for (let index = 0; index < text.length; index += 1) {
+      hash ^= text.charCodeAt(index);
+      hash = Math.imul(hash, 0x01000193) >>> 0;
+    }
+    return hash.toString(16).padStart(8, "0");
+  }
+
+  function cacheFingerprint(payload) {
+    const material = clone(payload || {});
+    delete material.appVersion;
+    if (material.source && typeof material.source === "object") delete material.source.name;
+    return `${PROTOCOL_VERSION}:${fnv1a(JSON.stringify(material))}`;
+  }
+
+  function cacheStorage() {
+    try { return globalThis.localStorage || null; } catch { return null; }
+  }
+
+  function readCachedAnalysis(key) {
+    const storage = cacheStorage();
+    if (!storage) return null;
+    try {
+      const parsed = JSON.parse(storage.getItem(CACHE_KEY) || "[]");
+      const items = Array.isArray(parsed) ? parsed : [];
+      const now = Date.now();
+      const match = items.find(item => item?.key === key && Number(item?.createdAt || 0) > now - CACHE_TTL_MS && item?.result);
+      return match || null;
+    } catch { return null; }
+  }
+
+  function writeCachedAnalysis(key, outcome) {
+    const storage = cacheStorage();
+    if (!storage || !outcome?.result) return;
+    try {
+      const now = Date.now();
+      const parsed = JSON.parse(storage.getItem(CACHE_KEY) || "[]");
+      const items = (Array.isArray(parsed) ? parsed : [])
+        .filter(item => item?.key !== key && Number(item?.createdAt || 0) > now - CACHE_TTL_MS)
+        .slice(0, CACHE_MAX_ITEMS - 1);
+      items.unshift({
+        key,
+        createdAt: now,
+        result: clone(outcome.result),
+        model: String(outcome.model || "Gemini"),
+        usage: clone(outcome.usage || null),
+        serverTiming: clone(outcome.serverTiming || null),
+      });
+      storage.setItem(CACHE_KEY, JSON.stringify(items));
+    } catch {}
+  }
+
   function compactPayload(basePayload) {
     const source = clone(basePayload || {});
     const evidenceAnalysis = compactEvidenceAnalysis(source.evidenceAnalysis || source.deterministicAnalysis || {});
+    const typeId = String(source.recognizedType?.id || evidenceAnalysis.typeId || "");
+    const compactedData = compactData(source.data || {});
+    if (scoreLikeType(typeId) && compactedData.mode === "table") {
+      compactedData.headers = [];
+      compactedData.sampleRows = [];
+      compactedData.sentRowCount = 0;
+      compactedData.sampling = "metrics-and-charts-only";
+      compactedData.truncated = true;
+    }
     const availableEvidenceRefs = uniqueStrings([
       ...(source.availableEvidenceRefs || []),
       ...evidenceAnalysis.metrics.map(item => item.evidenceRef),
       ...evidenceAnalysis.evidenceCatalog.map(item => item.ref),
-    ].filter(Boolean), 180);
+    ].filter(Boolean), 180).filter(ref => !(scoreLikeType(typeId) && ref.startsWith("row:")));
 
     return {
       locale: source.locale || "ar-OM",
       appVersion: VERSION,
       protocolVersion: PROTOCOL_VERSION,
       pipeline: {
-        mode: "ai-primary-analysis-v1",
+        mode: "ai-decision-core-v1",
         ownership: {
           calculationsAndCharts: "local-evidence-engine",
           diagnosisFindingsInterventions: "gemini-primary-analyst",
@@ -162,7 +232,7 @@
         info: (source.quality?.info || []).slice(0, 8),
       },
       privacy: source.privacy || {},
-      data: compactData(source.data || {}),
+      data: compactedData,
       evidenceAnalysis,
       availableEvidenceRefs,
       evidenceReferenceGuide: source.evidenceReferenceGuide || {
@@ -190,20 +260,34 @@
     };
   }
 
-  async function run({ basePayload, ai, onProgress = () => {} } = {}) {
+  async function run({ basePayload, ai, onProgress = () => {}, force = false } = {}) {
     if (!ai?.analyzePrimaryDetailed) throw new Error("عميل التحليل الذكي الأساسي غير محمل.");
     const payload = compactPayload(basePayload);
     const payloadChars = JSON.stringify(payload).length;
+    const cacheKey = cacheFingerprint(payload);
+    const cached = force ? null : readCachedAnalysis(cacheKey);
+    if (cached) {
+      onProgress({ status: "success", stage: "analysis", payloadChars, cacheHit: true, result: cached.result });
+      return {
+        protocolVersion: PROTOCOL_VERSION,
+        result: clone(cached.result),
+        cacheHit: true,
+        payloadChars,
+        durationMs: 0,
+        model: cached.model || "Gemini",
+        usage: clone(cached.usage || null),
+        serverTiming: { ...(cached.serverTiming || {}), cacheHit: true },
+      };
+    }
     onProgress({ status: "pending", stage: "analysis", payloadChars, cacheHit: false });
 
-    // لا نعيد استخدام تحليل تربوي قديم لمجرد تطابق الملف. كل تشغيل يطلب قراءة
-    // جديدة من المحلل الذكي، بينما تظل الأرقام نفسها ثابتة ومحكومة بالأدلة.
     const startedAt = globalThis.performance?.now?.() ?? Date.now();
     const response = await ai.analyzePrimaryDetailed(payload);
     const durationMs = Number(response?.clientTiming?.durationMs)
       || Math.max(0, (globalThis.performance?.now?.() ?? Date.now()) - startedAt);
     const result = response?.result && typeof response.result === "object" ? response.result : null;
     if (!result) throw new Error("لم يرجع المحلل الذكي نتيجة قابلة للاستخدام.");
+    writeCachedAnalysis(cacheKey, response);
 
     onProgress({ status: "success", stage: "analysis", payloadChars, cacheHit: false, result });
     return {

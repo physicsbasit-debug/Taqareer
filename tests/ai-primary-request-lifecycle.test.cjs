@@ -105,31 +105,23 @@ test('End-to-End: client timeout never starts a second overlapping analyze_prima
   assert.equal(calls, 1, 'a timed-out request may still be executing server-side and must not be duplicated automatically');
 });
 
-test('End-to-End: a fast explicit 503 still gets exactly one bounded full-request replay', async () => {
+test('End-to-End: even a fast explicit 503 never starts a second browser-level AI cycle', async () => {
   let calls = 0;
   const { api } = loadClient(async (_url, options) => {
     calls += 1;
     const body = JSON.parse(options.body);
     assert.equal(body.operation, 'analyze_primary');
-    if (calls === 1) {
-      return jsonResponse({
-        ok: false,
-        operation: 'analyze_primary',
-        edgeVersion: CURRENT_EDGE_VERSION,
-        errorCode: 'GEMINI_TRANSIENT',
-        retryable: true,
-        error: '503 service unavailable',
-      }, 503);
-    }
     return jsonResponse({
-      ok: true,
+      ok: false,
       operation: 'analyze_primary',
       edgeVersion: CURRENT_EDGE_VERSION,
-      result: { contractVersion: '6.6.0' },
-    });
+      errorCode: 'GEMINI_TRANSIENT',
+      retryable: true,
+      error: '503 service unavailable',
+    }, 503);
   }, { immediateTimers: true });
   configure(api);
-  const response = await api.analyzePrimaryDetailed({ sample: true });
-  assert.equal(calls, 2);
-  assert.equal(response.result.contractVersion, '6.6.0');
+  await assert.rejects(() => api.analyzePrimaryDetailed({ sample: true }), error => error.code === 'GEMINI_TRANSIENT');
+  assert.equal(calls, 1);
 });
+

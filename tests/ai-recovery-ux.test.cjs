@@ -44,18 +44,20 @@ test('primary analysis failure preserves local evidence and tells the user to re
   assert.doesNotMatch(run, /openManualExtraction\(/);
 });
 
-test('primary analysis retries transport failures without changing the semantic contract', () => {
+test('primary analysis sends exactly one browser-level request per click', () => {
   const client = read('assets/ai-client.js');
-  assert.match(client, /invoke\("analyze_primary", payload, \{ timeoutMs: PRIMARY_ANALYSIS_CLIENT_TIMEOUT_MS, networkRetry: true, maxAttempts: PRIMARY_ANALYSIS_CLIENT_MAX_ATTEMPTS \}\)/);
+  assert.match(client, /PRIMARY_ANALYSIS_CLIENT_MAX_ATTEMPTS = 1/);
+  assert.match(client, /invoke\("analyze_primary", payload, \{ timeoutMs: PRIMARY_ANALYSIS_CLIENT_TIMEOUT_MS, networkRetry: false, maxAttempts: PRIMARY_ANALYSIS_CLIENT_MAX_ATTEMPTS \}\)/);
 });
 
-
-test('contract rejection is repaired server-side before surfacing a retryable error', () => {
+test('contract failure uses one bounded model fallback and has no runtime repair/rescue chain', () => {
   const edge = read('supabase/functions/analyze-educational-form/index.ts');
-  assert.match(edge, /buildPrimarySegmentRepairPayload/);
-  assert.match(edge, /segmentRepairContext/);
-  assert.match(edge, /Promise\.allSettled/);
+  const primaryStart = edge.indexOf('async function analyzePrimary(');
+  const primaryEnd = edge.indexOf('function errorInfo(', primaryStart);
+  const runtime = edge.slice(primaryStart, primaryEnd);
+  assert.match(edge, /PRIMARY_DECISION_MAX_MODELS = 2/);
+  assert.match(runtime, /PRIMARY_DECISION_SCHEMA/);
+  assert.match(runtime, /expandPrimaryDecision/);
+  assert.doesNotMatch(runtime, /Promise\.allSettled|requestPrimarySegment|repairPrimarySegment|rescueTransientPrimarySegment/);
   assert.match(edge, /GEMINI_CONTRACT_REJECTED/);
-  assert.match(edge, /function primaryRepairModels\(\)/);
-  assert.match(edge, /configuredModelList\("GEMINI_REPAIR_MODELS"/);
 });

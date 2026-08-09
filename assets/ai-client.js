@@ -3,9 +3,9 @@
 
   const STORAGE_KEY = "taqareer.ai.config.v1";
   const ACCESS_KEY = "taqareer.ai.access-code.v1";
-  const CLIENT_VERSION = "1.2.48";
-  const PRIMARY_ANALYSIS_CLIENT_TIMEOUT_MS = 60_000;
-  const PRIMARY_ANALYSIS_CLIENT_MAX_ATTEMPTS = 2;
+  const CLIENT_VERSION = "1.3.0";
+  const PRIMARY_ANALYSIS_CLIENT_TIMEOUT_MS = 50_000;
+  const PRIMARY_ANALYSIS_CLIENT_MAX_ATTEMPTS = 1;
   const PRIMARY_ANALYSIS_FAST_CAPACITY_REPLAY_MAX_MS = 12_000;
   const HEALTH_MAX_AGE_MS = 120000;
   const defaults = window.TAQAREER_CONFIG || {};
@@ -258,8 +258,8 @@
           throw error;
         }
 
-        // رفض العقد يعني أن الخادم استلم استجابة Gemini وحاول إصلاحها بالفعل. إعادة
-        // التحليل كاملًا تلقائيًا تخفي السبب الحقيقي وقد تضيف 60 ثانية أخرى بلا داعٍ.
+        // رفض عقد نواة القرار يعني أن Edge استنفدت النموذج الأساسي والفallback المحدود
+        // أو رفضت النتيجة بعد التحقق. لا نعيد دورة AI كاملة من المتصفح.
         if (code === "GEMINI_CONTRACT_REJECTED") throw error;
 
         // نسمح بإعادة طلب خادمي واحدة فقط إذا كان 503/504 قد عاد بسرعة. إذا استغرقت
@@ -311,7 +311,9 @@
     // العابر أو يتأخر بينما تكون وظيفة التحليل نفسها قابلة للوصول بعد لحظة.
     // الطلب الحقيقي هو دليل الجاهزية الأوثق، وinvoke يحدّث healthState عند نجاحه
     // ويعيد أخطاء الإعداد/الشبكة الفعلية عند فشله.
-    return invoke("analyze_primary", payload, { timeoutMs: PRIMARY_ANALYSIS_CLIENT_TIMEOUT_MS, networkRetry: true, maxAttempts: PRIMARY_ANALYSIS_CLIENT_MAX_ATTEMPTS });
+    // ضغطة واحدة = طلب Edge واحد. Edge نفسها تملك fallback نموذجًا واحدًا فقط،
+    // لذلك لا يكرر المتصفح دورة التحليل الذكي كاملة عند أي تعثر.
+    return invoke("analyze_primary", payload, { timeoutMs: PRIMARY_ANALYSIS_CLIENT_TIMEOUT_MS, networkRetry: false, maxAttempts: PRIMARY_ANALYSIS_CLIENT_MAX_ATTEMPTS });
   }
 
   // يبقى للتوافق مع نتائج v0.9.7 القديمة، لكنه ليس جزءًا من المسار الحالي.

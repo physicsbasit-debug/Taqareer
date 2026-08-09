@@ -119,65 +119,23 @@ test('primary analysis uses the real analysis request as the authoritative healt
 });
 
 
-test('primary analysis automatically retries one retryable Edge 503 response instead of forcing a manual click', async () => {
+test('primary analysis never duplicates a full Edge request after a retryable 503', async () => {
   const operations = [];
-  let analysisCalls = 0;
   const { api } = loadClient(async (_url, options) => {
     const body = JSON.parse(options.body);
     operations.push(body.operation);
-    if (body.operation === 'analyze_primary') {
-      analysisCalls += 1;
-      if (analysisCalls === 1) {
-        return jsonResponse({
-          ok: false,
-          operation: 'analyze_primary',
-          edgeVersion: CURRENT_EDGE_VERSION,
-          errorCode: 'GEMINI_TRANSIENT',
-          retryable: true,
-          error: 'خدمة التحليل مزدحمة مؤقتًا.',
-        }, 503);
-      }
-      return jsonResponse({
-        ok: true,
-        operation: 'analyze_primary',
-        edgeVersion: CURRENT_EDGE_VERSION,
-        aiKeyConfigured: true,
-        result: { contractVersion: '6.6.0' },
-      });
-    }
-    throw new Error(`unexpected operation ${body.operation}`);
-  });
-  api.saveConfig({ endpoint: 'https://abc123.supabase.co', anonKey: 'anon-key', enabled: true });
-  const response = await api.analyzePrimaryDetailed({ sample: true });
-  assert.deepEqual(operations, ['analyze_primary', 'analyze_primary']);
-  assert.equal(analysisCalls, 2);
-  assert.equal(response.result.contractVersion, '6.6.0');
-});
-
-
-test('primary analysis stops after one full-request replay when Edge remains transient', async () => {
-  const operations = [];
-  let analysisCalls = 0;
-  const { api } = loadClient(async (_url, options) => {
-    const body = JSON.parse(options.body);
-    operations.push(body.operation);
-    if (body.operation === 'analyze_primary') {
-      analysisCalls += 1;
-      return jsonResponse({
-        ok: false,
-        operation: 'analyze_primary',
-        edgeVersion: CURRENT_EDGE_VERSION,
-        errorCode: 'GEMINI_TRANSIENT',
-        retryable: true,
-        error: 'خدمة التحليل مزدحمة مؤقتًا.',
-      }, 503);
-    }
-    throw new Error(`unexpected operation ${body.operation}`);
+    return jsonResponse({
+      ok: false,
+      operation: 'analyze_primary',
+      edgeVersion: CURRENT_EDGE_VERSION,
+      errorCode: 'GEMINI_TRANSIENT',
+      retryable: true,
+      error: 'خدمة التحليل لم تستجب ضمن المسار المحدود.',
+    }, 503);
   });
   api.saveConfig({ endpoint: 'https://abc123.supabase.co', anonKey: 'anon-key', enabled: true });
   await assert.rejects(() => api.analyzePrimaryDetailed({ sample: true }), error => error.code === 'GEMINI_TRANSIENT');
-  assert.deepEqual(operations, ['analyze_primary', 'analyze_primary']);
-  assert.equal(analysisCalls, 2);
+  assert.deepEqual(operations, ['analyze_primary']);
 });
 
 test('primary analysis never replays the whole Edge request immediately after GEMINI_RATE_LIMIT', async () => {

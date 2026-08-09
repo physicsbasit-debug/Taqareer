@@ -278,7 +278,7 @@
     }
     if (code === "AI_ENDPOINT_INVALID") return message || "رابط وظيفة Supabase غير صالح.";
     if (code === "GEMINI_TRANSIENT" || /high demand|spikes in demand|service unavailable|overload(?:ed)?|\b503\b/i.test(message)) {
-      return "خدمة التحليل مزدحمة مؤقتًا. حاول التطبيق تلقائيًا إعادة الطلب واستخدام مسار بديل، لكن الخدمة لم تستجب الآن. أعد المحاولة بعد قليل.";
+      return "خدمة التحليل لم تستجب ضمن المسار المحدود. جرّب الخادم نموذجًا أساسيًا وfallback واحدًا فقط دون تكرار دورة التحليل. أعد المحاولة بعد قليل.";
     }
     if (code === "GEMINI_RATE_LIMIT" || /RESOURCE_EXHAUSTED|rate limit|quota|\b429\b/i.test(message)) {
       const waitSeconds = Math.ceil(Math.max(0, Number(error?.retryAfterMs || 0)) / 1000);
@@ -770,7 +770,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "1.2.48",
+      appVersion: "1.3.0",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -1657,10 +1657,10 @@
     if (!window.TaqareerReconciliation?.composePrimary) throw new Error("محرك التحقق من التحليل الذكي غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "1.2.48",
+      appVersion: "1.3.0",
       pipeline: {
-        mode: "ai-primary-analysis-v1",
-        instruction: "المحرك المحلي يحسب المؤشرات والرسوم فقط. يبني الذكاء الاصطناعي التشخيص والاستنتاجات والتدخلات من الأدلة، ثم تتحقق البوابة من المراجع قبل عرض التقرير."
+        mode: "ai-decision-core-v1",
+        instruction: "المحرك المحلي يحسب المؤشرات والرسوم. يبني Gemini نواة القرار التشخيصية مرة واحدة، ثم يبني الخادم التدخلات والمتابعة من القرار والأرقام الحتمية ويطبق حراس الأدلة قبل العرض."
       },
       source: {
         name: state.sourceName,
@@ -1823,12 +1823,12 @@
       const seconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
       runButton.textContent = `جارٍ بناء التحليل الذكي… ${seconds}ث`;
       const stage = seconds < 6
-        ? "يبني المحلل الذكي القراءة التشخيصية من الأدلة."
-        : seconds < 14
-          ? "يربط الاستنتاجات بالأدلة ويرتب الأولويات."
-          : seconds < 20
-            ? "يصوغ التدخلات ضمن عقد موجز مضبوط."
-            : "إذا تعثرت الاستجابة، ينتقل الخادم تلقائيًا إلى نموذج أسرع ضمن المهلة نفسها.";
+        ? "يبني Gemini نواة القرار من المؤشرات والأدلة المختصرة."
+        : seconds < 16
+          ? "يربط التشخيص بالأدلة ويرتب الأولويات دون إعادة الحسابات."
+          : seconds < 28
+            ? "ينهي نواة القرار؛ الخادم سيبني التدخلات والمتابعة حتميًا بعدها."
+            : "إذا تعثر النموذج الأساسي، يستخدم الخادم fallback واحدًا فقط دون سلسلة إنقاذات.";
       setMessage("setupMessage", `${evidenceSummary ? `اكتملت الحسابات: ${evidenceSummary}. ` : "اكتملت الحسابات. "}${stage}`);
     };
     update();
@@ -2338,7 +2338,7 @@
   function exportAnalysis() {
     const payload = {
       app: "تقارير",
-      version: "1.2.48",
+      version: "1.3.0",
       generatedAt: new Date().toISOString(),
       source: state.sourceName,
       sourceMeta: state.sourceMeta,
@@ -2351,7 +2351,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v1.2.48.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v1.3.0.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }

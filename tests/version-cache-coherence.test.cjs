@@ -42,12 +42,12 @@ test('public HTML cache-busters and runtime version markers match package versio
   assert.match(setup, new RegExp(`VERSION\\s*=\\s*["']${escaped}["']`));
   assert.match(app, new RegExp(`taqareer-analysis-v${escaped}\\.json`));
   const edgeSource = readText(root, 'supabase/functions/analyze-educational-form/index.ts');
-  assert.equal(appManifest.runtime?.primaryServerDeadlineMs, numericConst(edgeSource, 'PRIMARY_ANALYSIS_DEADLINE_MS'));
-  assert.equal(appManifest.runtime?.primaryInitialPhaseDeadlineMs, numericConst(edgeSource, 'PRIMARY_INITIAL_PHASE_DEADLINE_MS'));
-  assert.equal(appManifest.runtime?.primaryTransientRescuePhaseDeadlineMs, numericConst(edgeSource, 'PRIMARY_TRANSIENT_RESCUE_PHASE_DEADLINE_MS'));
+  assert.equal(appManifest.runtime?.primaryServerDeadlineMs, numericConst(edgeSource, 'PRIMARY_DECISION_DEADLINE_MS'));
+  assert.equal(appManifest.runtime?.primaryDecisionAttemptTimeoutMs, numericConst(edgeSource, 'PRIMARY_DECISION_ATTEMPT_TIMEOUT_MS'));
+  assert.equal(appManifest.runtime?.primaryDecisionFallbackTimeoutMs, numericConst(edgeSource, 'PRIMARY_DECISION_FALLBACK_TIMEOUT_MS'));
+  assert.equal(appManifest.runtime?.primaryDecisionMaxModels, numericConst(edgeSource, 'PRIMARY_DECISION_MAX_MODELS'));
   assert.equal(appManifest.runtime?.primaryAnalysisClientTimeoutMs, clientNumericConst(client, 'PRIMARY_ANALYSIS_CLIENT_TIMEOUT_MS'));
   assert.equal(appManifest.runtime?.primaryAnalysisClientMaxAttempts, clientNumericConst(client, 'PRIMARY_ANALYSIS_CLIENT_MAX_ATTEMPTS'));
-  assert.equal(appManifest.runtime?.primaryFastCapacityReplayMaxMs, clientNumericConst(client, 'PRIMARY_ANALYSIS_FAST_CAPACITY_REPLAY_MAX_MS'));
 });
 
 test('current-version tests do not hard-code the release number outside the dynamic version contract', () => {

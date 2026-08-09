@@ -184,8 +184,11 @@ test('primary orchestrator sends evidence, not local interpretive prose', () => 
     availableEvidenceRefs: ['row:1', 'metric:mean'],
   });
   const text = JSON.stringify(payload);
-  assert.equal(payload.pipeline.mode, 'ai-primary-analysis-v1');
+  assert.equal(payload.pipeline.mode, 'ai-decision-core-v1');
   assert.match(text, /metric:mean/);
+  assert.equal(payload.data.sampleRows.length, 0);
+  assert.equal(payload.data.headers.length, 0);
+  assert.ok(!payload.availableEvidenceRefs.some(ref => ref.startsWith('row:')));
   assert.doesNotMatch(text, /قالب محلي|استنتاج محلي/);
 });
 
