@@ -1,8 +1,8 @@
 {
   "app": "تقارير",
-  "version": "1.2.31",
-  "phase": "Phase 2-D Fix 29 - Full-Document PDF Geometry",
-  "releaseName": "Full-Document PDF Geometry and Pagination Contract",
+  "version": "1.2.32",
+  "phase": "Segment-Level Transient Rescue",
+  "releaseName": "Isolated Primary Segment Transient Rescue",
   "buildType": "static-github-pages-plus-supabase-edge-function",
   "supportedInputs": {
     "table": [
@@ -191,7 +191,10 @@
     "radar-dimension-readability-guard",
     "role-weighted-pdf-geometry",
     "composite-pdf-span-decomposition",
-    "short-rtl-row-recovery"
+    "short-rtl-row-recovery",
+    "isolated-primary-segment-transient-rescue",
+    "successful-primary-segment-preservation",
+    "failed-segment-only-retry"
   ],
   "runtime": {
     "frontend": "GitHub Pages static site",
@@ -203,27 +206,24 @@
     "legacyAnalyzeThinkingBudget": 1024,
     "classificationThinkingBudget": 0,
     "reconciliationContractVersion": "6.6.0",
-    "edgeFunctionVersion": "0.15.5",
+    "edgeFunctionVersion": "0.15.6",
     "fastEnhancementModel": "gemini-3.5-flash-lite",
     "fastEnhancementThinkingBudget": 192,
     "fastEnhancementMaxOutputTokens": 2600,
     "fastEnhancementClientTimeoutMs": 16000,
     "primaryAnalysisMaxOutputTokens": 4096,
-    "primaryAnalysisClientTimeoutMs": 52000,
+    "primaryAnalysisClientTimeoutMs": 60000,
     "primaryAnalysisThinkingLevel": "low",
-    "primaryRescueModel": "gemini-3.5-flash-lite",
     "primaryRescueThinkingLevel": "minimal",
     "primaryRescueMaxOutputTokens": 3072,
     "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.2.19",
     "primaryModelFallbackOrder": [
-      "gemini-3.6-flash",
-      "gemini-3.5-flash-lite"
+      "reasoning:gemini-3.6-flash>gemini-3.5-flash",
+      "action:gemini-3.5-flash-lite>gemini-3.6-flash>gemini-3.5-flash"
     ],
     "transientRetryAttemptsPerModel": 1,
-    "transientRetryBackoff": "none-on-primary; direct-model-failover",
-    "primaryServerDeadlineMs": 42000,
-    "primaryModelAttemptTimeoutMs": 16000,
-    "primaryRescueAttemptTimeoutMs": 12000,
+    "transientRetryBackoff": "normal model failover, then isolated segment rescue with 250-399ms jitter inside server deadline",
+    "primaryServerDeadlineMs": 45000,
     "edgeHealthOperation": "health",
     "edgeHealthRequiresGemini": false,
     "edgeHealthCacheMs": 120000,
@@ -233,7 +233,21 @@
     "corsAllowedOriginNormalization": "URL origin, including GitHub Pages URLs with repository paths",
     "semanticProfileVersion": "2.1.0",
     "classificationMode": "always-ai-verified-with-local-structural-guard",
-    "primaryResponseBodyCoveredByAttemptTimeout": true
+    "primaryResponseBodyCoveredByAttemptTimeout": true,
+    "primaryReasoningAttemptTimeoutMs": 15000,
+    "primaryActionAttemptTimeoutMs": 13000,
+    "primaryContractRepairAttemptTimeoutMs": 11000,
+    "primaryTransientRescueAttemptTimeoutMs": 8000,
+    "primaryContractRepairModels": [
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-3.5-flash-lite"
+    ],
+    "primaryTransientRescueModels": [
+      "gemini-3.5-flash-lite",
+      "gemini-3.5-flash"
+    ],
+    "primaryTransientRescuePolicy": "retry-failed-segment-only-preserve-successful-segment"
   },
   "security": {
     "geminiKeyInBrowser": false,

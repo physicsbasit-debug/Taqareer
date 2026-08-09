@@ -1,4 +1,4 @@
-const EDGE_VERSION = "0.15.5";
+const EDGE_VERSION = "0.15.6";
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 const DEFAULT_MODEL = "gemini-3.6-flash";
 const DEFAULT_FAST_MODEL = "gemini-3.5-flash-lite";
@@ -8,6 +8,7 @@ const GENERAL_MODEL_FALLBACKS = Object.freeze(["gemini-3.6-flash", "gemini-3.5-f
 const PRIMARY_REASONING_MODELS = Object.freeze(["gemini-3.6-flash", "gemini-3.5-flash"]);
 const PRIMARY_ACTION_MODELS = Object.freeze(["gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.5-flash"]);
 const PRIMARY_REPAIR_MODELS = Object.freeze(["gemini-3.5-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"]);
+const PRIMARY_TRANSIENT_RESCUE_MODELS = Object.freeze(["gemini-3.5-flash-lite", "gemini-3.5-flash"]);
 const MAX_REQUEST_BYTES = 9_000_000;
 const MAX_IMAGE_COUNT = 4;
 const MAX_IMAGE_DATA_URL_LENGTH = 2_800_000;
@@ -15,6 +16,7 @@ const PRIMARY_ANALYSIS_DEADLINE_MS = 45_000;
 const PRIMARY_REASONING_ATTEMPT_TIMEOUT_MS = 15_000;
 const PRIMARY_ACTION_ATTEMPT_TIMEOUT_MS = 13_000;
 const PRIMARY_REPAIR_ATTEMPT_TIMEOUT_MS = 11_000;
+const PRIMARY_TRANSIENT_RESCUE_ATTEMPT_TIMEOUT_MS = 8_000;
 const PRIMARY_MIN_REMAINING_MS = 2_500;
 
 type JsonRecord = Record<string, unknown>;
@@ -466,6 +468,19 @@ function modelIsUnavailable(error: unknown): boolean {
   return item?.status === 404 || /no longer available|not found|does not exist|unknown model|unsupported model|model.*unavailable/i.test(message);
 }
 
+type GeminiFallbackError = Error & {
+  status?: number;
+  attemptedModels?: number;
+  fallbackReason?: string;
+};
+
+function annotateGeminiFallbackFailure(error: unknown, attemptedModels: number, fallbackReason: string): GeminiFallbackError {
+  const annotated = (error instanceof Error ? error : new Error(String(error || "تعذر تشغيل نموذج Gemini."))) as GeminiFallbackError;
+  annotated.attemptedModels = Math.max(1, attemptedModels);
+  annotated.fallbackReason = fallbackReason || "";
+  return annotated;
+}
+
 async function geminiRequestWithFallback(
   models: string[],
   requestBody: JsonRecord,
@@ -482,11 +497,13 @@ async function geminiRequestWithFallback(
     } catch (error) {
       lastError = error;
       const canSwitchModel = modelIsUnavailable(error) || modelIsTransientlyBusy(error);
-      if (!canSwitchModel || index === models.length - 1) throw error;
+      if (!canSwitchModel || index === models.length - 1) {
+        throw annotateGeminiFallbackFailure(error, index + 1, fallbackReason);
+      }
       fallbackReason = modelIsUnavailable(error) ? "model_unavailable" : "transient_capacity";
     }
   }
-  throw lastError instanceof Error ? lastError : new Error("لم يتوفر نموذج Gemini صالح للتشغيل.");
+  throw annotateGeminiFallbackFailure(lastError, models.length, fallbackReason);
 }
 
 function candidateResult(raw: JsonRecord): { text: string; finishReason: string } {
@@ -1574,13 +1591,19 @@ async function repairPrimarySegment(
   };
 }
 
+type PrimarySegmentRequestOptions = {
+  models?: string[];
+  attemptTimeoutMs?: number;
+};
+
 async function requestPrimarySegment(
   segment: PrimarySegmentName,
   payload: JsonRecord,
   deadlineAt: number,
+  options: PrimarySegmentRequestOptions = {},
 ): Promise<PrimarySegmentRun> {
   const response = await geminiRequestWithFallback(
-    primarySegmentModels(segment),
+    options.models || primarySegmentModels(segment),
     primaryRequestBody(
       payload,
       primarySegmentInstructions(segment),
@@ -1590,7 +1613,7 @@ async function requestPrimarySegment(
     ),
     1,
     {
-      attemptTimeoutMs: primarySegmentTimeout(segment),
+      attemptTimeoutMs: options.attemptTimeoutMs || primarySegmentTimeout(segment),
       deadlineAt,
       minRemainingMs: PRIMARY_MIN_REMAINING_MS,
     },
@@ -1624,6 +1647,24 @@ async function requestPrimarySegment(
   };
 }
 
+function primaryTransientRescueModels(): string[] {
+  return uniqueModelCandidates(PRIMARY_TRANSIENT_RESCUE_MODELS[0], PRIMARY_TRANSIENT_RESCUE_MODELS);
+}
+
+async function rescueTransientPrimarySegment(
+  segment: PrimarySegmentName,
+  payload: JsonRecord,
+  deadlineAt: number,
+): Promise<PrimarySegmentRun> {
+  // هذه محاولة إنقاذ شبكية للمقطع المتعثر فقط. لا نعيد تشغيل المقطع الذي نجح بالتوازي.
+  // تبدأ بـ Flash-Lite لأنه غير مستخدم أصلًا في مسار reasoning، وتصلح أيضًا كإعادة محاولة خفيفة لـ action بعد انتهاء fallbacks العادية.
+  await wait(250 + Math.floor(Math.random() * 150));
+  return requestPrimarySegment(segment, payload, deadlineAt, {
+    models: primaryTransientRescueModels(),
+    attemptTimeoutMs: PRIMARY_TRANSIENT_RESCUE_ATTEMPT_TIMEOUT_MS,
+  });
+}
+
 function mergePrimarySegments(reasoning: JsonRecord, action: JsonRecord): JsonRecord {
   return {
     ...reasoning,
@@ -1642,44 +1683,88 @@ async function analyzePrimary(payload: JsonRecord): Promise<JsonRecord> {
   const startedAt = performance.now();
   const deadlineAt = startedAt + PRIMARY_ANALYSIS_DEADLINE_MS;
 
-  // الطلبان أصغر ويعملان بالتوازي. فشل أحدهما لا يعيد المقطع الآخر من الصفر.
+  // الطلبان أصغر ويعملان بالتوازي. إذا تعثر أحدهما شبكيًا نحافظ على الآخر وننقذ المتعثر وحده.
   const segmentSettled = await Promise.allSettled([
     requestPrimarySegment("reasoning", payload, deadlineAt),
     requestPrimarySegment("action", payload, deadlineAt),
   ]);
 
-  const segmentError = (result: PromiseSettledResult<PrimarySegmentRun>, name: PrimarySegmentName): PrimarySegmentRun => {
-    if (result.status === "fulfilled") return result.value;
-    const message = result.reason instanceof Error ? result.reason.message : String(result.reason || "خطأ غير معروف");
-    const status = geminiErrorStatus(result.reason) || 503;
-    throw geminiRequestError(`فشل مقطع ${name}: ${message}`, status);
-  };
+  const segmentNames: PrimarySegmentName[] = ["reasoning", "action"];
+  const initialSegmentErrors: Partial<Record<PrimarySegmentName, string>> = {};
+  const transientRescuedSegments = new Set<PrimarySegmentName>();
+  const segmentRuns: Partial<Record<PrimarySegmentName, PrimarySegmentRun>> = {};
+  const transientFailures: Array<{ segment: PrimarySegmentName; error: unknown }> = [];
+  let failedInitialAttemptedModels = 0;
 
-  let reasoning = segmentError(segmentSettled[0], "reasoning");
-  let action = segmentError(segmentSettled[1], "action");
-  let combined = mergePrimarySegments(reasoning.value, action.value);
+  for (let index = 0; index < segmentSettled.length; index += 1) {
+    const segment = segmentNames[index];
+    const settled = segmentSettled[index];
+    if (settled.status === "fulfilled") {
+      segmentRuns[segment] = settled.value;
+      continue;
+    }
+    const message = settled.reason instanceof Error ? settled.reason.message : String(settled.reason || "خطأ غير معروف");
+    initialSegmentErrors[segment] = cleanString(message, 520);
+    failedInitialAttemptedModels += Math.max(1, Number((settled.reason as GeminiFallbackError)?.attemptedModels || 1));
+    if (!modelIsTransientlyBusy(settled.reason)) {
+      throw new Error(`فشل مقطع ${segment} بعد استجابة Gemini غير قابلة للإنقاذ الشبكي: ${message}`);
+    }
+    transientFailures.push({ segment, error: settled.reason });
+  }
+
+  if (transientFailures.length) {
+    const rescueSettled = await Promise.allSettled(
+      transientFailures.map(item => rescueTransientPrimarySegment(item.segment, payload, deadlineAt)),
+    );
+    for (let index = 0; index < rescueSettled.length; index += 1) {
+      const failed = transientFailures[index];
+      const rescued = rescueSettled[index];
+      if (rescued.status === "fulfilled") {
+        segmentRuns[failed.segment] = rescued.value;
+        transientRescuedSegments.add(failed.segment);
+        continue;
+      }
+      const rescueMessage = rescued.reason instanceof Error ? rescued.reason.message : String(rescued.reason || "خطأ غير معروف");
+      const firstMessage = initialSegmentErrors[failed.segment] || "تعثر شبكي أولي";
+      const status = geminiErrorStatus(rescued.reason) || geminiErrorStatus(failed.error) || 503;
+      throw geminiRequestError(
+        `فشل مقطع ${failed.segment} بعد إنقاذ شبكي معزول. المحاولة الأولى: ${firstMessage}. محاولة الإنقاذ: ${rescueMessage}`,
+        status,
+      );
+    }
+  }
+
+  const reasoning = segmentRuns.reasoning;
+  const action = segmentRuns.action;
+  if (!reasoning || !action) {
+    throw new Error("لم تكتمل مقاطع التحليل الأساسية بعد مسار الإنقاذ.");
+  }
+
+  let reasoningRun = reasoning;
+  let actionRun = action;
+  let combined = mergePrimarySegments(reasoningRun.value, actionRun.value);
   let checked = tryValidatePrimaryObject(combined, payload, "primary");
   const firstValidationError = checked.error instanceof Error ? checked.error.message : "";
   let postValidationRepairUsed = false;
   let rescueValidationError = "";
   const repairedSegments = new Set<PrimarySegmentName>([
-    ...(reasoning.repaired ? ["reasoning" as const] : []),
-    ...(action.repaired ? ["action" as const] : []),
+    ...(reasoningRun.repaired ? ["reasoning" as const] : []),
+    ...(actionRun.repaired ? ["action" as const] : []),
   ]);
 
   if (!checked.result) {
     postValidationRepairUsed = true;
     const targets = validationRepairTargets(firstValidationError);
     const repairs = await Promise.all(targets.map(async segment => {
-      const previous = segment === "reasoning" ? reasoning.value : action.value;
+      const previous = segment === "reasoning" ? reasoningRun.value : actionRun.value;
       return repairPrimarySegment(segment, payload, previous, firstValidationError, deadlineAt);
     }));
     for (const repaired of repairs) {
       repairedSegments.add(repaired.segment);
-      if (repaired.segment === "reasoning") reasoning = repaired;
-      else action = repaired;
+      if (repaired.segment === "reasoning") reasoningRun = repaired;
+      else actionRun = repaired;
     }
-    combined = mergePrimarySegments(reasoning.value, action.value);
+    combined = mergePrimarySegments(reasoningRun.value, actionRun.value);
     checked = tryValidatePrimaryObject(combined, payload, "rescue");
     rescueValidationError = checked.error instanceof Error ? checked.error.message : "";
   }
@@ -1691,21 +1776,22 @@ async function analyzePrimary(payload: JsonRecord): Promise<JsonRecord> {
 
   const result = checked.result;
   const validation = result.validation && typeof result.validation === "object" ? result.validation as JsonRecord : {};
-  const reasoningThoughtTokens = usageCount(reasoning.raw, "thoughtsTokenCount");
-  const actionThoughtTokens = usageCount(action.raw, "thoughtsTokenCount");
-  const reasoningCandidateTokens = usageCount(reasoning.raw, "candidatesTokenCount");
-  const actionCandidateTokens = usageCount(action.raw, "candidatesTokenCount");
-  const totalAttemptedModels = reasoning.attemptedModels + action.attemptedModels + reasoning.repairAttemptedModels + action.repairAttemptedModels;
-  const rescueUsed = repairedSegments.size > 0 || postValidationRepairUsed;
+  const reasoningThoughtTokens = usageCount(reasoningRun.raw, "thoughtsTokenCount");
+  const actionThoughtTokens = usageCount(actionRun.raw, "thoughtsTokenCount");
+  const reasoningCandidateTokens = usageCount(reasoningRun.raw, "candidatesTokenCount");
+  const actionCandidateTokens = usageCount(actionRun.raw, "candidatesTokenCount");
+  const totalAttemptedModels = failedInitialAttemptedModels + reasoningRun.attemptedModels + actionRun.attemptedModels + reasoningRun.repairAttemptedModels + actionRun.repairAttemptedModels;
+  const transientRescueUsed = transientRescuedSegments.size > 0;
+  const rescueUsed = transientRescueUsed || repairedSegments.size > 0 || postValidationRepairUsed;
 
   return {
     result,
-    model: `${String(reasoning.raw.modelVersion || reasoning.modelUsed)} + ${String(action.raw.modelVersion || action.modelUsed)}`,
+    model: `${String(reasoningRun.raw.modelVersion || reasoningRun.modelUsed)} + ${String(actionRun.raw.modelVersion || actionRun.modelUsed)}`,
     usage: {
-      reasoning: reasoning.raw.usageMetadata || null,
-      action: action.raw.usageMetadata || null,
+      reasoning: reasoningRun.raw.usageMetadata || null,
+      action: actionRun.raw.usageMetadata || null,
     },
-    requestId: reasoning.requestId || action.requestId,
+    requestId: reasoningRun.requestId || actionRun.requestId,
     provider: "gemini",
     serverTiming: {
       aiPrimary: true,
@@ -1713,26 +1799,34 @@ async function analyzePrimary(payload: JsonRecord): Promise<JsonRecord> {
       parallelSegments: true,
       geminiMs: Math.round(performance.now() - startedAt),
       payloadChars: JSON.stringify(payload).length,
-      outputCharacters: reasoning.candidateText.length + action.candidateText.length,
-      finishReason: `${reasoning.finishReason}/${action.finishReason}`,
-      firstFinishReason: `${reasoning.finishReason}/${action.finishReason}`,
+      outputCharacters: reasoningRun.candidateText.length + actionRun.candidateText.length,
+      finishReason: `${reasoningRun.finishReason}/${actionRun.finishReason}`,
+      firstFinishReason: `${reasoningRun.finishReason}/${actionRun.finishReason}`,
       thinkingLevel: "segmented-low-minimal",
       maxOutputTokens: primarySegmentOutputLimit("reasoning") + primarySegmentOutputLimit("action"),
       rescueUsed,
+      transientRescueUsed,
+      transientRescuedSegments: [...transientRescuedSegments],
+      transientInitialAttemptedModels: failedInitialAttemptedModels,
       repairedSegments: [...repairedSegments],
       firstValidationError: cleanString(firstValidationError, 520),
       rescueValidationError: cleanString(rescueValidationError, 520),
-      repairContextUsed: rescueUsed,
-      fallbackUsed: reasoning.fallbackUsed || action.fallbackUsed,
-      fallbackReason: [reasoning.fallbackReason, action.fallbackReason].filter(Boolean).join(","),
+      repairContextUsed: repairedSegments.size > 0 || postValidationRepairUsed,
+      fallbackUsed: transientRescueUsed || reasoningRun.fallbackUsed || actionRun.fallbackUsed,
+      fallbackReason: [
+        transientRescueUsed ? "segment_transient_rescue" : "",
+        reasoningRun.fallbackReason,
+        actionRun.fallbackReason,
+      ].filter(Boolean).join(","),
       attemptedModels: totalAttemptedModels,
-      reasoningModel: reasoning.modelUsed,
-      actionModel: action.modelUsed,
+      reasoningModel: reasoningRun.modelUsed,
+      actionModel: actionRun.modelUsed,
       serverDeadlineMs: PRIMARY_ANALYSIS_DEADLINE_MS,
       primaryAttemptTimeoutMs: Math.max(PRIMARY_REASONING_ATTEMPT_TIMEOUT_MS, PRIMARY_ACTION_ATTEMPT_TIMEOUT_MS),
       reasoningAttemptTimeoutMs: PRIMARY_REASONING_ATTEMPT_TIMEOUT_MS,
       actionAttemptTimeoutMs: PRIMARY_ACTION_ATTEMPT_TIMEOUT_MS,
       rescueAttemptTimeoutMs: PRIMARY_REPAIR_ATTEMPT_TIMEOUT_MS,
+      transientRescueAttemptTimeoutMs: PRIMARY_TRANSIENT_RESCUE_ATTEMPT_TIMEOUT_MS,
       firstThoughtTokens: reasoningThoughtTokens + actionThoughtTokens,
       firstCandidateTokens: reasoningCandidateTokens + actionCandidateTokens,
       finalThoughtTokens: reasoningThoughtTokens + actionThoughtTokens,

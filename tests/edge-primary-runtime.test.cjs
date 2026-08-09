@@ -407,6 +407,62 @@ test('edge reasoning segment fails over without restarting the successful action
   assert.equal(body.serverTiming.parallelSegments, true);
 });
 
+test('edge transient rescue reruns only reasoning after its normal model chain is exhausted', async () => {
+  const busy = httpError(503, 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.');
+  const full = primaryResult();
+  const runtime = await createRuntime([
+    busy,
+    geminiRaw(actionResult(full)),
+    busy,
+    geminiRaw(reasoningResult(full)),
+  ]);
+  const { status, body } = await invoke(runtime);
+  assert.equal(status, 200);
+  assert.equal(body.ok, true);
+  assert.equal(runtime.getCalls(), 4);
+  assert.equal(body.serverTiming.transientRescueUsed, true);
+  assert.deepEqual(body.serverTiming.transientRescuedSegments, ['reasoning']);
+  assert.equal(body.serverTiming.rescueUsed, true);
+  assert.equal(body.serverTiming.transientInitialAttemptedModels, 2);
+  assert.equal(body.serverTiming.attemptedModels, 4);
+  assert.match(body.serverTiming.fallbackReason, /segment_transient_rescue/);
+  const requestBodies = runtime.getRequestBodies().map(JSON.parse);
+  const reasoningRequests = requestBodies.filter(item => item.generationConfig.responseJsonSchema.properties.executive);
+  const actionRequests = requestBodies.filter(item => item.generationConfig.responseJsonSchema.properties.interventions);
+  assert.equal(reasoningRequests.length, 3);
+  assert.equal(actionRequests.length, 1);
+  const urls = runtime.getUrls();
+  assert.match(urls[0], /gemini-3\.6-flash:generateContent/);
+  assert.match(urls[1], /gemini-3\.5-flash-lite:generateContent/);
+  assert.match(urls[2], /gemini-3\.5-flash:generateContent/);
+  assert.match(urls[3], /gemini-3\.5-flash-lite:generateContent/);
+});
+
+test('edge transient rescue reruns only action after its normal model chain is exhausted', async () => {
+  const busy = httpError(503, 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.');
+  const full = primaryResult();
+  const runtime = await createRuntime([
+    geminiRaw(reasoningResult(full)),
+    busy,
+    busy,
+    busy,
+    geminiRaw(actionResult(full)),
+  ]);
+  const { status, body } = await invoke(runtime);
+  assert.equal(status, 200);
+  assert.equal(body.ok, true);
+  assert.equal(runtime.getCalls(), 5);
+  assert.equal(body.serverTiming.transientRescueUsed, true);
+  assert.deepEqual(body.serverTiming.transientRescuedSegments, ['action']);
+  assert.equal(body.serverTiming.transientInitialAttemptedModels, 3);
+  assert.equal(body.serverTiming.attemptedModels, 5);
+  const requestBodies = runtime.getRequestBodies().map(JSON.parse);
+  const reasoningRequests = requestBodies.filter(item => item.generationConfig.responseJsonSchema.properties.executive);
+  const actionRequests = requestBodies.filter(item => item.generationConfig.responseJsonSchema.properties.interventions);
+  assert.equal(reasoningRequests.length, 1);
+  assert.equal(actionRequests.length, 4);
+});
+
 test('edge treats a reasoning timeout as transient and fails over while action remains independent', async () => {
   const full = primaryResult();
   const runtime = await createRuntime([
