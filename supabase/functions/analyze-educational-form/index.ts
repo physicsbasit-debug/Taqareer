@@ -1,4 +1,4 @@
-const EDGE_VERSION = "0.15.8";
+const EDGE_VERSION = "0.15.9";
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 const DEFAULT_MODEL = "gemini-3.6-flash";
 const DEFAULT_FAST_MODEL = "gemini-3.5-flash-lite";
@@ -358,6 +358,19 @@ async function secureEqual(a: string, b: string): Promise<boolean> {
 
 function normalizeModelName(value: string): string {
   return String(value || DEFAULT_MODEL).trim().replace(/^models\//, "") || DEFAULT_MODEL;
+}
+
+function configuredModelList(envName: string, defaults: readonly string[]): string[] {
+  const raw = String(Deno.env.get(envName) || "").trim();
+  if (!raw) return [...defaults];
+  const configured = raw.split(/[,;\n]/).map(item => item.trim()).filter(Boolean).map(normalizeModelName);
+  return configured.length ? [...new Set(configured)] : [...defaults];
+}
+
+function configuredModelChain(preferredEnvName: string, fallbackEnvName: string, defaultPreferred: string, defaultFallbacks: readonly string[]): string[] {
+  const preferredRaw = String(Deno.env.get(preferredEnvName) || "").trim();
+  const preferred = preferredRaw ? normalizeModelName(preferredRaw) : normalizeModelName(defaultPreferred);
+  return uniqueModelCandidates(preferred, configuredModelList(fallbackEnvName, defaultFallbacks));
 }
 
 function shouldRetryGemini(status: number): boolean {
@@ -730,8 +743,7 @@ function edgeHealth(): JsonRecord {
 }
 
 async function pingGemini(): Promise<JsonRecord> {
-  const preferred = Deno.env.get("GEMINI_FAST_MODEL") || DEFAULT_FAST_MODEL;
-  const models = uniqueModelCandidates(preferred, FAST_MODEL_FALLBACKS);
+  const models = configuredModelChain("GEMINI_FAST_MODEL", "GEMINI_FAST_FALLBACK_MODELS", DEFAULT_FAST_MODEL, FAST_MODEL_FALLBACKS);
   const { raw, requestId, modelUsed, fallbackUsed } = await geminiRequestWithFallback(models, {
     contents: [{ role: "user", parts: [{ text: "أجب بكلمة READY فقط." }] }],
     generationConfig: { maxOutputTokens: 64, candidateCount: 1, temperature: 0 },
@@ -742,8 +754,7 @@ async function pingGemini(): Promise<JsonRecord> {
 }
 
 async function classify(payload: JsonRecord): Promise<JsonRecord> {
-  const preferred = Deno.env.get("GEMINI_CLASSIFIER_MODEL") || DEFAULT_FAST_MODEL;
-  const models = uniqueModelCandidates(preferred, FAST_MODEL_FALLBACKS);
+  const models = configuredModelChain("GEMINI_CLASSIFIER_MODEL", "GEMINI_CLASSIFIER_FALLBACK_MODELS", DEFAULT_FAST_MODEL, FAST_MODEL_FALLBACKS);
   const startedAt = performance.now();
   const { raw, requestId, modelUsed, fallbackUsed } = await geminiRequestWithFallback(models, {
     systemInstruction: { parts: [{ text: classificationInstructions() }] },
@@ -755,8 +766,7 @@ async function classify(payload: JsonRecord): Promise<JsonRecord> {
 }
 
 async function extractVisual(payload: JsonRecord): Promise<JsonRecord> {
-  const preferred = Deno.env.get("GEMINI_MODEL") || DEFAULT_MODEL;
-  const models = uniqueModelCandidates(preferred, GENERAL_MODEL_FALLBACKS);
+  const models = configuredModelChain("GEMINI_MODEL", "GEMINI_GENERAL_FALLBACK_MODELS", DEFAULT_MODEL, GENERAL_MODEL_FALLBACKS);
   const images = validateVisualPayload(payload);
   const startedAt = performance.now();
   const parts: JsonRecord[] = [{ text: JSON.stringify({ fileName: payload.fileName, sourceKind: payload.sourceKind, locale: payload.locale, knownFormTypes: payload.knownFormTypes }) }];
@@ -774,8 +784,7 @@ async function extractVisual(payload: JsonRecord): Promise<JsonRecord> {
 }
 
 async function enhanceFast(payload: JsonRecord): Promise<JsonRecord> {
-  const preferred = Deno.env.get("GEMINI_FAST_MODEL") || DEFAULT_FAST_MODEL;
-  const models = uniqueModelCandidates(preferred, FAST_MODEL_FALLBACKS);
+  const models = configuredModelChain("GEMINI_FAST_MODEL", "GEMINI_FAST_FALLBACK_MODELS", DEFAULT_FAST_MODEL, FAST_MODEL_FALLBACKS);
   const startedAt = performance.now();
   const { raw, requestId, modelUsed, fallbackUsed } = await geminiRequestWithFallback(models, {
     systemInstruction: { parts: [{ text: fastEnhancementInstructions() }] },
@@ -1582,12 +1591,13 @@ function primarySegmentTimeout(segment: PrimarySegmentName): number {
 
 function primarySegmentModels(segment: PrimarySegmentName): string[] {
   if (segment === "reasoning") {
-    const configured = normalizeModelName(Deno.env.get("GEMINI_ANALYSIS_MODEL") || DEFAULT_ANALYSIS_MODEL);
-    const preferred = /^gemini-3(?:\.|-)/i.test(configured) ? configured : DEFAULT_ANALYSIS_MODEL;
-    return uniqueModelCandidates(preferred, PRIMARY_REASONING_MODELS);
+    return configuredModelChain("GEMINI_ANALYSIS_MODEL", "GEMINI_REASONING_FALLBACK_MODELS", DEFAULT_ANALYSIS_MODEL, PRIMARY_REASONING_MODELS);
   }
-  const configured = normalizeModelName(Deno.env.get("GEMINI_FAST_MODEL") || DEFAULT_FAST_MODEL);
-  return uniqueModelCandidates(configured, PRIMARY_ACTION_MODELS);
+  return configuredModelChain("GEMINI_FAST_MODEL", "GEMINI_ACTION_FALLBACK_MODELS", DEFAULT_FAST_MODEL, PRIMARY_ACTION_MODELS);
+}
+
+function primaryRepairModels(): string[] {
+  return configuredModelList("GEMINI_REPAIR_MODELS", PRIMARY_REPAIR_MODELS);
 }
 
 function validatePrimarySegmentShape(segment: PrimarySegmentName, value: JsonRecord): void {
@@ -1620,7 +1630,7 @@ async function repairPrimarySegment(
   deadlineAt: number,
 ): Promise<PrimarySegmentRun> {
   const repairPayload = buildPrimarySegmentRepairPayload(payload, segment, previousCandidate, rejectionReason);
-  const models = uniqueModelCandidates(PRIMARY_REPAIR_MODELS[0], PRIMARY_REPAIR_MODELS);
+  const models = primaryRepairModels();
   const response = await geminiRequestWithFallback(
     models,
     primaryRequestBody(
@@ -1725,7 +1735,7 @@ async function requestPrimarySegment(
 }
 
 function primaryTransientRescueModels(): string[] {
-  return uniqueModelCandidates(PRIMARY_TRANSIENT_RESCUE_MODELS[0], PRIMARY_TRANSIENT_RESCUE_MODELS);
+  return configuredModelList("GEMINI_RESCUE_MODELS", PRIMARY_TRANSIENT_RESCUE_MODELS);
 }
 
 async function rescueTransientPrimarySegment(

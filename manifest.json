@@ -1,6 +1,6 @@
 {
   "app": "تقارير",
-  "version": "1.2.46",
+  "version": "1.2.47",
   "phase": "Rate-Aware AI Orchestration",
   "releaseName": "Rate Limit Containment and Non-Repeating Segment Rescue",
   "buildType": "static-github-pages-plus-supabase-edge-function",
@@ -213,7 +213,7 @@
     "legacyAnalyzeThinkingBudget": 1024,
     "classificationThinkingBudget": 0,
     "reconciliationContractVersion": "6.6.0",
-    "edgeFunctionVersion": "0.15.8",
+    "edgeFunctionVersion": "0.15.9",
     "fastEnhancementModel": "gemini-3.5-flash-lite",
     "fastEnhancementThinkingBudget": 192,
     "fastEnhancementMaxOutputTokens": 2600,
@@ -223,10 +223,10 @@
     "primaryAnalysisThinkingLevel": "low",
     "primaryRescueThinkingLevel": "minimal",
     "primaryRescueMaxOutputTokens": 3072,
-    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.2.19",
+    "legacyEnhanceFastOperation": "retained server-side for backward compatibility; the current frontend uses analyze_primary",
     "primaryModelFallbackOrder": [
-      "reasoning:gemini-3.6-flash>gemini-3.5-flash",
-      "action:gemini-3.5-flash-lite>gemini-3.6-flash>gemini-3.5-flash"
+      "reasoning: defaults to gemini-3.6-flash>gemini-3.5-flash; optional GEMINI_ANALYSIS_MODEL/GEMINI_REASONING_FALLBACK_MODELS overrides",
+      "action: defaults to gemini-3.5-flash-lite>gemini-3.6-flash>gemini-3.5-flash; optional GEMINI_FAST_MODEL/GEMINI_ACTION_FALLBACK_MODELS overrides"
     ],
     "transientRetryAttemptsPerModel": 1,
     "transientRetryBackoff": "normal model failover, then isolated segment rescue with 250-399ms jitter inside server deadline",
@@ -254,7 +254,11 @@
       "gemini-3.5-flash-lite",
       "gemini-3.5-flash"
     ],
-    "primaryTransientRescuePolicy": "retry-failed-segment-only-preserve-successful-segment"
+    "primaryTransientRescuePolicy": "retry-failed-segment-only-preserve-successful-segment",
+    "primaryInitialPhaseDeadlineMs": 26000,
+    "primaryTransientRescuePhaseDeadlineMs": 36500,
+    "modelOverridePolicy": "generation-agnostic normalized model names; optional fallback lists are configurable without a hard-coded Gemini generation family guard",
+    "primaryAnalysisClientMaxAttempts": 3
   },
   "security": {
     "geminiKeyInBrowser": false,
@@ -301,16 +305,16 @@
     "newTypeContextRows": 60,
     "narrativeContextLines": 120,
     "resultsPresentation": "results appear only after the primary AI analysis passes evidence validation",
-    "networkRequestsPerAnalysis": "1 normally; one attempt per model with deadline-aware automatic fallback; one rescue path only for invalid/incomplete output",
-    "clientTimeoutMs": 52000,
+    "networkRequestsPerAnalysis": "1 Edge request normally; no immediate full replay for 429/rate-limit; at most one full Edge replay for qualifying transient capacity failures after bounded server-side segment fallback/rescue",
+    "clientTimeoutMs": 60000,
     "payloadAcceptanceLimitChars": 90000,
-    "latencyStrategy": "Gemini 3.6 Flash with a 16-second attempt, direct fallback to Gemini 3.5 Flash-Lite, one minimal rescue for invalid output, all within a 42-second server deadline and 52-second client envelope"
+    "latencyStrategy": "45-second server deadline with the initial phase capped at 26 seconds, transient segment rescue capped at 36.5 seconds, and 8.5 seconds reserved after rescue; the browser uses a 60-second client envelope"
   },
   "backwardCompatibility": {
     "databaseChanges": false,
     "newSecretsRequired": false,
     "currentFrontendOperation": "analyze_primary",
-    "legacyEnhanceFastOperation": "retained server-side for old clients but unused by v1.2.19",
+    "legacyEnhanceFastOperation": "retained server-side for backward compatibility; the current frontend uses analyze_primary",
     "classificationAndVision": "retained"
   },
   "notYetEnabled": [

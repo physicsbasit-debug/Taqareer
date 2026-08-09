@@ -2,9 +2,11 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { edgeVersion, escapeRegExp } = require('../scripts/version-contract.cjs');
 const vm = require('node:vm');
 
 const root = path.resolve(__dirname, '..');
+const CURRENT_EDGE_VERSION = edgeVersion(root);
 
 function loadModules() {
   const sandbox = {
@@ -94,5 +96,5 @@ test('Edge classification returns a semantic analysis profile and is instructed 
   assert.match(edge, /levelFields/);
   assert.match(edge, /لا تُجبر|لا تجبر/);
   assert.match(edge, /توزيع مستويات مجمع/);
-  assert.match(edge, /EDGE_VERSION = "0\.15\.8"/);
+  assert.match(edge, new RegExp(`EDGE_VERSION = [\"']${escapeRegExp(CURRENT_EDGE_VERSION)}[\"']`));
 });

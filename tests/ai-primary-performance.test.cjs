@@ -5,6 +5,12 @@ const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
+function numericConst(source, name) {
+  const match = source.match(new RegExp(`const\\s+${name}\\s*=\\s*([0-9_]+)`));
+  assert.ok(match, `missing numeric constant ${name}`);
+  return Number(match[1].replace(/_/g, ''));
+}
+
 
 test('primary AI request is split into bounded reasoning and action segments', () => {
   const edge = read('supabase/functions/analyze-educational-form/index.ts');
@@ -17,21 +23,32 @@ test('primary AI request is split into bounded reasoning and action segments', (
   assert.match(edge, /primarySegmentOutputLimit\(segment: PrimarySegmentName\)/);
   assert.match(edge, /return segment === "reasoning" \? 2700 : 2300/);
   assert.match(edge, /thinkingConfig: \{ thinkingLevel \}/);
-  assert.match(client, /analyze_primary", payload, \{ timeoutMs: 60000, networkRetry: true, maxAttempts: 3 \}/);
-  assert.match(edge, /PRIMARY_ANALYSIS_DEADLINE_MS = 45_000/);
-  assert.match(edge, /PRIMARY_INITIAL_PHASE_DEADLINE_MS = 26_000/);
-  assert.match(edge, /PRIMARY_TRANSIENT_RESCUE_PHASE_DEADLINE_MS = 36_500/);
-  assert.match(edge, /PRIMARY_REASONING_ATTEMPT_TIMEOUT_MS = 15_000/);
+  const clientTimeout = numericConst(client, 'PRIMARY_ANALYSIS_CLIENT_TIMEOUT_MS');
+  const clientAttempts = numericConst(client, 'PRIMARY_ANALYSIS_CLIENT_MAX_ATTEMPTS');
+  assert.ok(clientTimeout > numericConst(edge, 'PRIMARY_ANALYSIS_DEADLINE_MS'), 'client timeout must exceed the server deadline');
+  assert.ok(clientAttempts >= 2 && clientAttempts <= 3, 'client replay budget must stay bounded');
+  assert.match(client, /analyze_primary", payload, \{ timeoutMs: PRIMARY_ANALYSIS_CLIENT_TIMEOUT_MS, networkRetry: true, maxAttempts: PRIMARY_ANALYSIS_CLIENT_MAX_ATTEMPTS \}/);
+  const overallDeadline = numericConst(edge, 'PRIMARY_ANALYSIS_DEADLINE_MS');
+  const initialDeadline = numericConst(edge, 'PRIMARY_INITIAL_PHASE_DEADLINE_MS');
+  const rescueDeadline = numericConst(edge, 'PRIMARY_TRANSIENT_RESCUE_PHASE_DEADLINE_MS');
+  const reasoningTimeout = numericConst(edge, 'PRIMARY_REASONING_ATTEMPT_TIMEOUT_MS');
+  const actionTimeout = numericConst(edge, 'PRIMARY_ACTION_ATTEMPT_TIMEOUT_MS');
+  const repairTimeout = numericConst(edge, 'PRIMARY_REPAIR_ATTEMPT_TIMEOUT_MS');
+  assert.ok(initialDeadline > 0 && initialDeadline < rescueDeadline && rescueDeadline < overallDeadline, 'phase deadlines must reserve time for rescue and final validation');
+  assert.ok(overallDeadline - rescueDeadline >= 5000, 'post-rescue validation must retain at least five seconds');
+  assert.ok(reasoningTimeout > 0 && reasoningTimeout <= overallDeadline);
+  assert.ok(actionTimeout > 0 && actionTimeout <= overallDeadline);
+  assert.ok(repairTimeout > 0 && repairTimeout <= overallDeadline);
   assert.match(client, /code === "GEMINI_RATE_LIMIT" \|\| status === 429/);
   assert.match(client, /transientCapacity && attempt >= 2/);
   assert.match(client, /transientCapacity && attemptDurationMs > 20_000/);
   assert.match(client, /await delay\(2600 \+ Math\.round\(Math\.random\(\) \* 1200\)\)/);
   assert.match(client, /attempt < Math\.min\(maxAttempts, 2\).*AI_PRIMARY_TIMEOUT/s);
-  assert.match(edge, /PRIMARY_ACTION_ATTEMPT_TIMEOUT_MS = 13_000/);
-  assert.match(edge, /PRIMARY_REPAIR_ATTEMPT_TIMEOUT_MS = 11_000/);
-  assert.match(edge, /PRIMARY_REASONING_MODELS = Object\.freeze\(\["gemini-3\.6-flash", "gemini-3\.5-flash"\]\)/);
-  assert.match(edge, /PRIMARY_ACTION_MODELS = Object\.freeze\(\["gemini-3\.5-flash-lite", "gemini-3\.6-flash", "gemini-3\.5-flash"\]\)/);
-  assert.match(edge, /PRIMARY_REPAIR_MODELS = Object\.freeze\(\["gemini-3\.5-flash", "gemini-3\.6-flash", "gemini-3\.5-flash-lite"\]\)/);
+  assert.match(edge, /configuredModelChain\("GEMINI_CLASSIFIER_MODEL", "GEMINI_CLASSIFIER_FALLBACK_MODELS"/);
+  assert.match(edge, /configuredModelChain\("GEMINI_ANALYSIS_MODEL", "GEMINI_REASONING_FALLBACK_MODELS"/);
+  assert.match(edge, /configuredModelChain\("GEMINI_FAST_MODEL", "GEMINI_ACTION_FALLBACK_MODELS"/);
+  assert.match(edge, /configuredModelList\("GEMINI_REPAIR_MODELS"/);
+  assert.doesNotMatch(edge, /\^gemini-3/, 'future configured Gemini model families must not be blocked by a generation-specific regex');
   assert.match(edge, /rawText = await response\.text\(\);[\s\S]*?finally \{[\s\S]*?clearTimeout\(timeoutId\)/);
 });
 

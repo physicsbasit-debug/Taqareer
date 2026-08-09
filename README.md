@@ -4,12 +4,12 @@
 
 ## الحالة التشغيلية الحالية
 
-- التطبيق: `v1.2.46`
+- التطبيق: `v1.2.47`
 - Browser CORS Contract: لا يرسل العميل أي رأس مخصص غير معلن في Edge؛ محاولات التحليل تبقى داخل العميل دون `x-taqareer-attempt`.
 - Ranking Identity E2E: يعيد تركيب الاسم الكامل عندما تفصل PDF.js أصل الاسم والقبيلة بين band رقم الطالب وband القيد/الجنسية، ويثبت ترتيب الهوية بصيغة الاسم الأساسي أولًا ثم القبيلة في النهاية حتى جداول الأوائل في التقرير.
 - Report Metadata: تقارير النتائج متعددة المواد تعرض «نوع المصدر» و«نطاق التحليل» بصورة مستقلة عن المادة المختارة.
 - تخطيط التقرير: Cross-Section A4 Flow يستغل المساحة المتبقية بين الأقسام دون تصغير الخط أو كسر البطاقات.
-- Supabase Edge: `V0.15.8`
+- Supabase Edge: `V0.15.9`
 - عقد التحليل: `6.6.0`
 - Semantic Profile: `2.1.0`
 - المصدر التشغيلي لوظيفة التحليل: `supabase/functions/analyze-educational-form/index.ts`
@@ -22,6 +22,20 @@
 - سياسة الرسوم المشتركة تدعم حاليًا: Bar, Histogram, 100% Stacked, Line, Radar, Bullet, Dumbbell, Scatter, Pareto, Box, Heatmap, Table.
 
 لا تُحفظ نسخ نصية متسلسلة من Edge Function في جذر المستودع. تاريخ Git هو الأرشيف الرسمي للإصدارات القديمة.
+
+## إعدادات نماذج Gemini الاختيارية
+
+لا يلزم إضافة أي Secret جديد للنسخة الحالية. عند الحاجة مستقبلًا يمكن تغيير مسارات النماذج دون تعديل الكود عبر متغيرات اختيارية مفصولة بفواصل أو فاصلة منقوطة أو أسطر:
+
+- `GEMINI_FAST_FALLBACK_MODELS`
+- `GEMINI_CLASSIFIER_FALLBACK_MODELS`
+- `GEMINI_GENERAL_FALLBACK_MODELS`
+- `GEMINI_REASONING_FALLBACK_MODELS`
+- `GEMINI_ACTION_FALLBACK_MODELS`
+- `GEMINI_REPAIR_MODELS`
+- `GEMINI_RESCUE_MODELS`
+
+تبقى القوائم الافتراضية الحالية مستخدمة بالكامل عند عدم ضبط هذه المتغيرات.
 
 ## بنية المستودع
 

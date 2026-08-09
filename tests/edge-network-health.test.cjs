@@ -6,6 +6,9 @@ const vm = require('node:vm');
 const ts = require('typescript');
 
 const root = path.resolve(__dirname, '..');
+const { edgeVersion } = require('../scripts/version-contract.cjs');
+const CURRENT_EDGE_VERSION = edgeVersion(root);
+const LEGACY_CLIENT_FIXTURE_VERSION = '1.2.2'; // intentional backward-compatibility fixture
 const edgePath = path.join(root, 'supabase/functions/analyze-educational-form/index.ts');
 
 function createRuntime(env = {}) {
@@ -60,16 +63,16 @@ test('health operation verifies Edge connectivity without calling Gemini', async
   const response = await runtime.handler(new Request('https://edge.test/analyze', {
     method: 'POST',
     headers: { 'content-type': 'application/json', origin: 'https://physicsbasit-debug.github.io' },
-    body: JSON.stringify({ operation: 'health', payload: { clientVersion: '1.2.2' } }),
+    body: JSON.stringify({ operation: 'health', payload: { clientVersion: LEGACY_CLIENT_FIXTURE_VERSION } }),
   }));
   const body = await response.json();
   assert.equal(response.status, 200);
   assert.equal(body.ok, true);
   assert.equal(body.operation, 'health');
-  assert.equal(body.edgeVersion, '0.15.8');
+  assert.equal(body.edgeVersion, CURRENT_EDGE_VERSION);
   assert.equal(body.aiKeyConfigured, true);
   assert.equal(body.provider, 'supabase-edge');
-  assert.equal(response.headers.get('x-taqareer-edge-version'), '0.15.8');
+  assert.equal(response.headers.get('x-taqareer-edge-version'), CURRENT_EDGE_VERSION);
   assert.equal(runtime.getGeminiCalls(), 0);
 });
 

@@ -46,7 +46,7 @@ test('primary analysis failure preserves local evidence and tells the user to re
 
 test('primary analysis retries transport failures without changing the semantic contract', () => {
   const client = read('assets/ai-client.js');
-  assert.match(client, /invoke\("analyze_primary", payload, \{ timeoutMs: 60000, networkRetry: true, maxAttempts: 3 \}\)/);
+  assert.match(client, /invoke\("analyze_primary", payload, \{ timeoutMs: PRIMARY_ANALYSIS_CLIENT_TIMEOUT_MS, networkRetry: true, maxAttempts: PRIMARY_ANALYSIS_CLIENT_MAX_ATTEMPTS \}\)/);
 });
 
 
@@ -56,5 +56,6 @@ test('contract rejection is repaired server-side before surfacing a retryable er
   assert.match(edge, /segmentRepairContext/);
   assert.match(edge, /Promise\.allSettled/);
   assert.match(edge, /GEMINI_CONTRACT_REJECTED/);
-  assert.match(edge, /PRIMARY_REPAIR_MODELS = Object\.freeze\(\["gemini-3\.5-flash", "gemini-3\.6-flash", "gemini-3\.5-flash-lite"\]\)/);
+  assert.match(edge, /function primaryRepairModels\(\)/);
+  assert.match(edge, /configuredModelList\("GEMINI_REPAIR_MODELS"/);
 });

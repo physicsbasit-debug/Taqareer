@@ -3,8 +3,10 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { packageVersion, escapeRegExp } = require('../scripts/version-contract.cjs');
 
 const root = path.resolve(__dirname, '..');
+const CURRENT_APP_VERSION = packageVersion(root);
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
 
 test('public workspace hides development clutter and exposes compact review controls', () => {
@@ -12,7 +14,7 @@ test('public workspace hides development clutter and exposes compact review cont
   const app = read('assets/app.js');
   const css = read('assets/styles.css');
 
-  assert.match(index, /v1\.2\.46/);
+  assert.match(index, new RegExp(`v${escapeRegExp(CURRENT_APP_VERSION)}`));
   assert.match(index, /id="togglePreviewColumnsBtn"/);
   assert.match(index, /id="qualityDetails"/);
   assert.match(index, /خدمة التحليل التربوي/);

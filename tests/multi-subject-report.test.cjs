@@ -3,8 +3,10 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { packageVersion, escapeRegExp } = require('../scripts/version-contract.cjs');
 
 const root = path.resolve(__dirname, '..');
+const CURRENT_APP_VERSION = packageVersion(root);
 
 function loadModules() {
   const sandbox = {
@@ -53,7 +55,7 @@ test('official report shows grade metadata, school formula and local ranking tab
   assert.match(html, /العشرة الأوائل على مستوى المدرسة \/ الدفعة/);
   assert.match(html, /العشرة الأوائل حسب الدرجة/);
   assert.match(html, /طالب اختبار 136/);
-  assert.match(html, /تقارير v1\.2\.46/);
+  assert.match(html, new RegExp(`تقارير v${escapeRegExp(CURRENT_APP_VERSION)}`));
 });
 
 test('subject report includes only the selected subject top-ten table and selected-subject metadata', () => {

@@ -7,6 +7,37 @@ const ts = require('typescript');
 
 const root = path.resolve(__dirname, '..');
 const edgePath = path.join(root, 'supabase/functions/analyze-educational-form/index.ts');
+const edgeSource = fs.readFileSync(edgePath, 'utf8');
+function sourceStringConst(name) {
+  const match = edgeSource.match(new RegExp(`const\\s+${name}\\s*=\\s*["']([^"']+)["']`));
+  assert.ok(match, `missing ${name}`);
+  return match[1];
+}
+function sourceNumericConst(name) {
+  const match = edgeSource.match(new RegExp(`const\\s+${name}\\s*=\\s*([0-9_]+)`));
+  assert.ok(match, `missing ${name}`);
+  return Number(match[1].replace(/_/g, ''));
+}
+function sourceArrayConst(name) {
+  const match = edgeSource.match(new RegExp(`const\\s+${name}\\s*=\\s*Object\\.freeze\\(\\[([^\\]]*)\\]\\)`));
+  assert.ok(match, `missing ${name}`);
+  return [...match[1].matchAll(/["']([^"']+)["']/g)].map(item => item[1]);
+}
+function modelUrlPattern(model) {
+  const escaped = String(model).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`${escaped}:generateContent`);
+}
+const DEFAULT_ANALYSIS_MODEL = sourceStringConst('DEFAULT_ANALYSIS_MODEL');
+const DEFAULT_FAST_MODEL = sourceStringConst('DEFAULT_FAST_MODEL');
+const PRIMARY_REASONING_MODELS = sourceArrayConst('PRIMARY_REASONING_MODELS');
+const PRIMARY_ACTION_MODELS = sourceArrayConst('PRIMARY_ACTION_MODELS');
+const PRIMARY_RESCUE_MODELS = sourceArrayConst('PRIMARY_TRANSIENT_RESCUE_MODELS');
+const PRIMARY_SERVER_DEADLINE = sourceNumericConst('PRIMARY_ANALYSIS_DEADLINE_MS');
+const PRIMARY_INITIAL_DEADLINE = sourceNumericConst('PRIMARY_INITIAL_PHASE_DEADLINE_MS');
+const PRIMARY_RESCUE_DEADLINE = sourceNumericConst('PRIMARY_TRANSIENT_RESCUE_PHASE_DEADLINE_MS');
+const PRIMARY_REASONING_TIMEOUT = sourceNumericConst('PRIMARY_REASONING_ATTEMPT_TIMEOUT_MS');
+const PRIMARY_ACTION_TIMEOUT = sourceNumericConst('PRIMARY_ACTION_ATTEMPT_TIMEOUT_MS');
+
 
 function payload() {
   const groups = [
@@ -159,7 +190,7 @@ function geminiRaw(result, finishReason = 'STOP') {
   };
 }
 
-async function createRuntime(responses) {
+async function createRuntime(responses, env = {}) {
   const source = fs.readFileSync(edgePath, 'utf8');
   const transpiled = ts.transpileModule(source, {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None },
@@ -238,7 +269,7 @@ async function createRuntime(responses) {
       return new Response(JSON.stringify(raw), { status, headers: { 'content-type': 'application/json', 'x-request-id': `req-${calls}` } });
     },
     Deno: {
-      env: { get: key => key === 'GEMINI_API_KEY' ? 'test-key' : '' },
+      env: { get: key => key === 'GEMINI_API_KEY' ? 'test-key' : String(env[key] || '') },
       serve: fn => { handler = fn; },
     },
   });
@@ -281,9 +312,9 @@ test('edge primary runtime composes reasoning and action segments in parallel', 
   assert.equal(body.serverTiming.segmentedPrimary, true);
   assert.equal(body.serverTiming.parallelSegments, true);
   assert.equal(body.serverTiming.rescueUsed, false);
-  assert.equal(body.serverTiming.serverDeadlineMs, 45000);
-  assert.equal(body.serverTiming.reasoningAttemptTimeoutMs, 15000);
-  assert.equal(body.serverTiming.actionAttemptTimeoutMs, 13000);
+  assert.equal(body.serverTiming.serverDeadlineMs, PRIMARY_SERVER_DEADLINE);
+  assert.equal(body.serverTiming.reasoningAttemptTimeoutMs, PRIMARY_REASONING_TIMEOUT);
+  assert.equal(body.serverTiming.actionAttemptTimeoutMs, PRIMARY_ACTION_TIMEOUT);
   assert.equal(body.serverTiming.distinctTargetGroups, 2);
   assert.equal(body.result.interventions[1].numericGuard.applied, true);
   assert.equal(body.result.interventions[1].numericGuard.mode, 'mastery_gain');
@@ -429,9 +460,9 @@ test('edge reasoning segment fails over without restarting the successful action
   assert.equal(body.ok, true);
   assert.equal(runtime.getCalls(), 3);
   const urls = runtime.getUrls();
-  assert.match(urls[0], /gemini-3\.6-flash:generateContent/);
-  assert.match(urls[1], /gemini-3\.5-flash-lite:generateContent/);
-  assert.match(urls[2], /gemini-3\.5-flash:generateContent/);
+  assert.match(urls[0], modelUrlPattern(DEFAULT_ANALYSIS_MODEL));
+  assert.match(urls[1], modelUrlPattern(DEFAULT_FAST_MODEL));
+  assert.match(urls[2], modelUrlPattern(PRIMARY_REASONING_MODELS.find(model => model !== DEFAULT_ANALYSIS_MODEL) || PRIMARY_REASONING_MODELS[0]));
   assert.equal(body.serverTiming.parallelSegments, true);
 });
 
@@ -460,10 +491,10 @@ test('edge transient rescue reruns only reasoning after its normal model chain i
   assert.equal(reasoningRequests.length, 3);
   assert.equal(actionRequests.length, 1);
   const urls = runtime.getUrls();
-  assert.match(urls[0], /gemini-3\.6-flash:generateContent/);
-  assert.match(urls[1], /gemini-3\.5-flash-lite:generateContent/);
-  assert.match(urls[2], /gemini-3\.5-flash:generateContent/);
-  assert.match(urls[3], /gemini-3\.1-flash-lite:generateContent/);
+  assert.match(urls[0], modelUrlPattern(DEFAULT_ANALYSIS_MODEL));
+  assert.match(urls[1], modelUrlPattern(DEFAULT_FAST_MODEL));
+  assert.match(urls[2], modelUrlPattern(PRIMARY_REASONING_MODELS.find(model => model !== DEFAULT_ANALYSIS_MODEL) || PRIMARY_REASONING_MODELS[0]));
+  assert.match(urls[3], modelUrlPattern(PRIMARY_RESCUE_MODELS[0]));
 });
 
 test('edge transient rescue reruns only action after its normal model chain is exhausted', async () => {
@@ -502,7 +533,7 @@ test('edge treats a reasoning timeout as transient and fails over while action r
   assert.equal(status, 200);
   assert.equal(body.ok, true);
   assert.equal(runtime.getCalls(), 3);
-  assert.match(runtime.getUrls()[2], /gemini-3\.5-flash:generateContent/);
+  assert.match(runtime.getUrls()[2], modelUrlPattern(PRIMARY_REASONING_MODELS.find(model => model !== DEFAULT_ANALYSIS_MODEL) || PRIMARY_REASONING_MODELS[0]));
 });
 
 test('edge treats an aborted reasoning response body as transient and fails over', async () => {
@@ -518,6 +549,28 @@ test('edge treats an aborted reasoning response body as transient and fails over
   assert.equal(runtime.getCalls(), 3);
 });
 
+test('configured future model families are honored without a hard-coded Gemini generation guard', async () => {
+  const full = primaryResult();
+  const futureReasoning = 'gemini-future-reasoning';
+  const futureAction = 'gemini-future-action';
+  const runtime = await createRuntime(({ url }) => {
+    if (modelUrlPattern(futureReasoning).test(url)) return geminiRaw(reasoningResult(full));
+    if (modelUrlPattern(futureAction).test(url)) return geminiRaw(actionResult(full));
+    throw new Error(`Unexpected model URL while honoring configured future models: ${url}`);
+  }, {
+    GEMINI_ANALYSIS_MODEL: futureReasoning,
+    GEMINI_REASONING_FALLBACK_MODELS: futureReasoning,
+    GEMINI_FAST_MODEL: futureAction,
+    GEMINI_ACTION_FALLBACK_MODELS: futureAction,
+  });
+  const { status, body } = await invoke(runtime);
+  assert.equal(status, 200);
+  assert.equal(body.ok, true);
+  assert.equal(runtime.getCalls(), 2);
+  assert.ok(runtime.getUrls().some(url => modelUrlPattern(futureReasoning).test(url)));
+  assert.ok(runtime.getUrls().some(url => modelUrlPattern(futureAction).test(url)));
+});
+
 test('edge stops model fan-out immediately when a primary segment hits provider rate limit', async () => {
   const full = primaryResult();
   const rateLimited = httpError(429, 'RESOURCE_EXHAUSTED: rate limit exceeded for this project');
@@ -531,7 +584,7 @@ test('edge stops model fan-out immediately when a primary segment hits provider 
   assert.equal(body.errorCode, 'GEMINI_RATE_LIMIT');
   assert.equal(body.retryable, true);
   assert.equal(body.diagnostic.providerKind, 'rate_limit');
-  assert.deepEqual(body.diagnostic.attemptedModels, ['gemini-3.6-flash']);
+  assert.deepEqual(body.diagnostic.attemptedModels, [DEFAULT_ANALYSIS_MODEL]);
   assert.equal(runtime.getCalls(), 2, 'the successful parallel action call may finish, but reasoning must not fan out to fallback/rescue models');
 });
 
@@ -625,19 +678,19 @@ test('edge reserves enough wall-clock budget for transient action rescue after s
   const busy = (message, ms) => ({ __status: 503, __advanceMs: ms, __body: { error: { message } } });
   let fastLiteCalls = 0;
   const runtime = await createRuntime(({ url }) => {
-    if (/gemini-3\.6-flash:generateContent/.test(url)) {
+    if (modelUrlPattern(DEFAULT_ANALYSIS_MODEL).test(url)) {
       // reasoning succeeds on its first 3.6 request; action later reaches the same model and receives a slow transient failure.
       const reasoningAlreadySent = fastLiteCalls > 0;
       return reasoningAlreadySent ? busy('slow busy action model two', 12_000) : geminiRaw(reasoningResult(full));
     }
-    if (/gemini-3\.5-flash-lite:generateContent/.test(url)) {
+    if (modelUrlPattern(DEFAULT_FAST_MODEL).test(url)) {
       fastLiteCalls += 1;
       return busy('slow busy action model one', 12_000);
     }
-    if (/gemini-3\.1-flash-lite:generateContent/.test(url)) {
+    if (modelUrlPattern(PRIMARY_RESCUE_MODELS[0]).test(url)) {
       return { __advanceMs: 7_800, __body: geminiRaw(actionResult(full)) };
     }
-    if (/gemini-3\.5-flash:generateContent/.test(url)) {
+    if (modelUrlPattern(PRIMARY_REASONING_MODELS.find(model => model !== DEFAULT_ANALYSIS_MODEL) || PRIMARY_REASONING_MODELS[0]).test(url)) {
       return busy('slow busy action model three', 12_900);
     }
     throw new Error(`Unexpected model URL: ${url}`);
@@ -647,7 +700,7 @@ test('edge reserves enough wall-clock budget for transient action rescue after s
   assert.equal(body.ok, true);
   assert.equal(body.serverTiming.transientRescueUsed, true);
   assert.deepEqual(body.serverTiming.transientRescuedSegments, ['action']);
-  assert.equal(body.serverTiming.initialPhaseDeadlineMs, 26000);
-  assert.equal(body.serverTiming.transientRescuePhaseDeadlineMs, 36500);
-  assert.equal(body.serverTiming.reservedPostRescueMs, 8500);
+  assert.equal(body.serverTiming.initialPhaseDeadlineMs, PRIMARY_INITIAL_DEADLINE);
+  assert.equal(body.serverTiming.transientRescuePhaseDeadlineMs, PRIMARY_RESCUE_DEADLINE);
+  assert.equal(body.serverTiming.reservedPostRescueMs, PRIMARY_SERVER_DEADLINE - PRIMARY_RESCUE_DEADLINE);
 });

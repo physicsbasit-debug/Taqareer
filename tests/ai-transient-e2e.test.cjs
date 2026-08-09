@@ -5,6 +5,12 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const root = path.resolve(__dirname, '..');
+const { edgeVersion } = require('../scripts/version-contract.cjs');
+const CURRENT_EDGE_VERSION = edgeVersion(root);
+const clientSource = fs.readFileSync(path.join(root, 'assets', 'ai-client.js'), 'utf8');
+const clientTimeoutMatch = clientSource.match(/const\s+PRIMARY_ANALYSIS_CLIENT_TIMEOUT_MS\s*=\s*([0-9_]+)/);
+if (!clientTimeoutMatch) throw new Error('PRIMARY_ANALYSIS_CLIENT_TIMEOUT_MS not found');
+const PRIMARY_CLIENT_TIMEOUT_MS = Number(clientTimeoutMatch[1].replace(/_/g, ''));
 
 function storage() {
   const values = new Map();
@@ -18,7 +24,7 @@ function storage() {
 function jsonResponse(body, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'content-type': 'application/json', 'x-taqareer-edge-version': '0.15.8' },
+    headers: { 'content-type': 'application/json', 'x-taqareer-edge-version': CURRENT_EDGE_VERSION },
   });
 }
 
@@ -28,7 +34,7 @@ function loadRuntime(fetchImpl) {
   const window = { TAQAREER_CONFIG: {}, dispatchEvent() {} };
   class CustomEvent { constructor(type, init = {}) { this.type = type; this.detail = init.detail; } }
   const nativeSetTimeout = setTimeout;
-  const fastSetTimeout = (fn, ms, ...args) => nativeSetTimeout(fn, Number(ms) < 8000 ? 0 : ms, ...args);
+  const fastSetTimeout = (fn, ms, ...args) => nativeSetTimeout(fn, Number(ms) < PRIMARY_CLIENT_TIMEOUT_MS ? 0 : ms, ...args);
   const context = vm.createContext({
     window,
     globalThis: null,
@@ -74,7 +80,7 @@ test('End-to-End: compact analysis payload allows one full Edge replay after a t
         return jsonResponse({
           ok: false,
           operation: 'analyze_primary',
-          edgeVersion: '0.15.8',
+          edgeVersion: CURRENT_EDGE_VERSION,
           errorCode: 'GEMINI_TRANSIENT',
           retryable: true,
           error: 'خدمة التحليل مزدحمة مؤقتًا.',
@@ -83,7 +89,7 @@ test('End-to-End: compact analysis payload allows one full Edge replay after a t
       return jsonResponse({
         ok: true,
         operation: 'analyze_primary',
-        edgeVersion: '0.15.8',
+        edgeVersion: CURRENT_EDGE_VERSION,
         aiKeyConfigured: true,
         result: { contractVersion: '6.6.0', executive: { headline: 'تحليل مكتمل' } },
       });
@@ -119,7 +125,7 @@ test('End-to-End: orchestrated analysis proceeds when advisory health would fail
       return jsonResponse({
         ok: true,
         operation: 'analyze_primary',
-        edgeVersion: '0.15.8',
+        edgeVersion: CURRENT_EDGE_VERSION,
         aiKeyConfigured: true,
         result: { contractVersion: '6.6.0', executive: { headline: 'تحليل مباشر مكتمل' } },
       });

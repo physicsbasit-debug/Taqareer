@@ -5,6 +5,9 @@ const vm = require('node:vm');
 const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
+const { packageVersion, escapeRegExp } = require('../scripts/version-contract.cjs');
+const CURRENT_APP_VERSION = packageVersion(root);
+const CURRENT_APP_VERSION_RE = escapeRegExp(CURRENT_APP_VERSION);
 const sandbox = { window: {}, console, Intl, Date, Math, Set, Map, structuredClone, Array, Object, String, Number, RegExp, JSON };
 vm.createContext(sandbox);
 for (const file of ['display-terms.js', 'analysis-reconciliation.js', 'report-system.js']) {
@@ -47,12 +50,12 @@ test('official report renders reconciled analysis without exposing AI provenance
   const analysis = sandbox.window.TaqareerReconciliation.composePrimary(local, primary, { availableEvidenceRefs: ['metric:positivePct'] });
   const context = { analysis, type: { name: 'استبانة اتجاهات أو رضا' }, sourceName: 'survey.csv', sourceMeta: { metadata: { school: 'الباسط للبنين الصفوف (8-10)', subject: 'اللغة العربية', grade: '8-10', academicYear: '2025/2026' } }, quality: { completeness: 100 }, recognitionStatus: 'معتمد' };
   const html = sandbox.window.TaqareerReports.buildReportHtml(context, { autoPrint: false });
-  assert.equal(sandbox.window.TaqareerReports.VERSION, '1.2.46');
+  assert.equal(sandbox.window.TaqareerReports.VERSION, CURRENT_APP_VERSION);
   assert.match(html, /تحليل تربوي موثق/);
   assert.match(html, /منصة التحليل التربوي والبيانات التعليمية/);
   assert.doesNotMatch(html, /ذكاء اصطناعي|Gemini|TQR-/i);
   assert.match(html, /رضا متوسط يخفي أولوية محددة/);
-  assert.match(html, /تقارير v1\.2\.46/);
+  assert.match(html, new RegExp(`تقارير v${CURRENT_APP_VERSION_RE}`));
   assert.match(html, /خط الأساس/);
   assert.match(html, /فحص تجانس الاتجاه/);
   assert.match(html, /الباسط للبنين الصفوف \(8-10\)/);

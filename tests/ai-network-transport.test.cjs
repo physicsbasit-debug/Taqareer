@@ -5,6 +5,9 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const root = path.resolve(__dirname, '..');
+const { edgeVersion } = require('../scripts/version-contract.cjs');
+const CURRENT_EDGE_VERSION = edgeVersion(root);
+const LEGACY_EDGE_FIXTURE_VERSION = '0.15.1';
 
 function storage() {
   const values = new Map();
@@ -57,7 +60,7 @@ function loadClient(fetchImpl) {
 function jsonResponse(body, status = 200, headers = {}) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'content-type': 'application/json', 'x-taqareer-edge-version': '0.15.1', ...headers },
+    headers: { 'content-type': 'application/json', 'x-taqareer-edge-version': LEGACY_EDGE_FIXTURE_VERSION, ...headers },
   });
 }
 
@@ -103,7 +106,7 @@ test('primary analysis uses the real analysis request as the authoritative healt
     const body = JSON.parse(options.body);
     operations.push(body.operation);
     if (body.operation === 'analyze_primary') {
-      return jsonResponse({ ok: true, operation: 'analyze_primary', edgeVersion: '0.15.1', aiKeyConfigured: true, result: { contractVersion: '6.6.0' } });
+      return jsonResponse({ ok: true, operation: 'analyze_primary', edgeVersion: LEGACY_EDGE_FIXTURE_VERSION, aiKeyConfigured: true, result: { contractVersion: '6.6.0' } });
     }
     throw new Error(`unexpected operation ${body.operation}`);
   });
@@ -112,7 +115,7 @@ test('primary analysis uses the real analysis request as the authoritative healt
   assert.deepEqual(operations, ['analyze_primary']);
   assert.equal(response.result.contractVersion, '6.6.0');
   assert.equal(api.getHealth().status, 'live');
-  assert.equal(api.getHealth().edgeVersion, '0.15.1');
+  assert.equal(api.getHealth().edgeVersion, LEGACY_EDGE_FIXTURE_VERSION);
 });
 
 
@@ -128,7 +131,7 @@ test('primary analysis automatically retries one retryable Edge 503 response ins
         return jsonResponse({
           ok: false,
           operation: 'analyze_primary',
-          edgeVersion: '0.15.8',
+          edgeVersion: CURRENT_EDGE_VERSION,
           errorCode: 'GEMINI_TRANSIENT',
           retryable: true,
           error: 'خدمة التحليل مزدحمة مؤقتًا.',
@@ -137,7 +140,7 @@ test('primary analysis automatically retries one retryable Edge 503 response ins
       return jsonResponse({
         ok: true,
         operation: 'analyze_primary',
-        edgeVersion: '0.15.8',
+        edgeVersion: CURRENT_EDGE_VERSION,
         aiKeyConfigured: true,
         result: { contractVersion: '6.6.0' },
       });
@@ -163,7 +166,7 @@ test('primary analysis stops after one full-request replay when Edge remains tra
       return jsonResponse({
         ok: false,
         operation: 'analyze_primary',
-        edgeVersion: '0.15.8',
+        edgeVersion: CURRENT_EDGE_VERSION,
         errorCode: 'GEMINI_TRANSIENT',
         retryable: true,
         error: 'خدمة التحليل مزدحمة مؤقتًا.',
@@ -185,7 +188,7 @@ test('primary analysis never replays the whole Edge request immediately after GE
     return jsonResponse({
       ok: false,
       operation: 'analyze_primary',
-      edgeVersion: '0.15.8',
+      edgeVersion: CURRENT_EDGE_VERSION,
       errorCode: 'GEMINI_RATE_LIMIT',
       retryable: true,
       retryAfterMs: 12000,
@@ -217,7 +220,7 @@ test('End-to-End: primary analysis is not blocked by a failed health preflight w
       return jsonResponse({
         ok: true,
         operation: 'analyze_primary',
-        edgeVersion: '0.15.8',
+        edgeVersion: CURRENT_EDGE_VERSION,
         aiKeyConfigured: true,
         result: { contractVersion: '6.6.0' },
       });
