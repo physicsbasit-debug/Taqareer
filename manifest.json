@@ -1,6 +1,6 @@
 {
   "app": "تقارير",
-  "version": "1.2.38",
+  "version": "1.2.39",
   "phase": "Browser-PDF.js Multi-Subject Header Recovery",
   "releaseName": "Score-Level Pair Anchors for Fragmented RTL Subject Headers",
   "buildType": "static-github-pages-plus-supabase-edge-function",

@@ -212,6 +212,71 @@ test('multi-subject PDF uses score/level pair anchors when PDF.js shifts stacked
   assert.equal(dataset.meta.normalization.subjectCount, 11);
   assert.equal(dataset.meta.normalization.scoreCount, 55);
   assert.equal(dataset.meta.normalization.specialValueCount, 11);
-  assert.equal(dataset.meta.normalization.subjectDiscovery, 'score-level-pair-anchors');
+  assert.match(dataset.meta.normalization.subjectDiscovery, /(?:score-level-pair-anchors|semantic-subjects-plus-raw-row-recovery)/);
   assert.equal(dataset.rows[5]['الرياضيات - الدرجة'], String(55 + ((6 * 7 + 3 * 5) % 45)));
+});
+
+function splitRowPdfJsItems(pageNumber, expected, serials) {
+  const items = pdfJsFragmentedHeaderItems(expected, pageNumber);
+  serials.forEach((serial, rowIndex) => {
+    const baseY = 500 - rowIndex * 25;
+    const row = studentItems(serial, baseY, serial === 3);
+    row.forEach((entry, index) => {
+      // Reproduce PDF.js/Crystal Reports baselines that differ slightly between
+      // identity text, numeric scores and RTL level glyphs. The normal line
+      // grouper intentionally splits these; raw recovery must rebuild the row.
+      if (index >= 4) entry.transform[5] += index % 2 === 0 ? 3.8 : -3.2;
+      else if (index === 2 || index === 3) entry.transform[5] += 2.9;
+    });
+    items.push(...row);
+  });
+  return items;
+}
+
+test('multi-subject PDF rebuilds student rows from raw PDF.js items when score and level baselines split across lines', async () => {
+  const sandbox = load();
+  installPdfMock(sandbox, [
+    splitRowPdfJsItems(1, 6, [1, 2, 3]),
+    splitRowPdfJsItems(2, 6, [4, 5, 6]),
+  ]);
+  sandbox.window.TaqareerPdfIntakeV2.normalizePdfPages = () => ({
+    tables: [{ structure: { pagination: { missingPages: [1, 2], expectedPages: [1, 2], parsedPages: [] } } }],
+    diagnostics: { reviewTableCount: 1 }, metadata: {},
+  });
+  sandbox.window.TaqareerPdfIntakeV2.datasetsFromCanonical = () => [];
+  const source = await sandbox.window.TaqareerDocuments.readPdf(fakeFile);
+  assert.equal(source.preferredDatasetId, 'pdf-multi-subject-results');
+  const dataset = source.datasets.find(entry => entry.id === source.preferredDatasetId);
+  assert.equal(dataset.rows.length, 6);
+  assert.equal(dataset.meta.normalization.subjectCount, 11);
+  assert.equal(dataset.meta.normalization.scoreCount, 55);
+  assert.equal(dataset.meta.normalization.specialValueCount, 11);
+  assert.equal(dataset.meta.normalization.subjectDiscovery, 'semantic-subjects-plus-raw-row-recovery');
+});
+
+function rtlOriginShift(items) {
+  return items.map(entry => {
+    const clone = { ...entry, transform: [...entry.transform] };
+    if (clone.dir === 'rtl') clone.transform[4] += Number(clone.width || 0);
+    return clone;
+  });
+}
+
+test('multi-subject raw recovery tolerates RTL text origins shifted to the right edge', async () => {
+  const sandbox = load();
+  installPdfMock(sandbox, [
+    rtlOriginShift(splitRowPdfJsItems(1, 6, [1, 2, 3])),
+    rtlOriginShift(splitRowPdfJsItems(2, 6, [4, 5, 6])),
+  ]);
+  sandbox.window.TaqareerPdfIntakeV2.normalizePdfPages = () => ({
+    tables: [{ structure: { pagination: { missingPages: [1, 2], expectedPages: [1, 2], parsedPages: [] } } }],
+    diagnostics: { reviewTableCount: 1 }, metadata: {},
+  });
+  sandbox.window.TaqareerPdfIntakeV2.datasetsFromCanonical = () => [];
+  const source = await sandbox.window.TaqareerDocuments.readPdf(fakeFile);
+  assert.equal(source.preferredDatasetId, 'pdf-multi-subject-results');
+  const dataset = source.datasets.find(entry => entry.id === source.preferredDatasetId);
+  assert.equal(dataset.rows.length, 6);
+  assert.equal(dataset.meta.normalization.subjectCount, 11);
+  assert.equal(dataset.rows[2]['حالة القيد'], 'باق');
 });

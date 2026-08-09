@@ -1267,11 +1267,220 @@
     return { serial, name, nationality, status, values, recognizedPairs, y: Number(line.y || 0) };
   }
 
+  function multiSubjectNamesFromDocument(pageRecords) {
+    const documentText = normalize((pageRecords || []).slice(0, 4).map(page => pageText(page.lines || [])).join("\n")).replace(/ـ/g, "");
+    return MULTI_SUBJECT_PDF_SUBJECTS.filter(definition => definition.match(documentText)).map(definition => definition.name);
+  }
+
+  function rawPdfItemX(item) {
+    return Number(item?.transform?.[4] ?? item?.x ?? 0) || 0;
+  }
+
+  function rawPdfVisualCenter(item, rtlOrigin = "left") {
+    const x = rawPdfItemX(item);
+    const width = Math.abs(Number(item?.width || 0));
+    const rtl = item?.dir === "rtl" || /[\u0600-\u06FF]/.test(cleanMetadataValue(item?.str || ""));
+    if (rtl && rtlOrigin === "right") return x - width / 2;
+    return x + width / 2;
+  }
+
+  function rawPdfItemY(item) {
+    return Number(item?.transform?.[5] ?? item?.y ?? 0) || 0;
+  }
+
+  function rawPdfItemHeight(item) {
+    return Math.abs(Number(item?.height) || Number(item?.transform?.[3]) || 10);
+  }
+
+  function clusterMultiSubjectRawBands(items) {
+    const usable = (items || []).filter(item => cleanMetadataValue(item?.str || "") && (item?.transform || Number.isFinite(Number(item?.y))));
+    const groups = [];
+    for (const item of usable) {
+      const y = rawPdfItemY(item);
+      const height = rawPdfItemHeight(item);
+      const tolerance = Math.max(6.5, Math.min(9.5, height * 0.72));
+      let group = groups.find(candidate => Math.abs(candidate.y - y) <= tolerance);
+      if (!group) { group = { y, items: [] }; groups.push(group); }
+      group.items.push(item);
+      group.y = group.items.reduce((sum, entry) => sum + rawPdfItemY(entry), 0) / group.items.length;
+    }
+    return groups.sort((a, b) => b.y - a.y);
+  }
+
+  function isMultiSubjectScoreToken(value) {
+    const text = normalizeDigits(cleanMetadataValue(value || ""));
+    const number = Number(text);
+    return (Number.isFinite(number) && number >= 0 && number <= 100 && /^\d{1,3}$/.test(text)) || isPdfSpecialResultMarker(text);
+  }
+
+  function isMultiSubjectLevelToken(value) {
+    return /^(?:أ|ا|ب|ج|د|هـ|ه|م|غ|--|-)$/.test(normalizePdfPerformanceLevel(value));
+  }
+
+  function pairMultiSubjectRawValues(items, subjectCount, rtlOrigin = "left") {
+    const tokens = (items || []).map(item => ({
+      text: normalizeDigits(cleanMetadataValue(item?.str || "")),
+      x: rawPdfVisualCenter(item, rtlOrigin),
+    })).filter(item => item.text && (isMultiSubjectScoreToken(item.text) || isMultiSubjectLevelToken(item.text)))
+      .sort((a, b) => b.x - a.x);
+    if (tokens.length < subjectCount * 2) return [];
+
+    const pairs = [];
+    const used = new Set();
+    for (let index = 0; index < tokens.length; index += 1) {
+      if (used.has(index)) continue;
+      const token = tokens[index];
+      if (!isMultiSubjectScoreToken(token.text)) continue;
+      let bestIndex = -1;
+      let bestDistance = Infinity;
+      for (let candidateIndex = 0; candidateIndex < tokens.length; candidateIndex += 1) {
+        if (candidateIndex === index || used.has(candidateIndex)) continue;
+        const candidate = tokens[candidateIndex];
+        if (!isMultiSubjectLevelToken(candidate.text)) continue;
+        const distance = Math.abs(candidate.x - token.x);
+        if (distance <= 52 && distance < bestDistance) { bestIndex = candidateIndex; bestDistance = distance; }
+      }
+      if (bestIndex < 0) continue;
+      used.add(index); used.add(bestIndex);
+      const levelToken = tokens[bestIndex];
+      pairs.push({
+        score: cleanMetadataValue(token.text),
+        level: normalizePdfPerformanceLevel(levelToken.text),
+        center: (token.x + levelToken.x) / 2,
+        distance: bestDistance,
+      });
+    }
+    return pairs.sort((a, b) => b.center - a.center).slice(0, subjectCount);
+  }
+
+  function scoreRawPairSet(pairs, subjectCount) {
+    if (!pairs.length) return -Infinity;
+    const completeness = Math.min(pairs.length, subjectCount) * 100;
+    const centers = pairs.map(pair => pair.center).sort((a, b) => b - a);
+    const gaps = centers.slice(1).map((center, index) => Math.abs(centers[index] - center)).filter(Boolean);
+    const mean = gaps.length ? gaps.reduce((sum, value) => sum + value, 0) / gaps.length : 50;
+    const variance = gaps.length ? gaps.reduce((sum, value) => sum + (value - mean) ** 2, 0) / gaps.length : 0;
+    const pairDistancePenalty = pairs.reduce((sum, pair) => sum + Math.max(0, Number(pair.distance || 0) - 28), 0);
+    return completeness - Math.sqrt(variance) * 2 - pairDistancePenalty;
+  }
+
+  function parseMultiSubjectRawBandWithOrigin(band, subjectNames, rtlOrigin) {
+    const ordered = band.items.map(item => ({
+      raw: item,
+      text: cleanMetadataValue(item?.str || ""),
+      x: rawPdfVisualCenter(item, rtlOrigin),
+    })).filter(item => item.text).sort((a, b) => b.x - a.x);
+    const statusIndex = ordered.findIndex(item => /^(?:منقول|باق|مستجد|مرفع|راسب|ناجح)$/i.test(item.text));
+    if (statusIndex < 2) return null;
+
+    let serialIndex = -1;
+    let serial = 0;
+    for (let index = 0; index < statusIndex; index += 1) {
+      const match = normalizeDigits(ordered[index].text).match(/^(\d{1,4})(?:\s+.*)?$/);
+      if (!match) continue;
+      serial = Number(match[1]); serialIndex = index; break;
+    }
+    if (!Number.isInteger(serial) || serial <= 0 || serialIndex < 0) return null;
+
+    const nationalityIndex = statusIndex - 1;
+    if (nationalityIndex <= serialIndex) return null;
+    const embeddedName = cleanMetadataValue(ordered[serialIndex].text.replace(/^\s*\d{1,4}\s*/, ""));
+    const name = [embeddedName, ...ordered.slice(serialIndex + 1, nationalityIndex).map(item => item.text)]
+      .filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+    const nationality = ordered[nationalityIndex]?.text || "";
+    const status = ordered[statusIndex]?.text || "";
+    if (!name || !nationality || !status) return null;
+
+    const valueItems = ordered.slice(statusIndex + 1).map(item => item.raw);
+    const pairs = pairMultiSubjectRawValues(valueItems, subjectNames.length, rtlOrigin);
+    if (pairs.length < Math.ceil(subjectNames.length * 0.8)) return null;
+    const values = subjectNames.map((subject, index) => ({
+      subject,
+      score: pairs[index]?.score || "",
+      level: pairs[index]?.level || "",
+    }));
+    return { serial, name, nationality, status, values, recognizedPairs: pairs.length, y: Number(band.y || 0), pairCenters: pairs.map(pair => pair.center), pairScore: scoreRawPairSet(pairs, subjectNames.length), rtlOrigin };
+  }
+
+  function parseMultiSubjectRawBand(band, subjectNames) {
+    if (!band?.items?.length || subjectNames.length < 5) return null;
+    const left = parseMultiSubjectRawBandWithOrigin(band, subjectNames, "left");
+    const right = parseMultiSubjectRawBandWithOrigin(band, subjectNames, "right");
+    if (!left) return right;
+    if (!right) return left;
+    return Number(right.pairScore || 0) > Number(left.pairScore || 0) ? right : left;
+  }
+
+  function rawBandRoleStats(band) {
+    const texts = (band?.items || []).map(item => cleanMetadataValue(item?.str || "")).filter(Boolean);
+    return {
+      hasStatus: texts.some(text => /^(?:منقول|باق|مستجد|مرفع|راسب|ناجح)$/i.test(text)),
+      scoreTokens: texts.filter(isMultiSubjectScoreToken).length,
+      levelTokens: texts.filter(isMultiSubjectLevelToken).length,
+      serialTokens: texts.filter(text => /^\d{1,4}$/.test(normalizeDigits(text))).length,
+    };
+  }
+
+  function candidateMultiSubjectRawBands(bands) {
+    const output = [];
+    const usedKeys = new Set();
+    bands.forEach((band, index) => {
+      const stats = rawBandRoleStats(band);
+      if (!stats.hasStatus) return;
+      const nearby = bands.map((candidate, candidateIndex) => ({
+        candidate, candidateIndex,
+        delta: Math.abs(Number(candidate.y || 0) - Number(band.y || 0)),
+        stats: rawBandRoleStats(candidate),
+      })).filter(entry => entry.candidateIndex !== index && entry.delta <= 11.5)
+        .filter(entry => entry.stats.scoreTokens >= 5 || entry.stats.serialTokens >= 1)
+        .sort((a, b) => a.delta - b.delta);
+      const pieces = [band];
+      for (const entry of nearby.slice(0, 2)) pieces.push(entry.candidate);
+      const key = pieces.map(piece => Number(piece.y || 0).toFixed(2)).sort().join('|');
+      if (usedKeys.has(key)) return;
+      usedKeys.add(key);
+      output.push({
+        y: pieces.reduce((sum, piece) => sum + Number(piece.y || 0), 0) / pieces.length,
+        items: pieces.flatMap(piece => piece.items || []),
+      });
+    });
+    // Preserve already-complete single bands as a compatibility path.
+    for (const band of bands) {
+      const stats = rawBandRoleStats(band);
+      if (stats.hasStatus && stats.scoreTokens >= 5 && stats.levelTokens >= 5) output.push(band);
+    }
+    return output;
+  }
+
+  function parseMultiSubjectRawPages(pageRecords, subjectNames) {
+    const bySerial = new Map();
+    let referenceCenters = [];
+    for (const page of pageRecords || []) {
+      const bands = clusterMultiSubjectRawBands(page.rawItems || []);
+      const candidates = candidateMultiSubjectRawBands(bands);
+      for (const band of candidates) {
+        const parsed = parseMultiSubjectRawBand(band, subjectNames);
+        if (!parsed) continue;
+        parsed.page = Number(page.pageNumber || 0);
+        if (!referenceCenters.length && parsed.pairCenters?.length >= Math.ceil(subjectNames.length * 0.8)) referenceCenters = parsed.pairCenters;
+        const existing = bySerial.get(parsed.serial);
+        if (!existing || Number(parsed.recognizedPairs || 0) > Number(existing.recognizedPairs || 0)) bySerial.set(parsed.serial, parsed);
+      }
+    }
+    return { rows: [...bySerial.values()].sort((a, b) => a.serial - b.serial), pairCenters: referenceCenters };
+  }
+
   function detectMultiSubjectResultsPdf(pageRecords, canonicalDocument = null) {
-    const subjects = discoverMultiSubjectPdfSubjects(pageRecords);
-    if (subjects.length < 5) return null;
+    let subjects = discoverMultiSubjectPdfSubjects(pageRecords);
     const documentText = normalize((pageRecords || []).slice(0, 4).map(page => pageText(page.lines || [])).join("\n")).replace(/ـ/g, "");
     if (!/كشف.*نتائج.*(?:الطلب|الطلاب)/.test(documentText) || !/الصف/.test(documentText)) return null;
+    const semanticSubjectNames = multiSubjectNamesFromDocument(pageRecords);
+    const rawRecovery = semanticSubjectNames.length >= 5 ? parseMultiSubjectRawPages(pageRecords, semanticSubjectNames) : { rows: [], pairCenters: [] };
+    if (subjects.length < 5 && semanticSubjectNames.length >= 5 && rawRecovery.pairCenters.length >= 5) {
+      subjects = semanticSubjectNames.map((name, index) => ({ name, center: rawRecovery.pairCenters[index] ?? (1000 - index * 50), sourceLabel: name }));
+    }
+    if (subjects.length < 5 && rawRecovery.rows.length < 5) return null;
+    if (subjects.length < 5) subjects = semanticSubjectNames.map((name, index) => ({ name, center: rawRecovery.pairCenters[index] ?? (1000 - index * 50), sourceLabel: name }));
 
     const bySerial = new Map();
     for (const page of pageRecords || []) {
@@ -1291,6 +1500,9 @@
           previous.nationality = `${previous.nationality} ${cleanMetadataValue(line.text)}`.replace(/\s+/g, " ").trim();
         }
       }
+    }
+    for (const rawRow of rawRecovery.rows || []) {
+      if (!bySerial.has(rawRow.serial)) bySerial.set(rawRow.serial, rawRow);
     }
     const rowsParsed = [...bySerial.values()].sort((a, b) => a.serial - b.serial);
     if (rowsParsed.length < 5) return null;
@@ -1353,7 +1565,7 @@
         meta: {
           sourceType: "pdf",
           mode: "table",
-          extractionMode: "multi-subject-pdf-adapter-v2-pair-anchored",
+          extractionMode: "multi-subject-pdf-adapter-v3-raw-recovery",
           specializedType: "multi_subject_results",
           reportTitle: metadata.title,
           metadata,
@@ -1362,7 +1574,7 @@
           dataPages,
           ignoredPages,
           normalization: {
-            engine: "multi-subject-pdf-results-adapter-v2",
+            engine: "multi-subject-pdf-results-adapter-v3",
             applied: true,
             kind: "multi_subject_results",
             originalPages: pageRecords.length,
@@ -1377,7 +1589,7 @@
             specialStudentCount,
             subjects: subjects.map(subject => subject.name),
             pairOrientation: "score-level",
-            subjectDiscovery: "score-level-pair-anchors",
+            subjectDiscovery: rawRecovery.rows.length ? "semantic-subjects-plus-raw-row-recovery" : "score-level-pair-anchors",
             serialContinuity: true,
           },
         },
@@ -1427,7 +1639,7 @@
       const content = await page.getTextContent({ includeMarkedContent: false });
       totalItems += content.items.length;
       const lines = groupPdfItemsIntoLines(content.items);
-      pageRecords.push({ pageNumber, lines });
+      pageRecords.push({ pageNumber, lines, rawItems: content.items });
       allLines.push(...lines.map(line => ({ ...line, page: pageNumber })));
       const matrix = lines.map(line => line.cells.length >= 2 ? line.cells : [line.text]);
       const table = matrixToTable(matrix);
@@ -1613,7 +1825,7 @@
     constants: { PDF_MODULE_URL, PDF_WORKER_URL },
     _test: {
       matrixToTable, pruneGeneratedEmptyColumns, groupPdfItemsIntoLines, detectPdfPageReportTitle, paragraphRows, parseWordBody, parseWordMetadata, parseWordMetadataTokens, storyTextTokens,
-      detectMultiVisitSupervisionPdf, detectAggregatedSupervisionNarrativePdf, detectMultiSubjectResultsPdf, discoverMultiSubjectPdfSubjects, parseMultiSubjectPdfRow, multiSubjectExpectedStudentCount, extractAggregatedNarrativeMetadata, buildAggregatedNarrativeRows, parseSupervisionRatings, parseSupervisionNarrative, parseVisitPage, comparePdfIntakeTables,
+      detectMultiVisitSupervisionPdf, detectAggregatedSupervisionNarrativePdf, detectMultiSubjectResultsPdf, discoverMultiSubjectPdfSubjects, parseMultiSubjectPdfRow, parseMultiSubjectRawPages, parseMultiSubjectRawBand, clusterMultiSubjectRawBands, candidateMultiSubjectRawBands, multiSubjectExpectedStudentCount, extractAggregatedNarrativeMetadata, buildAggregatedNarrativeRows, parseSupervisionRatings, parseSupervisionNarrative, parseVisitPage, comparePdfIntakeTables,
       supervisionVisitRows, indicators: SUPERVISION_VISIT_INDICATORS, scale: SUPERVISION_SCALE,
     }
   };
