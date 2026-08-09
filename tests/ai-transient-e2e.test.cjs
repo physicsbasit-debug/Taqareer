@@ -18,7 +18,7 @@ function storage() {
 function jsonResponse(body, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'content-type': 'application/json', 'x-taqareer-edge-version': '0.15.6' },
+    headers: { 'content-type': 'application/json', 'x-taqareer-edge-version': '0.15.7' },
   });
 }
 
@@ -74,7 +74,7 @@ test('End-to-End: compact analysis payload survives two transient Edge 503 respo
         return jsonResponse({
           ok: false,
           operation: 'analyze_primary',
-          edgeVersion: '0.15.6',
+          edgeVersion: '0.15.7',
           errorCode: 'GEMINI_TRANSIENT',
           retryable: true,
           error: 'خدمة التحليل مزدحمة مؤقتًا.',
@@ -83,7 +83,7 @@ test('End-to-End: compact analysis payload survives two transient Edge 503 respo
       return jsonResponse({
         ok: true,
         operation: 'analyze_primary',
-        edgeVersion: '0.15.6',
+        edgeVersion: '0.15.7',
         aiKeyConfigured: true,
         result: { contractVersion: '6.6.0', executive: { headline: 'تحليل مكتمل' } },
       });
@@ -120,7 +120,7 @@ test('End-to-End: orchestrated analysis proceeds when advisory health would fail
       return jsonResponse({
         ok: true,
         operation: 'analyze_primary',
-        edgeVersion: '0.15.6',
+        edgeVersion: '0.15.7',
         aiKeyConfigured: true,
         result: { contractVersion: '6.6.0', executive: { headline: 'تحليل مباشر مكتمل' } },
       });

@@ -19,6 +19,8 @@ test('primary AI request is split into bounded reasoning and action segments', (
   assert.match(edge, /thinkingConfig: \{ thinkingLevel \}/);
   assert.match(client, /analyze_primary", payload, \{ timeoutMs: 60000, networkRetry: true, maxAttempts: 3 \}/);
   assert.match(edge, /PRIMARY_ANALYSIS_DEADLINE_MS = 45_000/);
+  assert.match(edge, /PRIMARY_INITIAL_PHASE_DEADLINE_MS = 26_000/);
+  assert.match(edge, /PRIMARY_TRANSIENT_RESCUE_PHASE_DEADLINE_MS = 36_500/);
   assert.match(edge, /PRIMARY_REASONING_ATTEMPT_TIMEOUT_MS = 15_000/);
   assert.match(client, /transientCapacity && attempt >= 2 && attemptDurationMs > 20_000/);
   assert.match(client, /const baseDelay = attempt === 1 \? 2600 : 5600/);

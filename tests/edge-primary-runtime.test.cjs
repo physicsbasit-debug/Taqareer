@@ -171,8 +171,19 @@ async function createRuntime(responses) {
 
   let handler = null;
   let calls = 0;
+  let nowMs = 0;
+  let nextTimerId = 1;
+  const timers = new Map();
   const urls = [];
   const requestBodies = [];
+  const advance = ms => {
+    nowMs += Math.max(0, Number(ms) || 0);
+    const due = [...timers.entries()].filter(([, item]) => item.due <= nowMs);
+    for (const [id, item] of due) {
+      timers.delete(id);
+      item.fn();
+    }
+  };
   const context = vm.createContext({
     console,
     Request,
@@ -182,16 +193,33 @@ async function createRuntime(responses) {
     TextEncoder,
     TextDecoder,
     URL,
-    performance,
+    performance: { now: () => nowMs },
     crypto: globalThis.crypto,
     structuredClone,
-    setTimeout: (fn, ms) => { if (Number(ms) < 5_000) fn(); return 0; },
-    clearTimeout,
+    setTimeout: (fn, ms) => {
+      const delay = Number(ms) || 0;
+      if (delay < 5_000) { fn(); return 0; }
+      const id = nextTimerId++;
+      timers.set(id, { due: nowMs + delay, fn });
+      return id;
+    },
+    clearTimeout: id => timers.delete(id),
     fetch: async (url, options = {}) => {
       urls.push(String(url));
       requestBodies.push(String(options.body || ""));
-      const item = responses[Math.min(calls, responses.length - 1)];
+      const callIndex = calls;
+      const item = typeof responses === 'function'
+        ? responses({ url: String(url), options, callIndex })
+        : responses[Math.min(callIndex, responses.length - 1)];
       calls += 1;
+      if (item && typeof item === 'object' && item.__advanceMs) {
+        advance(item.__advanceMs);
+        if (options.signal && options.signal.aborted) {
+          const error = new Error('Aborted after simulated latency');
+          error.name = 'AbortError';
+          throw error;
+        }
+      }
       if (item && typeof item === 'object' && item.__abort) {
         const error = new Error('Aborted');
         error.name = 'AbortError';
@@ -573,4 +601,35 @@ test('edge scope guard narrows a school-wide intervention to the observed scienc
   assert.equal(body.result.validation.scopeGuardedInterventions, 2);
   assert.equal(body.result.validation.adjustedScopeTargets, 1);
   assert.equal(body.serverTiming.adjustedScopeTargets, 1);
+});
+
+test('edge reserves enough wall-clock budget for transient action rescue after slow initial models', async () => {
+  const full = primaryResult();
+  const busy = (message, ms) => ({ __status: 503, __advanceMs: ms, __body: { error: { message } } });
+  let fastLiteCalls = 0;
+  const runtime = await createRuntime(({ url }) => {
+    if (/gemini-3\.6-flash:generateContent/.test(url)) {
+      // reasoning succeeds on its first 3.6 request; action later reaches the same model and receives a slow transient failure.
+      const reasoningAlreadySent = fastLiteCalls > 0;
+      return reasoningAlreadySent ? busy('slow busy action model two', 12_000) : geminiRaw(reasoningResult(full));
+    }
+    if (/gemini-3\.5-flash-lite:generateContent/.test(url)) {
+      fastLiteCalls += 1;
+      return fastLiteCalls === 1
+        ? busy('slow busy action model one', 12_000)
+        : { __advanceMs: 7_800, __body: geminiRaw(actionResult(full)) };
+    }
+    if (/gemini-3\.5-flash:generateContent/.test(url)) {
+      return busy('slow busy action model three', 12_900);
+    }
+    throw new Error(`Unexpected model URL: ${url}`);
+  });
+  const { status, body } = await invoke(runtime);
+  assert.equal(status, 200);
+  assert.equal(body.ok, true);
+  assert.equal(body.serverTiming.transientRescueUsed, true);
+  assert.deepEqual(body.serverTiming.transientRescuedSegments, ['action']);
+  assert.equal(body.serverTiming.initialPhaseDeadlineMs, 26000);
+  assert.equal(body.serverTiming.transientRescuePhaseDeadlineMs, 36500);
+  assert.equal(body.serverTiming.reservedPostRescueMs, 8500);
 });

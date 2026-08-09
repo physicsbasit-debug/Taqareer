@@ -1,4 +1,4 @@
-const EDGE_VERSION = "0.15.6";
+const EDGE_VERSION = "0.15.7";
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 const DEFAULT_MODEL = "gemini-3.6-flash";
 const DEFAULT_FAST_MODEL = "gemini-3.5-flash-lite";
@@ -13,6 +13,9 @@ const MAX_REQUEST_BYTES = 9_000_000;
 const MAX_IMAGE_COUNT = 4;
 const MAX_IMAGE_DATA_URL_LENGTH = 2_800_000;
 const PRIMARY_ANALYSIS_DEADLINE_MS = 45_000;
+// احجز جزءًا من المهلة للإنقاذ الشبكي والإصلاح النهائي بدل السماح للمرحلة الأولى باستهلاك كامل الـ45 ثانية.
+const PRIMARY_INITIAL_PHASE_DEADLINE_MS = 26_000;
+const PRIMARY_TRANSIENT_RESCUE_PHASE_DEADLINE_MS = 36_500;
 const PRIMARY_REASONING_ATTEMPT_TIMEOUT_MS = 15_000;
 const PRIMARY_ACTION_ATTEMPT_TIMEOUT_MS = 13_000;
 const PRIMARY_REPAIR_ATTEMPT_TIMEOUT_MS = 11_000;
@@ -1682,11 +1685,14 @@ function validationRepairTargets(message: string): PrimarySegmentName[] {
 async function analyzePrimary(payload: JsonRecord): Promise<JsonRecord> {
   const startedAt = performance.now();
   const deadlineAt = startedAt + PRIMARY_ANALYSIS_DEADLINE_MS;
+  const initialPhaseDeadlineAt = Math.min(deadlineAt, startedAt + PRIMARY_INITIAL_PHASE_DEADLINE_MS);
+  const transientRescueDeadlineAt = Math.min(deadlineAt, startedAt + PRIMARY_TRANSIENT_RESCUE_PHASE_DEADLINE_MS);
 
-  // الطلبان أصغر ويعملان بالتوازي. إذا تعثر أحدهما شبكيًا نحافظ على الآخر وننقذ المتعثر وحده.
+  // الطلبان أصغر ويعملان بالتوازي، لكن المرحلة الأولى لها سقف مستقل.
+  // هذا يحجز وقتًا فعليًا لإنقاذ المقطع المتعثر بدل الوصول إلى rescue بعد استنزاف المهلة الكلية.
   const segmentSettled = await Promise.allSettled([
-    requestPrimarySegment("reasoning", payload, deadlineAt),
-    requestPrimarySegment("action", payload, deadlineAt),
+    requestPrimarySegment("reasoning", payload, initialPhaseDeadlineAt),
+    requestPrimarySegment("action", payload, initialPhaseDeadlineAt),
   ]);
 
   const segmentNames: PrimarySegmentName[] = ["reasoning", "action"];
@@ -1714,7 +1720,7 @@ async function analyzePrimary(payload: JsonRecord): Promise<JsonRecord> {
 
   if (transientFailures.length) {
     const rescueSettled = await Promise.allSettled(
-      transientFailures.map(item => rescueTransientPrimarySegment(item.segment, payload, deadlineAt)),
+      transientFailures.map(item => rescueTransientPrimarySegment(item.segment, payload, transientRescueDeadlineAt)),
     );
     for (let index = 0; index < rescueSettled.length; index += 1) {
       const failed = transientFailures[index];
@@ -1822,6 +1828,9 @@ async function analyzePrimary(payload: JsonRecord): Promise<JsonRecord> {
       reasoningModel: reasoningRun.modelUsed,
       actionModel: actionRun.modelUsed,
       serverDeadlineMs: PRIMARY_ANALYSIS_DEADLINE_MS,
+      initialPhaseDeadlineMs: PRIMARY_INITIAL_PHASE_DEADLINE_MS,
+      transientRescuePhaseDeadlineMs: PRIMARY_TRANSIENT_RESCUE_PHASE_DEADLINE_MS,
+      reservedPostRescueMs: PRIMARY_ANALYSIS_DEADLINE_MS - PRIMARY_TRANSIENT_RESCUE_PHASE_DEADLINE_MS,
       primaryAttemptTimeoutMs: Math.max(PRIMARY_REASONING_ATTEMPT_TIMEOUT_MS, PRIMARY_ACTION_ATTEMPT_TIMEOUT_MS),
       reasoningAttemptTimeoutMs: PRIMARY_REASONING_ATTEMPT_TIMEOUT_MS,
       actionAttemptTimeoutMs: PRIMARY_ACTION_ATTEMPT_TIMEOUT_MS,

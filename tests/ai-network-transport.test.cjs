@@ -128,7 +128,7 @@ test('primary analysis automatically retries one retryable Edge 503 response ins
         return jsonResponse({
           ok: false,
           operation: 'analyze_primary',
-          edgeVersion: '0.15.6',
+          edgeVersion: '0.15.7',
           errorCode: 'GEMINI_TRANSIENT',
           retryable: true,
           error: 'خدمة التحليل مزدحمة مؤقتًا.',
@@ -137,7 +137,7 @@ test('primary analysis automatically retries one retryable Edge 503 response ins
       return jsonResponse({
         ok: true,
         operation: 'analyze_primary',
-        edgeVersion: '0.15.6',
+        edgeVersion: '0.15.7',
         aiKeyConfigured: true,
         result: { contractVersion: '6.6.0' },
       });
@@ -164,7 +164,7 @@ test('primary analysis survives two fast retryable Edge 503 responses before suc
         return jsonResponse({
           ok: false,
           operation: 'analyze_primary',
-          edgeVersion: '0.15.6',
+          edgeVersion: '0.15.7',
           errorCode: 'GEMINI_TRANSIENT',
           retryable: true,
           error: 'خدمة التحليل مزدحمة مؤقتًا.',
@@ -173,7 +173,7 @@ test('primary analysis survives two fast retryable Edge 503 responses before suc
       return jsonResponse({
         ok: true,
         operation: 'analyze_primary',
-        edgeVersion: '0.15.6',
+        edgeVersion: '0.15.7',
         aiKeyConfigured: true,
         result: { contractVersion: '6.6.0' },
       });
@@ -202,7 +202,7 @@ test('End-to-End: primary analysis is not blocked by a failed health preflight w
       return jsonResponse({
         ok: true,
         operation: 'analyze_primary',
-        edgeVersion: '0.15.6',
+        edgeVersion: '0.15.7',
         aiKeyConfigured: true,
         result: { contractVersion: '6.6.0' },
       });
