@@ -1034,6 +1034,309 @@
     };
   }
 
+
+  const MULTI_SUBJECT_PDF_SUBJECTS = Object.freeze([
+    { name: "التربية الإسلامية", match: text => /التربيه/.test(text) && /(?:اسلام|سلم)/.test(text) },
+    { name: "اللغة العربية", match: text => /اللغه/.test(text) && /عربي/.test(text) },
+    { name: "اللغة الإنجليزية", match: text => /اللغه/.test(text) && /(?:انجلي|نجلي)/.test(text) },
+    { name: "الرياضيات", match: text => /رياضيات/.test(text) },
+    { name: "العلوم", match: text => /(?:^|\s)العلوم(?:$|\s)/.test(text) },
+    { name: "الدراسات الاجتماعية", match: text => /دراسات/.test(text) && /(?:اجتماع|جتماع)/.test(text) },
+    { name: "المهارات الحياتية", match: text => /مهارات/.test(text) && /حيات/.test(text) },
+    { name: "تقنية المعلومات", match: text => /تقني/.test(text) && /معلومات/.test(text) },
+    { name: "الرياضة المدرسية", match: text => /رياضه/.test(text) && /مدرس/.test(text) },
+    { name: "الفنون التشكيلية", match: text => /فنون/.test(text) && /تشكيل/.test(text) },
+    { name: "المهارات الموسيقية", match: text => /مهارات/.test(text) && /موسي/.test(text) },
+  ]);
+
+  function pdfItemCenter(item) {
+    return Number(item?.x || 0) + Math.abs(Number(item?.width || 0)) / 2;
+  }
+
+  function firstMultiSubjectDataLine(page) {
+    return (page?.lines || []).find(line => {
+      const items = (line?.items || []).map(item => ({ text: cleanMetadataValue(item?.str || ""), center: pdfItemCenter(item) })).filter(item => item.text);
+      const serial = items.find(item => item.center > 0 && /^\d{1,4}$/.test(normalizeDigits(item.text)));
+      const numericCells = items.filter(item => /^\d{1,3}$/.test(normalizeDigits(item.text))).length;
+      const hasStatus = items.some(item => /^(?:منقول|باق|مستجد|مرفع|راسب|ناجح)$/i.test(item.text));
+      return Boolean(serial && hasStatus && numericCells >= 5);
+    }) || null;
+  }
+
+  function canonicalMultiSubjectPdfName(text) {
+    const value = normalize(text);
+    const definition = MULTI_SUBJECT_PDF_SUBJECTS.find(item => item.match(value));
+    return definition?.name || "";
+  }
+
+  function discoverMultiSubjectPdfSubjects(pageRecords) {
+    for (const page of (pageRecords || []).slice(0, 4)) {
+      const dataLine = firstMultiSubjectDataLine(page);
+      if (!dataLine) continue;
+      const groups = [];
+      const headerTop = Number(dataLine.y || 0) + 100;
+      for (const line of page.lines || []) {
+        if (!(Number(line.y || 0) > Number(dataLine.y || 0) && Number(line.y || 0) <= headerTop)) continue;
+        for (const item of line.items || []) {
+          const text = cleanMetadataValue(item?.str || "");
+          const normalized = normalize(text);
+          const center = pdfItemCenter(item);
+          if (!text || center < 120 || center > 900) continue;
+          if (/الدرجه|الدرجة|المستوي|المستوى|الجنسيه|الجنسية|القيد|الماده|المادة|الاسم|السم/.test(normalized)) continue;
+          let group = groups.find(candidate => Math.abs(candidate.center - center) <= 6);
+          if (!group) { group = { center, parts: [] }; groups.push(group); }
+          group.parts.push({ y: Number(line.y || 0), text });
+        }
+      }
+      const subjects = groups.map(group => {
+        const label = group.parts.sort((a, b) => b.y - a.y).map(part => part.text).join(" ").replace(/\s+/g, " ").trim();
+        const name = canonicalMultiSubjectPdfName(label);
+        return name ? { name, center: group.center, sourceLabel: label } : null;
+      }).filter(Boolean).sort((a, b) => b.center - a.center);
+      const unique = [];
+      for (const subject of subjects) if (!unique.some(item => item.name === subject.name)) unique.push(subject);
+      if (unique.length >= 5) return unique;
+    }
+    return [];
+  }
+
+  function multiSubjectExpectedStudentCount(pageRecords) {
+    for (const page of (pageRecords || []).slice(0, 4)) {
+      const lines = page.lines || [];
+      const headerIndex = lines.findIndex(line => /اجمالي\s+الطلبه|اجمالي\s+الطلاب|إجمالي\s+الطلبة/.test(normalize(line?.text || "")));
+      if (headerIndex < 0) continue;
+      const headerLine = lines[headerIndex];
+      const totalHeader = (headerLine.cellBoxes || []).find(box => /اجمالي\s+الطلبه|اجمالي\s+الطلاب/.test(normalize(box?.text || "")));
+      if (!totalHeader) continue;
+      const candidates = lines.slice(headerIndex + 1, headerIndex + 5).flatMap(line => (line.items || []).map(item => ({
+        text: normalizeDigits(cleanMetadataValue(item?.str || "")), center: pdfItemCenter(item), y: Number(line.y || 0)
+      }))).filter(item => /^\d{1,4}$/.test(item.text));
+      const nearest = candidates.sort((a, b) => Math.abs(a.center - totalHeader.center) - Math.abs(b.center - totalHeader.center))[0];
+      const count = Number(nearest?.text || 0);
+      if (Number.isInteger(count) && count > 0) return count;
+    }
+    return 0;
+  }
+
+  function multiSubjectPdfMetadata(pageRecords, canonicalDocument, subjects, rows, dataPages, ignoredPages) {
+    const values = { ...(canonicalDocument?.metadata || {}) };
+    const texts = (pageRecords || []).slice(0, 4).flatMap(page => (page.lines || []).map(line => cleanMetadataValue(line?.text || ""))).filter(Boolean);
+    for (const text of texts) {
+      if (!values.analyzedGrade || values.analyzedGrade === values.schoolGradeRange) {
+        const grade = text.match(/الصف\s*[:：]?\s*(الاول|الأول|الثاني|الثالث|الرابع|الخامس|السادس|السابع|الثامن|التاسع|العاشر|الحادي\s+عشر|الثاني\s+عشر|\d{1,2})/i)?.[1];
+        if (grade) values.analyzedGrade = cleanMetadataValue(grade);
+      }
+      if (!values.academicYear) {
+        const year = normalizeDigits(text).match(/(20\d{2})\s*[\/-]\s*(20\d{2})/);
+        if (year) values.academicYear = `${year[1]}/${year[2]}`;
+      }
+      if (!values.group) {
+        const group = text.match(/الشعب(?:ه|ة)\s*[:：]?\s*([^:：]{1,30})/i)?.[1];
+        if (group) values.group = cleanMetadataValue(group).split(/\s{2,}|الصف|الفتر/)[0].trim();
+      }
+      if (!values.period) {
+        const period = text.match(/الفتر(?:ه|ة)\s*[:：]?\s*([^:：]{1,40})/i)?.[1];
+        if (period) values.period = cleanMetadataValue(period).split(/\s{2,}|الصف|الشعب/)[0].trim();
+      }
+    }
+    const analyzedGrade = values.analyzedGrade || (values.grade && values.grade !== values.schoolGradeRange ? values.grade : "");
+    if (analyzedGrade) values.grade = analyzedGrade;
+    values.title = values.title || "كشف نتائج الطلب";
+    values.subject = `مواد متعددة (${subjects.length}): ${subjects.map(subject => subject.name).join("، ")}`;
+    values.subjects = subjects.map(subject => subject.name);
+    values.studentCount = rows.length;
+    values.dataPages = dataPages;
+    values.ignoredPages = ignoredPages;
+    return values;
+  }
+
+  function normalizePdfPerformanceLevel(value) {
+    const text = cleanMetadataValue(value || "");
+    if (text === "ا") return "أ";
+    if (text === "ه") return "هـ";
+    return text;
+  }
+
+  function isPdfSpecialResultMarker(value) {
+    return /^(?:م|غ|--|-)$/.test(cleanMetadataValue(value || ""));
+  }
+
+  function parseMultiSubjectPdfRow(line, subjects) {
+    if (!line || !subjects?.length) return null;
+    const items = (line.items || []).map(item => ({ text: cleanMetadataValue(item?.str || ""), center: pdfItemCenter(item) })).filter(item => item.text);
+    if (!items.length) return null;
+    const gaps = subjects.slice(1).map((subject, index) => Math.abs(subjects[index].center - subject.center)).filter(value => value > 0);
+    const medianGap = gaps.length ? [...gaps].sort((a, b) => a - b)[Math.floor(gaps.length / 2)] : 50;
+    const subjectUpper = subjects[0].center + medianGap / 2;
+    const identity = items.filter(item => item.center > subjectUpper).sort((a, b) => b.center - a.center);
+    if (identity.length < 4) return null;
+
+    let serial = 0;
+    let serialIndex = -1;
+    let embeddedName = "";
+    for (let index = 0; index < Math.min(3, identity.length); index += 1) {
+      const exact = normalizeDigits(identity[index].text).match(/^(\d{1,4})$/);
+      const embedded = normalizeDigits(identity[index].text).match(/^(\d{1,4})\s+(.+)$/);
+      if (exact) { serial = Number(exact[1]); serialIndex = index; break; }
+      if (embedded) { serial = Number(embedded[1]); serialIndex = index; embeddedName = cleanMetadataValue(identity[index].text.replace(/^\s*\d{1,4}\s+/, "")); break; }
+    }
+    if (!Number.isInteger(serial) || serial <= 0) return null;
+
+    const statusIndex = identity.findIndex((item, index) => index > serialIndex && /^(?:منقول|باق|مستجد|مرفع|راسب|ناجح)$/i.test(item.text));
+    if (statusIndex < 0) return null;
+    const nationalityIndex = statusIndex - 1;
+    if (nationalityIndex <= serialIndex) return null;
+    const nameParts = identity.slice(serialIndex + 1, nationalityIndex).map(item => item.text).filter(Boolean);
+    const name = [embeddedName, ...nameParts].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+    const nationality = identity[nationalityIndex]?.text || "";
+    const status = identity[statusIndex]?.text || "";
+    if (!name || !nationality || !status) return null;
+
+    const values = [];
+    let recognizedPairs = 0;
+    subjects.forEach((subject, index) => {
+      const upper = index === 0 ? subjectUpper : (subjects[index - 1].center + subject.center) / 2;
+      const lower = index === subjects.length - 1 ? subject.center - medianGap / 2 : (subject.center + subjects[index + 1].center) / 2;
+      const bin = items.filter(item => item.center <= upper && item.center > lower).sort((a, b) => b.center - a.center);
+      const score = normalizeDigits(bin[0]?.text || "");
+      const level = normalizePdfPerformanceLevel(bin[1]?.text || "");
+      const numericScore = Number(score);
+      const scoreRecognized = (Number.isFinite(numericScore) && numericScore >= 0 && numericScore <= 100) || isPdfSpecialResultMarker(score);
+      const levelRecognized = /^(?:أ|ب|ج|د|هـ|م|غ|--|-)$/.test(level);
+      if (scoreRecognized && levelRecognized) recognizedPairs += 1;
+      values.push({ subject: subject.name, score, level });
+    });
+    if (recognizedPairs < Math.ceil(subjects.length * 0.8)) return null;
+    return { serial, name, nationality, status, values, recognizedPairs, y: Number(line.y || 0) };
+  }
+
+  function detectMultiSubjectResultsPdf(pageRecords, canonicalDocument = null) {
+    const subjects = discoverMultiSubjectPdfSubjects(pageRecords);
+    if (subjects.length < 5) return null;
+    const documentText = normalize((pageRecords || []).slice(0, 4).map(page => pageText(page.lines || [])).join("\n")).replace(/ـ/g, "");
+    if (!/كشف.*نتائج.*(?:الطلب|الطلاب)/.test(documentText) || !/الصف/.test(documentText)) return null;
+
+    const bySerial = new Map();
+    for (const page of pageRecords || []) {
+      let previous = null;
+      for (const line of page.lines || []) {
+        const parsed = parseMultiSubjectPdfRow(line, subjects);
+        if (parsed) {
+          parsed.page = Number(page.pageNumber || 0);
+          if (!bySerial.has(parsed.serial)) bySerial.set(parsed.serial, parsed);
+          previous = parsed;
+          continue;
+        }
+        if (!previous || (line.cellBoxes || []).length !== 1) continue;
+        const box = line.cellBoxes[0];
+        const delta = Math.abs(Number(previous.y || 0) - Number(line.y || 0));
+        if (delta <= 22 && Number(box?.center || 0) > subjects[0].center + 40 && Number(box?.center || 0) < subjects[0].center + 140 && /[\u0600-\u06FF]/.test(line.text || "") && !/^[لشطفغ\s]+$/.test(line.text || "")) {
+          previous.nationality = `${previous.nationality} ${cleanMetadataValue(line.text)}`.replace(/\s+/g, " ").trim();
+        }
+      }
+    }
+    const rowsParsed = [...bySerial.values()].sort((a, b) => a.serial - b.serial);
+    if (rowsParsed.length < 5) return null;
+    const expectedStudentCount = multiSubjectExpectedStudentCount(pageRecords) || rowsParsed.at(-1)?.serial || rowsParsed.length;
+    const missingSerials = [];
+    for (let serial = 1; serial <= expectedStudentCount; serial += 1) if (!bySerial.has(serial)) missingSerials.push(serial);
+    const dataPages = [...new Set(rowsParsed.map(row => row.page).filter(Boolean))].sort((a, b) => a - b);
+    const ignoredPages = (pageRecords || []).map(page => Number(page.pageNumber || 0)).filter(page => page && !dataPages.includes(page));
+    const complete = rowsParsed.length === expectedStudentCount && !missingSerials.length && rowsParsed.at(-1)?.serial === expectedStudentCount;
+    const numericScoreCount = rowsParsed.reduce((sum, row) => sum + row.values.filter(value => {
+      const score = Number(value.score);
+      return Number.isFinite(score) && score >= 0 && score <= 100;
+    }).length, 0);
+    const specialValueCount = rowsParsed.reduce((sum, row) => sum + row.values.filter(value => isPdfSpecialResultMarker(value.score)).length, 0);
+    const specialStudentCount = rowsParsed.filter(row => row.values.some(value => isPdfSpecialResultMarker(value.score))).length;
+
+    if (!complete) {
+      return {
+        detected: true,
+        complete: false,
+        expectedStudentCount,
+        parsedStudentCount: rowsParsed.length,
+        missingSerials,
+        dataPages,
+        ignoredPages,
+        subjects: subjects.map(subject => subject.name),
+      };
+    }
+
+    const headers = ["م", "اسم الطالب", "الجنسية", "حالة القيد", "فئة السجل"];
+    for (const subject of subjects) headers.push(`${subject.name} - الدرجة`, `${subject.name} - المستوى`);
+    const rows = rowsParsed.map(row => {
+      const record = {
+        "م": String(row.serial),
+        "اسم الطالب": row.name,
+        "الجنسية": row.nationality,
+        "حالة القيد": row.status,
+        "فئة السجل": "",
+      };
+      for (const value of row.values) {
+        record[`${value.subject} - الدرجة`] = value.score;
+        record[`${value.subject} - المستوى`] = value.level;
+      }
+      return record;
+    });
+    const metadata = multiSubjectPdfMetadata(pageRecords, canonicalDocument, subjects, rows, dataPages, ignoredPages);
+    const rawText = (pageRecords || []).map(page => pageText(page.lines || [])).filter(Boolean).join("\n");
+    const sourceWarnings = ignoredPages.length
+      ? [`تم التعرف على ${dataPages.length} صفحة بيانات، واستبعاد ${ignoredPages.length} صفحة غير صفّية من سجلات الطلبة.`]
+      : [];
+    return {
+      detected: true,
+      complete: true,
+      dataset: {
+        id: "pdf-multi-subject-results",
+        name: `نتائج طلاب فردية متعددة المواد · ${subjects.length} مادة`,
+        headers,
+        rows,
+        rawText,
+        meta: {
+          sourceType: "pdf",
+          mode: "table",
+          extractionMode: "multi-subject-pdf-adapter-v1",
+          specializedType: "multi_subject_results",
+          reportTitle: metadata.title,
+          metadata,
+          sourceWarnings,
+          pageCount: pageRecords.length,
+          dataPages,
+          ignoredPages,
+          normalization: {
+            engine: "multi-subject-pdf-results-adapter-v1",
+            applied: true,
+            kind: "multi_subject_results",
+            originalPages: pageRecords.length,
+            dataPageCount: dataPages.length,
+            ignoredPageCount: ignoredPages.length,
+            retainedRows: rows.length,
+            studentCount: rows.length,
+            expectedStudentCount,
+            subjectCount: subjects.length,
+            scoreCount: numericScoreCount,
+            specialValueCount,
+            specialStudentCount,
+            subjects: subjects.map(subject => subject.name),
+            pairOrientation: "score-level",
+            serialContinuity: true,
+          },
+        },
+      },
+      warnings: sourceWarnings,
+      expectedStudentCount,
+      parsedStudentCount: rows.length,
+      missingSerials: [],
+      dataPages,
+      ignoredPages,
+      subjects: subjects.map(subject => subject.name),
+      numericScoreCount,
+      specialValueCount,
+      specialStudentCount,
+    };
+  }
+
   async function loadPdfModule() {
     if (window.__TAQAREER_PDFJS__) return window.__TAQAREER_PDFJS__;
     try {
@@ -1099,8 +1402,23 @@
     const canonicalDatasets = canonicalDocument && intakeEngine?.datasetsFromCanonical
       ? intakeEngine.datasetsFromCanonical(canonicalDocument)
       : [];
+    const multiSubjectSpecialized = detectMultiSubjectResultsPdf(pageRecords, canonicalDocument);
+    if (multiSubjectSpecialized?.detected && !multiSubjectSpecialized.complete) {
+      const missing = multiSubjectSpecialized.missingSerials || [];
+      const error = new Error(`اكتشف التطبيق كشف نتائج متعدد المواد، لكن لم تكتمل سجلات الطلبة${missing.length ? `: ${missing.join("، ")}` : ""}. أوقف التحليل حتى لا يعتمد نتيجة جزئية.`);
+      error.code = "PDF_TABLE_INCOMPLETE";
+      error.details = {
+        missingRecords: missing,
+        expectedStudentCount: multiSubjectSpecialized.expectedStudentCount || 0,
+        parsedStudentCount: multiSubjectSpecialized.parsedStudentCount || 0,
+        dataPages: multiSubjectSpecialized.dataPages || [],
+        ignoredPages: multiSubjectSpecialized.ignoredPages || [],
+        specializedType: "multi_subject_results",
+      };
+      throw error;
+    }
     const paginationIncomplete = Boolean(canonicalDocument?.tables?.some(table => Array.isArray(table?.structure?.pagination?.missingPages) && table.structure.pagination.missingPages.length));
-    if (paginationIncomplete && !canonicalDatasets.length) {
+    if (paginationIncomplete && !canonicalDatasets.length && !multiSubjectSpecialized?.complete) {
       const incomplete = canonicalDocument.tables.find(table => Array.isArray(table?.structure?.pagination?.missingPages) && table.structure.pagination.missingPages.length);
       const missing = incomplete?.structure?.pagination?.missingPages || [];
       const error = new Error(`اكتشف التطبيق جدولًا متعدد الصفحات، لكن لم تكتمل قراءة الصفحات ${missing.join("، ")}. أوقف التحليل حتى لا يعتمد نتيجة جزئية.`);
@@ -1118,13 +1436,15 @@
     }
     const compatibilityTables = canonicalDatasets.length ? canonicalDatasets : legacyMergedTables;
 
-    const specialized = detectMultiVisitSupervisionPdf(pageRecords);
-    const narrativeSpecialized = specialized ? null : detectAggregatedSupervisionNarrativePdf(pageRecords, canonicalDocument);
-    const datasets = specialized
-      ? [specialized.dataset, ...compatibilityTables]
-      : narrativeSpecialized
-        ? [narrativeSpecialized.dataset, ...compatibilityTables]
-        : [...compatibilityTables];
+    const specialized = multiSubjectSpecialized?.complete ? null : detectMultiVisitSupervisionPdf(pageRecords);
+    const narrativeSpecialized = multiSubjectSpecialized?.complete || specialized ? null : detectAggregatedSupervisionNarrativePdf(pageRecords, canonicalDocument);
+    const datasets = multiSubjectSpecialized?.complete
+      ? [multiSubjectSpecialized.dataset]
+      : specialized
+        ? [specialized.dataset, ...compatibilityTables]
+        : narrativeSpecialized
+          ? [narrativeSpecialized.dataset, ...compatibilityTables]
+          : [...compatibilityTables];
     const narrativeRows = allLines.map((line, index) => ({
       "م": index + 1,
       "الصفحة": line.page,
@@ -1153,7 +1473,7 @@
       }
     });
 
-    const preferredCanonical = !specialized && !narrativeSpecialized && canonicalDatasets.length === 1
+    const preferredCanonical = !multiSubjectSpecialized?.complete && !specialized && !narrativeSpecialized && canonicalDatasets.length === 1
       && Number(canonicalDatasets[0]?.meta?.structuralConfidence || 0) >= 0.85
       ? canonicalDatasets[0].id
       : "";
@@ -1162,13 +1482,14 @@
       name: file.name,
       kind: "pdf",
       datasets,
-      preferredDatasetId: specialized?.dataset?.id || narrativeSpecialized?.dataset?.id || preferredCanonical,
+      preferredDatasetId: multiSubjectSpecialized?.dataset?.id || specialized?.dataset?.id || narrativeSpecialized?.dataset?.id || preferredCanonical,
       canonicalDocument,
       shadowComparison,
       warnings: [
         ...(totalItems < 20 ? ["طبقة النص محدودة؛ راجع المعاينة قبل اعتماد التحليل."] : []),
+        ...(multiSubjectSpecialized?.warnings || []),
         ...(specialized?.warnings || []),
-        ...(canonicalDocument?.diagnostics?.reviewTableCount ? ["يوجد جدول مستخرج بثقة متوسطة؛ راجع المعاينة قبل اعتماد التحليل."] : []),
+        ...(!multiSubjectSpecialized?.complete && canonicalDocument?.diagnostics?.reviewTableCount ? ["يوجد جدول مستخرج بثقة متوسطة؛ راجع المعاينة قبل اعتماد التحليل."] : []),
       ]
     };
   }
@@ -1234,7 +1555,7 @@
     constants: { PDF_MODULE_URL, PDF_WORKER_URL },
     _test: {
       matrixToTable, pruneGeneratedEmptyColumns, groupPdfItemsIntoLines, detectPdfPageReportTitle, paragraphRows, parseWordBody, parseWordMetadata, parseWordMetadataTokens, storyTextTokens,
-      detectMultiVisitSupervisionPdf, detectAggregatedSupervisionNarrativePdf, extractAggregatedNarrativeMetadata, buildAggregatedNarrativeRows, parseSupervisionRatings, parseSupervisionNarrative, parseVisitPage, comparePdfIntakeTables,
+      detectMultiVisitSupervisionPdf, detectAggregatedSupervisionNarrativePdf, detectMultiSubjectResultsPdf, discoverMultiSubjectPdfSubjects, parseMultiSubjectPdfRow, multiSubjectExpectedStudentCount, extractAggregatedNarrativeMetadata, buildAggregatedNarrativeRows, parseSupervisionRatings, parseSupervisionNarrative, parseVisitPage, comparePdfIntakeTables,
       supervisionVisitRows, indicators: SUPERVISION_VISIT_INDICATORS, scale: SUPERVISION_SCALE,
     }
   };

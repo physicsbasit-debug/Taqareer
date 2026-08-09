@@ -1,8 +1,8 @@
 {
   "app": "تقارير",
-  "version": "1.2.36",
-  "phase": "Final Print Polish",
-  "releaseName": "RTL Source Label & Executive Chart Footer Clearance",
+  "version": "1.2.37",
+  "phase": "Multi-Subject PDF Intake E2E",
+  "releaseName": "Complete Student-Matrix Recovery with Special-Record Preservation",
   "buildType": "static-github-pages-plus-supabase-edge-function",
   "supportedInputs": {
     "table": [
@@ -194,7 +194,11 @@
     "short-rtl-row-recovery",
     "isolated-primary-segment-transient-rescue",
     "successful-primary-segment-preservation",
-    "failed-segment-only-retry"
+    "failed-segment-only-retry",
+    "multi-subject-pdf-specialized-adapter",
+    "multi-subject-pdf-serial-continuity-guard",
+    "multi-subject-pdf-legend-page-exclusion",
+    "special-nonnumeric-student-record-preservation"
   ],
   "runtime": {
     "frontend": "GitHub Pages static site",
@@ -285,7 +289,8 @@
     "semanticRouter": "every supported input receives a local structural profile and Gemini semantic verification; setup controls and analyzer selection follow the profile rather than a single universal method",
     "aggregateDistribution": "grouped level distributions use level columns and exclude aggregate rows from totals, then use aggregate values only for consistency checks",
     "multiSubjectWorkspace": "supports all-subject or one-subject analysis, local top-ten tables, weighted school ranking, standard competition ties, and exclusion of records missing a core subject",
-    "visualizationEngine": "shared intent-first policy selects charts across all analyzers; report and workspace render the same semantic chart contract without modifying deterministic calculations"
+    "visualizationEngine": "shared intent-first policy selects charts across all analyzers; report and workspace render the same semantic chart contract without modifying deterministic calculations",
+    "multiSubjectPdfIntake": "specialized adapter recovers the complete student-by-subject matrix from repeated RTL PDF pages, requires contiguous student serials, excludes legend-only pages, and preserves nonnumeric special records outside arithmetic"
   },
   "performance": {
     "scoreContextRows": 24,

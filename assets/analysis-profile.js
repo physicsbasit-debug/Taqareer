@@ -159,7 +159,17 @@
     const nationality = headerMatch(headers, ["الجنسية"]);
     const enrollmentStatus = headerMatch(headers, ["حالة القيد", "القيد"]);
     const recordGroup = headerMatch(headers, ["فئة السجل", "الفئة"]);
-    const validRows = rows.map((row, index) => ({ row, index })).filter(({ row }) => {
+    const sourceRows = rows.map((row, index) => ({ row, index })).filter(({ row }) => {
+      const identity = String(row?.[studentName] || row?.[serial] || "").trim();
+      if (!identity) return false;
+      const populatedPairs = subjects.filter(item => {
+        const score = String(row?.[item.scoreHeader] ?? "").trim();
+        const level = String(row?.[item.levelHeader] ?? "").trim();
+        return Boolean(score || level);
+      }).length;
+      return populatedPairs >= Math.max(2, Math.ceil(subjects.length * .5));
+    });
+    const validRows = sourceRows.filter(({ row }) => {
       const scoreCount = subjects.filter(item => Number.isFinite(parseNumber(row?.[item.scoreHeader]))).length;
       return scoreCount >= Math.max(2, Math.ceil(subjects.length * .5));
     });
@@ -181,8 +191,8 @@
       requiresScoreSettings: false,
       confidence: Math.min(99, 90 + Math.min(8, subjects.length)),
       rationale: derivedLevels
-        ? `اكتُشف سجل فردي يضم ${validRows.length} طالبًا و${subjects.length} مادة. يحتوي المصدر درجات المواد، وحُسبت مستويات أ-هـ محليًا من الحدود الرسمية للتحليل دون طلب عمود واحد.`
-        : `اكتُشف سجل فردي يضم ${validRows.length} طالبًا و${subjects.length} مادة، مع درجة ومستوى حرفي لكل مادة دون حاجة إلى اختيار عمود واحد.`,
+        ? `اكتُشف سجل فردي يضم ${sourceRows.length} سجل طالب و${subjects.length} مادة؛ ${validRows.length} سجلًا تتوافر له درجات رقمية كافية للتحليل. حُسبت مستويات أ-هـ محليًا من الحدود الرسمية دون طلب عمود واحد.`
+        : `اكتُشف سجل فردي يضم ${sourceRows.length} سجل طالب و${subjects.length} مادة؛ ${validRows.length} سجلًا تتوافر له درجات رقمية كافية للتحليل، مع الحفاظ على الحالات غير الرقمية كما وردت في المصدر.`,
       analysisFamilies: derivedLevels
         ? ["subject_comparison", "student_profile_segmentation", "level_distribution", "cross_subject_relationships", "enrollment_status_summary"]
         : ["subject_comparison", "student_profile_segmentation", "level_distribution", "score_level_consistency", "cross_subject_relationships", "enrollment_status_summary"],
@@ -194,7 +204,11 @@
         recordGroup,
         subjects,
       },
-      rowRoles: { dataRowIndexes: validRows.map(item => item.index), aggregateRowIndexes: [] },
+      rowRoles: {
+        dataRowIndexes: sourceRows.map(item => item.index),
+        numericDataRowIndexes: validRows.map(item => item.index),
+        aggregateRowIndexes: [],
+      },
       scale: {
         order: ["أ", "ب", "ج", "د", "هـ"],
         highLevels: ["أ", "ب"],
@@ -209,7 +223,9 @@
         academicYear: sourceMeta?.metadata?.academicYear || sourceMeta?.normalization?.academicYear || "",
         group: sourceMeta?.metadata?.group || sourceMeta?.normalization?.group || "",
         subjects: metadataSubjects,
-        studentCount: validRows.length,
+        studentCount: sourceRows.length,
+        analyzableStudentCount: validRows.length,
+        specialStudentCount: Math.max(0, sourceRows.length - validRows.length),
         scoreCount,
         levelSource,
       },
