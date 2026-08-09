@@ -47,6 +47,7 @@ test('public HTML cache-busters and runtime version markers match package versio
   assert.equal(appManifest.runtime?.primaryTransientRescuePhaseDeadlineMs, numericConst(edgeSource, 'PRIMARY_TRANSIENT_RESCUE_PHASE_DEADLINE_MS'));
   assert.equal(appManifest.runtime?.primaryAnalysisClientTimeoutMs, clientNumericConst(client, 'PRIMARY_ANALYSIS_CLIENT_TIMEOUT_MS'));
   assert.equal(appManifest.runtime?.primaryAnalysisClientMaxAttempts, clientNumericConst(client, 'PRIMARY_ANALYSIS_CLIENT_MAX_ATTEMPTS'));
+  assert.equal(appManifest.runtime?.primaryFastCapacityReplayMaxMs, clientNumericConst(client, 'PRIMARY_ANALYSIS_FAST_CAPACITY_REPLAY_MAX_MS'));
 });
 
 test('current-version tests do not hard-code the release number outside the dynamic version contract', () => {

@@ -20,5 +20,5 @@ test('transient rescue excludes models already attempted by the failed segment',
 
 test('client does not immediately replay a full analysis request after GEMINI_RATE_LIMIT', () => {
   assert.match(client, /code === "GEMINI_RATE_LIMIT"/, 'Client must recognize rate limit separately');
-  assert.match(client, /throw error;\s*\/\/ rate-limit/i, 'Client must stop immediate full-request replay on rate limit');
+  assert.match(client, /if \(code === "GEMINI_RATE_LIMIT" \|\| status === 429\)[\s\S]*?throw error;/, 'Client must stop immediate full-request replay on rate limit');
 });

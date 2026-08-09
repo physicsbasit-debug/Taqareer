@@ -26,7 +26,7 @@ test('primary AI request is split into bounded reasoning and action segments', (
   const clientTimeout = numericConst(client, 'PRIMARY_ANALYSIS_CLIENT_TIMEOUT_MS');
   const clientAttempts = numericConst(client, 'PRIMARY_ANALYSIS_CLIENT_MAX_ATTEMPTS');
   assert.ok(clientTimeout > numericConst(edge, 'PRIMARY_ANALYSIS_DEADLINE_MS'), 'client timeout must exceed the server deadline');
-  assert.ok(clientAttempts >= 2 && clientAttempts <= 3, 'client replay budget must stay bounded');
+  assert.equal(clientAttempts, 2, 'primary full-request replay budget must stay at one replay maximum');
   assert.match(client, /analyze_primary", payload, \{ timeoutMs: PRIMARY_ANALYSIS_CLIENT_TIMEOUT_MS, networkRetry: true, maxAttempts: PRIMARY_ANALYSIS_CLIENT_MAX_ATTEMPTS \}/);
   const overallDeadline = numericConst(edge, 'PRIMARY_ANALYSIS_DEADLINE_MS');
   const initialDeadline = numericConst(edge, 'PRIMARY_INITIAL_PHASE_DEADLINE_MS');
@@ -40,10 +40,11 @@ test('primary AI request is split into bounded reasoning and action segments', (
   assert.ok(actionTimeout > 0 && actionTimeout <= overallDeadline);
   assert.ok(repairTimeout > 0 && repairTimeout <= overallDeadline);
   assert.match(client, /code === "GEMINI_RATE_LIMIT" \|\| status === 429/);
-  assert.match(client, /transientCapacity && attempt >= 2/);
-  assert.match(client, /transientCapacity && attemptDurationMs > 20_000/);
+  assert.match(client, /PRIMARY_ANALYSIS_FAST_CAPACITY_REPLAY_MAX_MS = 12_000/);
+  assert.match(client, /transientCapacity[\s\S]*attemptDurationMs <= PRIMARY_ANALYSIS_FAST_CAPACITY_REPLAY_MAX_MS/);
   assert.match(client, /await delay\(2600 \+ Math\.round\(Math\.random\(\) \* 1200\)\)/);
-  assert.match(client, /attempt < Math\.min\(maxAttempts, 2\).*AI_PRIMARY_TIMEOUT/s);
+  assert.doesNotMatch(client, /attempt < Math\.min\(maxAttempts, 2\).*AI_PRIMARY_TIMEOUT/s, 'timeout must not replay the whole primary request');
+  assert.match(client, /code === "GEMINI_CONTRACT_REJECTED"\) throw error/);
   assert.match(edge, /configuredModelChain\("GEMINI_CLASSIFIER_MODEL", "GEMINI_CLASSIFIER_FALLBACK_MODELS"/);
   assert.match(edge, /configuredModelChain\("GEMINI_ANALYSIS_MODEL", "GEMINI_REASONING_FALLBACK_MODELS"/);
   assert.match(edge, /configuredModelChain\("GEMINI_FAST_MODEL", "GEMINI_ACTION_FALLBACK_MODELS"/);

@@ -1,8 +1,8 @@
 {
   "app": "تقارير",
-  "version": "1.2.47",
+  "version": "1.2.48",
   "phase": "Rate-Aware AI Orchestration",
-  "releaseName": "Rate Limit Containment and Non-Repeating Segment Rescue",
+  "releaseName": "Bounded Primary Request Lifecycle",
   "buildType": "static-github-pages-plus-supabase-edge-function",
   "supportedInputs": {
     "table": [
@@ -258,7 +258,9 @@
     "primaryInitialPhaseDeadlineMs": 26000,
     "primaryTransientRescuePhaseDeadlineMs": 36500,
     "modelOverridePolicy": "generation-agnostic normalized model names; optional fallback lists are configurable without a hard-coded Gemini generation family guard",
-    "primaryAnalysisClientMaxAttempts": 3
+    "primaryAnalysisClientMaxAttempts": 2,
+    "primaryFastCapacityReplayMaxMs": 12000,
+    "primaryAutomaticReplayPolicy": "one fast 503/504 replay only; no automatic full-request replay after timeout, rate-limit, or contract rejection"
   },
   "security": {
     "geminiKeyInBrowser": false,

@@ -3,9 +3,10 @@
 
   const STORAGE_KEY = "taqareer.ai.config.v1";
   const ACCESS_KEY = "taqareer.ai.access-code.v1";
-  const CLIENT_VERSION = "1.2.47";
+  const CLIENT_VERSION = "1.2.48";
   const PRIMARY_ANALYSIS_CLIENT_TIMEOUT_MS = 60_000;
-  const PRIMARY_ANALYSIS_CLIENT_MAX_ATTEMPTS = 3;
+  const PRIMARY_ANALYSIS_CLIENT_MAX_ATTEMPTS = 2;
+  const PRIMARY_ANALYSIS_FAST_CAPACITY_REPLAY_MAX_MS = 12_000;
   const HEALTH_MAX_AGE_MS = 120000;
   const defaults = window.TAQAREER_CONFIG || {};
   let healthState = {
@@ -227,15 +228,11 @@
         return body;
       } catch (error) {
         if (error?.name === "AbortError") {
-          // كانت المهلة تُصنّف retryable ثم تُرمى فورًا، فلا تُستهلك حتى محاولة الشبكة
-          // الثانية. نسمح بمحاولة واحدة فقط بعد المهلة حتى لا يتحول التعافي إلى انتظار طويل.
-          if (attempt < Math.min(maxAttempts, 2) && options.networkRetry === true) {
-            setHealth({ status: "checking", endpoint: config.endpoint, errorCode: "AI_PRIMARY_TIMEOUT", geminiReady: false });
-            await delay(1200 + Math.round(Math.random() * 700));
-            continue;
-          }
+          // لا نعيد analyze_primary كاملًا بعد انتهاء مهلة العميل. قد تكون Edge ما زالت
+          // تُنهي الطلب السابق، وإعادة الطلب هنا تضاعف حمل Gemini وتحوّل مهلة واحدة
+          // إلى انتظار طويل قد يتجاوز دقيقة ونصف. تبقى إعادة المحاولة اليدوية متاحة.
           setHealth({ status: "failed", endpoint: config.endpoint, errorCode: "AI_PRIMARY_TIMEOUT" });
-          const timeoutError = new Error("انتهت مهلة التحليل الذكي الأساسي قبل اكتمال النتيجة. لم يعتمد التطبيق تحليلًا ناقصًا.");
+          const timeoutError = new Error("انتهت مهلة المحاولة الحالية للتحليل الذكي قبل اكتمال النتيجة. لم يعتمد التطبيق تحليلًا ناقصًا ولم يكرر الطلب الكامل تلقائيًا.");
           timeoutError.code = "AI_PRIMARY_TIMEOUT";
           timeoutError.retryable = true;
           throw timeoutError;
@@ -249,37 +246,32 @@
           setHealth({ status: "failed", endpoint: config.endpoint, errorCode: transportError.code, geminiReady: false });
           throw transportError;
         }
-        // Edge يميز أخطاء السعة/الازدحام المؤقتة صراحة بـ retryable=true.
-        // كان العميل يحفظ هذه العلامة ثم يرمي الخطأ مباشرة، فيجبر المستخدم على
-        // الضغط مرة أخرى يدويًا. نستهلك هنا المحاولة الثانية المسموح بها فقط
-        // للطلبات التي طلبت networkRetry، مع مهلة قصيرة حتى لا نعيد الطلب داخل
-        // نفس موجة الازدحام فورًا.
-        if (attempt < maxAttempts && options.networkRetry === true && Boolean(error?.retryable)) {
-          const code = String(error?.code || "");
-          const status = Number(error?.status || 0);
-          const attemptDurationMs = Math.max(0, (globalThis.performance?.now?.() ?? Date.now()) - attemptStartedAt);
-          const transientCapacity = code === "GEMINI_TRANSIENT" || status === 503 || status === 504;
+        const code = String(error?.code || "");
+        const status = Number(error?.status || 0);
+        const attemptDurationMs = Math.max(0, (globalThis.performance?.now?.() ?? Date.now()) - attemptStartedAt);
+        const transientCapacity = code === "GEMINI_TRANSIENT" || status === 503 || status === 504;
 
-          // rate-limit: لا نعيد الطلب الكامل فورًا. Edge أوقف model fan-out عمدًا حتى لا
-          // تتحول ضغطة واحدة إلى عاصفة طلبات تزيد RPM/TPM أو مدة الحظر.
-          if (code === "GEMINI_RATE_LIMIT" || status === 429) {
-            setHealth({ status: "failed", endpoint: config.endpoint, errorCode: "GEMINI_RATE_LIMIT", geminiReady: false });
-            throw error; // rate-limit: preserve provider backoff instead of replaying the whole analysis.
-          }
+        // 429 وحدود الحصة لا تُعاد تلقائيًا. Edge أوقفت fan-out عمدًا، وإعادة الطلب
+        // الكامل من المتصفح ستزيد RPM/TPM بدل أن تساعد.
+        if (code === "GEMINI_RATE_LIMIT" || status === 429) {
+          setHealth({ status: "failed", endpoint: config.endpoint, errorCode: "GEMINI_RATE_LIMIT", geminiReady: false });
+          throw error;
+        }
 
-          // Edge نفسها جرّبت fallback/rescue للمقاطع. نسمح بإعادة طلب خادمي واحدة فقط
-          // لأخطاء 503/504؛ المحاولة الثالثة كانت تضاعف ضغط Gemini بلا مكسب موثوق.
-          if (transientCapacity && attempt >= 2) throw error;
-          if (transientCapacity && attemptDurationMs > 20_000) throw error;
+        // رفض العقد يعني أن الخادم استلم استجابة Gemini وحاول إصلاحها بالفعل. إعادة
+        // التحليل كاملًا تلقائيًا تخفي السبب الحقيقي وقد تضيف 60 ثانية أخرى بلا داعٍ.
+        if (code === "GEMINI_CONTRACT_REJECTED") throw error;
 
+        // نسمح بإعادة طلب خادمي واحدة فقط إذا كان 503/504 قد عاد بسرعة. إذا استغرقت
+        // Edge وقتًا معتبرًا فقد قامت بالفعل بالفشل البديل/الإنقاذ، وإعادة العمل كله
+        // تحوّل التعافي إلى انتظار 80-120 ثانية وتضاعف الضغط.
+        if (attempt < maxAttempts && options.networkRetry === true && transientCapacity
+          && attemptDurationMs <= PRIMARY_ANALYSIS_FAST_CAPACITY_REPLAY_MAX_MS) {
           setHealth({ status: "checking", endpoint: config.endpoint, errorCode: code, geminiReady: false });
-          if (transientCapacity) {
-            await delay(2600 + Math.round(Math.random() * 1200));
-          } else {
-            await delay(900 + Math.round(Math.random() * 500));
-          }
+          await delay(2600 + Math.round(Math.random() * 1200));
           continue;
         }
+
         throw error;
       } finally {
         clearTimeout(timer);
