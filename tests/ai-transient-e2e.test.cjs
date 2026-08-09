@@ -69,9 +69,6 @@ test('End-to-End: compact analysis payload survives two transient Edge 503 respo
     const body = JSON.parse(options.body);
     operations.push(body.operation);
     attempts.push(options.headers['x-taqareer-attempt']);
-    if (body.operation === 'health') {
-      return jsonResponse({ ok: true, operation: 'health', edgeVersion: '0.15.6', aiKeyConfigured: true, result: { status: 'ready' } });
-    }
     if (body.operation === 'analyze_primary') {
       primaryCalls += 1;
       if (primaryCalls <= 2) {
@@ -107,9 +104,45 @@ test('End-to-End: compact analysis payload survives two transient Edge 503 respo
     ai: api,
   });
 
-  assert.deepEqual(operations, ['health', 'analyze_primary', 'analyze_primary', 'analyze_primary']);
-  assert.deepEqual(attempts, ['1', '1', '2', '3']);
+  assert.deepEqual(operations, ['analyze_primary', 'analyze_primary', 'analyze_primary']);
+  assert.deepEqual(attempts, ['1', '2', '3']);
   assert.equal(primaryCalls, 3);
   assert.equal(output.result.contractVersion, '6.6.0');
   assert.equal(output.result.executive.headline, 'تحليل مكتمل');
+});
+
+
+test('End-to-End: orchestrated analysis proceeds when advisory health would fail but analyze_primary is reachable', async () => {
+  const operations = [];
+  const { api, orchestrator } = loadRuntime(async (_url, options) => {
+    const body = JSON.parse(options.body);
+    operations.push(body.operation);
+    if (body.operation === 'health') throw new TypeError('Failed to fetch');
+    if (body.operation === 'analyze_primary') {
+      return jsonResponse({
+        ok: true,
+        operation: 'analyze_primary',
+        edgeVersion: '0.15.6',
+        aiKeyConfigured: true,
+        result: { contractVersion: '6.6.0', executive: { headline: 'تحليل مباشر مكتمل' } },
+      });
+    }
+    throw new Error(`unexpected operation ${body.operation}`);
+  });
+
+  api.saveConfig({ endpoint: 'https://abc123.supabase.co', anonKey: 'anon-key', enabled: true });
+  const output = await orchestrator.run({
+    basePayload: {
+      source: { name: 'multi-subject.pdf' },
+      recognizedType: { id: 'multi_subject_results', nameAr: 'نتائج طلاب فردية متعددة المواد' },
+      data: { headers: ['اسم الطالب', 'العلوم'], sampleRows: [{ _evidenceRef: 'row:1', 'اسم الطالب': 'طالب', 'العلوم': 78 }], rowCount: 319, sentRowCount: 1 },
+      evidenceAnalysis: { metrics: [{ id: 'mean', label: 'المتوسط', value: 76.4, evidenceRef: 'metric:mean' }], charts: [], evidenceCatalog: [] },
+      availableEvidenceRefs: ['row:1', 'metric:mean'],
+    },
+    ai: api,
+  });
+
+  assert.deepEqual(operations, ['analyze_primary']);
+  assert.equal(output.result.executive.headline, 'تحليل مباشر مكتمل');
+  assert.equal(api.getHealth().status, 'live');
 });

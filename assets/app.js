@@ -274,7 +274,7 @@
     const message = String(error?.message || "");
     if (code === "AI_OFFLINE") return "الجهاز غير متصل بالإنترنت حاليًا. لم يُرسل التحليل إلى الخادم. تحقق من الاتصال ثم أعد المحاولة.";
     if (code === "AI_NETWORK_FETCH_FAILED" || /failed to fetch|networkerror|load failed|network request failed/i.test(message)) {
-      return "تعذر الوصول إلى وظيفة Supabase. فحص التطبيق الرابط قبل التحليل، لكن الاتصال انقطع أو حُجبت الاستجابة. افتح إعداد خدمة التحليل واضغط «حفظ واختبار»؛ لن يعتمد التطبيق نتيجة ناقصة.";
+      return "تعذر الوصول إلى وظيفة Supabase أثناء الطلب. انقطع الاتصال أو حُجبت الاستجابة، ولم يعتمد التطبيق نتيجة ناقصة.";
     }
     if (code === "AI_ENDPOINT_INVALID") return message || "رابط وظيفة Supabase غير صالح.";
     if (code === "GEMINI_TRANSIENT" || /high demand|spikes in demand|service unavailable|overload(?:ed)?|\b503\b/i.test(message)) {
@@ -388,7 +388,7 @@
       cardText = "الخدمة متصلة وجاهزة. تُبنى الحسابات محليًا ثم تبدأ القراءة التربوية من الأدلة.";
     } else if (configured && enabled && health.status === "failed") {
       text = "تعذر اتصال خدمة التحليل";
-      cardText = "إعداد الربط محفوظ، لكن فحص الاتصال الحي فشل. افتح إعداد خدمة التحليل واضغط «حفظ واختبار» قبل إعادة التحليل.";
+      cardText = "إعداد الربط محفوظ، لكن فحص الجاهزية الحي تعثر. يبقى زر التحليل قادرًا على تجربة الطلب الحقيقي مباشرة، ويمكن استخدام «حفظ واختبار» لفحص الاتصال يدويًا.";
     } else if (configured && enabled) {
       text = "ربط خدمة التحليل محفوظ";
       cardText = "إعداد الاتصال محفوظ، وسيُفحص تلقائيًا قبل بدء التحليل.";
@@ -767,7 +767,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "1.2.41",
+      appVersion: "1.2.42",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -1654,7 +1654,7 @@
     if (!window.TaqareerReconciliation?.composePrimary) throw new Error("محرك التحقق من التحليل الذكي غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "1.2.41",
+      appVersion: "1.2.42",
       pipeline: {
         mode: "ai-primary-analysis-v1",
         instruction: "المحرك المحلي يحسب المؤشرات والرسوم فقط. يبني الذكاء الاصطناعي التشخيص والاستنتاجات والتدخلات من الأدلة، ثم تتحقق البوابة من المراجع قبل عرض التقرير."
@@ -2335,7 +2335,7 @@
   function exportAnalysis() {
     const payload = {
       app: "تقارير",
-      version: "1.2.41",
+      version: "1.2.42",
       generatedAt: new Date().toISOString(),
       source: state.sourceName,
       sourceMeta: state.sourceMeta,
@@ -2348,7 +2348,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v1.2.41.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v1.2.42.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }

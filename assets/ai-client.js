@@ -3,7 +3,7 @@
 
   const STORAGE_KEY = "taqareer.ai.config.v1";
   const ACCESS_KEY = "taqareer.ai.access-code.v1";
-  const CLIENT_VERSION = "1.2.41";
+  const CLIENT_VERSION = "1.2.42";
   const HEALTH_MAX_AGE_MS = 120000;
   const defaults = window.TAQAREER_CONFIG || {};
   let healthState = {
@@ -308,7 +308,10 @@
   }
 
   async function analyzePrimaryDetailed(payload) {
-    await ensureHealthy();
+    // لا نجعل فحص health بوابة إلزامية قبل الطلب الحقيقي. قد يفشل الفحص
+    // العابر أو يتأخر بينما تكون وظيفة التحليل نفسها قابلة للوصول بعد لحظة.
+    // الطلب الحقيقي هو دليل الجاهزية الأوثق، وinvoke يحدّث healthState عند نجاحه
+    // ويعيد أخطاء الإعداد/الشبكة الفعلية عند فشله.
     return invoke("analyze_primary", payload, { timeoutMs: 60000, networkRetry: true, maxAttempts: 3 });
   }
 

@@ -97,14 +97,11 @@ test('health retries one network transport failure and exposes an Arabic error c
   assert.equal(api.getHealth().status, 'failed');
 });
 
-test('primary analysis verifies Edge health before sending the expensive analysis request', async () => {
+test('primary analysis uses the real analysis request as the authoritative health proof', async () => {
   const operations = [];
   const { api } = loadClient(async (_url, options) => {
     const body = JSON.parse(options.body);
     operations.push(body.operation);
-    if (body.operation === 'health') {
-      return jsonResponse({ ok: true, operation: 'health', edgeVersion: '0.15.1', aiKeyConfigured: true, result: { status: 'ready' } });
-    }
     if (body.operation === 'analyze_primary') {
       return jsonResponse({ ok: true, operation: 'analyze_primary', edgeVersion: '0.15.1', aiKeyConfigured: true, result: { contractVersion: '6.6.0' } });
     }
@@ -112,7 +109,7 @@ test('primary analysis verifies Edge health before sending the expensive analysi
   });
   api.saveConfig({ endpoint: 'https://abc123.supabase.co', anonKey: 'anon-key', enabled: true });
   const response = await api.analyzePrimaryDetailed({ sample: true });
-  assert.deepEqual(operations, ['health', 'analyze_primary']);
+  assert.deepEqual(operations, ['analyze_primary']);
   assert.equal(response.result.contractVersion, '6.6.0');
   assert.equal(api.getHealth().status, 'live');
   assert.equal(api.getHealth().edgeVersion, '0.15.1');
@@ -125,9 +122,6 @@ test('primary analysis automatically retries one retryable Edge 503 response ins
   const { api } = loadClient(async (_url, options) => {
     const body = JSON.parse(options.body);
     operations.push(body.operation);
-    if (body.operation === 'health') {
-      return jsonResponse({ ok: true, operation: 'health', edgeVersion: '0.15.6', aiKeyConfigured: true, result: { status: 'ready' } });
-    }
     if (body.operation === 'analyze_primary') {
       analysisCalls += 1;
       if (analysisCalls === 1) {
@@ -152,7 +146,7 @@ test('primary analysis automatically retries one retryable Edge 503 response ins
   });
   api.saveConfig({ endpoint: 'https://abc123.supabase.co', anonKey: 'anon-key', enabled: true });
   const response = await api.analyzePrimaryDetailed({ sample: true });
-  assert.deepEqual(operations, ['health', 'analyze_primary', 'analyze_primary']);
+  assert.deepEqual(operations, ['analyze_primary', 'analyze_primary']);
   assert.equal(analysisCalls, 2);
   assert.equal(response.result.contractVersion, '6.6.0');
 });
@@ -164,9 +158,6 @@ test('primary analysis survives two fast retryable Edge 503 responses before suc
   const { api } = loadClient(async (_url, options) => {
     const body = JSON.parse(options.body);
     operations.push(body.operation);
-    if (body.operation === 'health') {
-      return jsonResponse({ ok: true, operation: 'health', edgeVersion: '0.15.6', aiKeyConfigured: true, result: { status: 'ready' } });
-    }
     if (body.operation === 'analyze_primary') {
       analysisCalls += 1;
       if (analysisCalls <= 2) {
@@ -191,9 +182,39 @@ test('primary analysis survives two fast retryable Edge 503 responses before suc
   });
   api.saveConfig({ endpoint: 'https://abc123.supabase.co', anonKey: 'anon-key', enabled: true });
   const response = await api.analyzePrimaryDetailed({ sample: true });
-  assert.deepEqual(operations, ['health', 'analyze_primary', 'analyze_primary', 'analyze_primary']);
+  assert.deepEqual(operations, ['analyze_primary', 'analyze_primary', 'analyze_primary']);
   assert.equal(analysisCalls, 3);
   assert.equal(response.result.contractVersion, '6.6.0');
+});
+
+
+test('End-to-End: primary analysis is not blocked by a failed health preflight when the real analysis request is reachable', async () => {
+  const operations = [];
+  let healthCalls = 0;
+  const { api } = loadClient(async (_url, options) => {
+    const body = JSON.parse(options.body);
+    operations.push(body.operation);
+    if (body.operation === 'health') {
+      healthCalls += 1;
+      throw new TypeError('Failed to fetch');
+    }
+    if (body.operation === 'analyze_primary') {
+      return jsonResponse({
+        ok: true,
+        operation: 'analyze_primary',
+        edgeVersion: '0.15.6',
+        aiKeyConfigured: true,
+        result: { contractVersion: '6.6.0' },
+      });
+    }
+    throw new Error(`unexpected operation ${body.operation}`);
+  });
+  api.saveConfig({ endpoint: 'https://abc123.supabase.co', anonKey: 'anon-key', enabled: true });
+  const response = await api.analyzePrimaryDetailed({ sample: true });
+  assert.equal(healthCalls, 0);
+  assert.deepEqual(operations, ['analyze_primary']);
+  assert.equal(response.result.contractVersion, '6.6.0');
+  assert.equal(api.getHealth().status, 'live');
 });
 
 test('rejects malformed endpoints before attempting network access', async () => {
