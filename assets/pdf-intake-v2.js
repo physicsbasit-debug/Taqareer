@@ -580,6 +580,14 @@
     return /^(?:الاول|الثاني|الثالث|الرابع|الخامس|السادس|السابع|الثامن|التاسع|العاشر|الحادي عشر|الثاني عشر)$/.test(normalized);
   }
 
+  function analyzedGradeFromText(text) {
+    const raw = clean(text).replace(/[ًٌٍَُِّْ]/g, "");
+    if (!raw || /الصفوف\s*[()（）]?\s*\d{1,2}\s*[-–—/]\s*\d{1,2}/i.test(raw)) return "";
+    const match = raw.match(/(?:^|\s)الصف\s*[:：-]\s*(الحادي\s+عشر|الثاني\s+عشر|الأول|الاول|الثاني|الثالث|الرابع|الخامس|السادس|السابع|الثامن|التاسع|العاشر|\d{1,2})(?=\s|[-–—،,؛;]|$)/i);
+    const value = clean(match?.[1] || "");
+    return isAnalyzedGradeValue(value) ? value : "";
+  }
+
   function metadataValueNearLabel(pageRecords, labelPattern, candidatePredicate, maxVerticalDistance = 14) {
     const direct = metadataValueAfterLabel(pageRecords, labelPattern);
     if (direct && (!candidatePredicate || candidatePredicate(direct.value))) return direct;
@@ -701,7 +709,11 @@
       if (schoolGradeRange) add("schoolGradeRange", schoolGradeRange, schoolItem, 0.98);
     }
 
-    const explicitGrade = metadataValueNearLabel(pageRecords, /^الصف$/, isAnalyzedGradeValue);
+    let explicitGrade = metadataValueNearLabel(pageRecords, /^الصف$/, isAnalyzedGradeValue);
+    if (!explicitGrade?.value) {
+      const combinedGradeItem = lines.find(item => analyzedGradeFromText(lineText(item.line)));
+      if (combinedGradeItem) explicitGrade = { value: analyzedGradeFromText(lineText(combinedGradeItem.line)), item: combinedGradeItem };
+    }
     if (explicitGrade?.value) {
       add("analyzedGrade", explicitGrade.value, explicitGrade.item, 0.98);
       add("grade", explicitGrade.value, explicitGrade.item, 0.98);
@@ -1048,6 +1060,7 @@
       metadataValueAfterLabel,
       metadataValueNearLabel,
       isAnalyzedGradeValue,
+      analyzedGradeFromText,
       geometryAlignedValues,
       continuationCandidate,
       mergeContinuationRow,

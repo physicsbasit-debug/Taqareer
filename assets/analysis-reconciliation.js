@@ -555,6 +555,134 @@
     deep_gap: "دون الإتقان بفجوة عميقة",
   });
 
+  const CLIENT_SCORE_SENSITIVE_RULES = Object.freeze([
+    { id: "self_confidence", pattern: /الثق[ةه]\s*(?:الذاتي[ةه])?/i, label: "الثقة الذاتية", request: "مقياس مباشر للثقة الذاتية أو بيانات نوعية موثقة" },
+    { id: "motivation", pattern: /الدافعي[ةه]|الحافز\s+للتعلم/i, label: "الدافعية", request: "أداة مباشرة لقياس الدافعية أو اتجاهات التعلم" },
+    { id: "participation", pattern: /المشارك[ةه]\s*(?:الصفي[ةه]|الإيجابي[ةه])?/i, label: "المشاركة", request: "سجل مشاركة أو ملاحظة صفية مباشرة" },
+    { id: "learning_climate", pattern: /البيئ[ةه]\s+(?:الإيجابي[ةه]|التعليمي[ةه]|المدرسي[ةه]|الصفي[ةه])/i, label: "البيئة التعليمية", request: "مقياس مناخ صفي/مدرسي أو ملاحظات مباشرة موثقة" },
+    { id: "anxiety", pattern: /القلق(?:\s+الاختباري)?/i, label: "القلق", request: "مقياس مناسب للقلق أو القلق الاختباري" },
+  ]);
+
+  function clientScoreSensitiveConstructs(value) {
+    const text = String(value || "");
+    return CLIENT_SCORE_SENSITIVE_RULES.filter(rule => rule.pattern.test(text));
+  }
+
+  function clientGuardScoreDiagnostic(item) {
+    const text = [item?.title, item?.analysis, ...(item?.implications || []), ...(item?.limitations || []), ...(item?.dataRequests || [])].join(" ");
+    const constructs = clientScoreSensitiveConstructs(text);
+    if (!constructs.length) return item;
+    const labels = uniqueStrings(constructs.map(rule => rule.label));
+    const requests = uniqueStrings([...(item?.dataRequests || []), ...constructs.map(rule => rule.request)]);
+    const label = labels.join(" و") || "العامل غير المقاس";
+    return {
+      ...item,
+      title: `فرضية تحتاج تحققًا: ${label}`,
+      analysis: `طُرحت فرضية تتعلق بـ${label}، لكن درجات التحصيل الحالية لا تقيسها مباشرة ولا تسمح بإثبات أنها سبب للفروق.`,
+      claimType: "hypothesis",
+      confidence: "منخفضة",
+      implications: ["لا يُبنى تدخل سببي أو حكم على الطلبة أو المعلمين قبل التحقق من هذا العامل بدليل مستقل."],
+      limitations: uniqueStrings(["الدرجات الكلية لا تقيس هذا العامل مباشرة ولا تثبت سببيته.", ...(item?.limitations || [])]).slice(0, 5),
+      dataRequests: requests.slice(0, 5),
+      source: `${item?.source || "primary"}:client-inference-guard`,
+    };
+  }
+
+  function clientGuardScoreFinding(item) {
+    const text = [item?.title, item?.statement, item?.educationalImpact, item?.recommendedAction, ...(item?.limitations || [])].join(" ");
+    const constructs = clientScoreSensitiveConstructs(text);
+    if (!constructs.length) return item;
+    const labels = uniqueStrings(constructs.map(rule => rule.label));
+    const label = labels.join(" و") || "العامل غير المقاس";
+    return {
+      ...item,
+      title: `فرضية تحتاج تحققًا: ${label}`,
+      statement: `يبقى ${label} فرضية تفسيرية حتى تتوافر بيانات مباشرة مستقلة تدعمها؛ درجات التحصيل وحدها لا تثبتها.`,
+      claimType: "hypothesis",
+      confidence: "منخفضة",
+      educationalImpact: "لا يبرر هذا الافتراض تدخلًا سببيًا أو حكمًا على الطلبة أو المعلمين قبل التحقق المباشر.",
+      recommendedAction: `جمع بيانات مباشرة للتحقق من ${label} قبل استخدامه في تفسير التحصيل أو توجيه تدخل سببي.`,
+      limitations: uniqueStrings(["الدرجات الكلية لا تقيس هذا العامل مباشرة ولا تثبت سببيته.", ...(item?.limitations || [])]).slice(0, 5),
+      source: `${item?.source || "primary"}:client-inference-guard`,
+    };
+  }
+
+  function clientGuardScoreInterventionInference(item) {
+    const text = [item?.issue, item?.targetGroup, item?.action, ...(item?.implementationSteps || []), item?.successIndicator, item?.monitoringMethod].join(" ");
+    const constructs = clientScoreSensitiveConstructs(text);
+    if (!constructs.length || item?.basisClaimType === "hypothesis") return item;
+    const labels = uniqueStrings(constructs.map(rule => rule.label));
+    const label = labels.join(" و") || "العامل غير المقاس";
+    return {
+      ...item,
+      priority: "تحقق قبل التدخل",
+      issue: `فرضية تحتاج تحققًا: ${label}`,
+      targetGroup: `الحالات المرتبطة بفرضية «${label}» دون افتراض ثبوتها`,
+      targetGroupIds: [],
+      action: `جمع بيانات مباشرة مستقلة للتحقق من ${label} قبل استخدامه في تفسير التحصيل أو توجيه تدخل سببي.`,
+      implementationSteps: [
+        `اختيار أداة أو مصدر بيانات مباشر يقيس ${label} بصورة مستقلة عن درجات التحصيل.`,
+        "مراجعة العلاقة وصفيًا مع نتائج التحصيل دون تحويل الارتباط إلى سببية.",
+        "اعتماد الفرضية أو رفضها قبل بناء أي تدخل سببي عليها.",
+      ],
+      successIndicator: `توفر دليل مباشر مستقل يسمح بقبول فرضية «${label}» أو رفضها دون الاستناد إلى الدرجات وحدها.`,
+      successMetric: { mode: "evidence_verification", targetValue: 1, targetSegmentId: "" },
+      numericGuard: null,
+      basisClaimType: "hypothesis",
+      basisConfidence: "منخفضة",
+      inferenceGuardApplied: true,
+      guardedConstructs: labels,
+      source: `${item?.source || "primary"}:client-inference-guard`,
+    };
+  }
+
+  function assessmentComponentCohortContract(item, context) {
+    if (item?.basisClaimType === "hypothesis") return item;
+    const ids = uniqueStrings(item?.targetGroupIds || []).filter(id => SCORE_GROUP_LABELS[id]);
+    const has = id => ids.includes(id);
+    let issue = item.issue;
+    let action = item.action;
+    let steps = item.implementationSteps;
+    let timeframe = item.timeframe;
+
+    if (ids.length === 1 && has("deep_gap")) {
+      issue = "الفجوة العميقة تحتاج تشخيصًا ودعمًا مكثفًا";
+      action = "تنفيذ تشخيص قصير لتحديد المتطلبات السابقة المفقودة، ثم دعم مكثف في مجموعات صغيرة مع إعادة قياس قريبة.";
+      steps = ["تطبيق قياس تشخيصي قصير.", "تنفيذ دعم مركز في مجموعات صغيرة وفق الاحتياج.", "إعادة قياس الفئة نفسها ومراجعة انتقالها إلى مستوى أعلى."];
+      timeframe = "4 أسابيع";
+    } else if (has("moderate_gap") && has("near_mastery")) {
+      issue = "رفع الفجوة المتوسطة والقريبين من الإتقان نحو الإتقان";
+      action = "تنفيذ دعم متدرج: مهام علاجية للفجوة المتوسطة ومراجعة مركزة قصيرة للقريبين من الإتقان، مع قياس خروج موحد لتتبع الانتقال.";
+      steps = ["تثبيت خط الأساس لكل فئة.", "تنفيذ مهام متدرجة بحسب قرب الفئة من حد الإتقان.", "إعادة القياس ومقارنة انتقال الطلبة إلى الإتقان أو فئة أعلى."];
+      timeframe = "4 أسابيع";
+    } else if (ids.length === 1 && has("moderate_gap")) {
+      issue = "رفع الفجوة المتوسطة إلى مستوى أعلى";
+      action = "تنفيذ دعم جماعي موجه للفجوة المتوسطة مع نمذجة وتغذية راجعة ومهام قصيرة متكررة.";
+      steps = ["تثبيت خط الأساس للفئة.", "تنفيذ مهام علاجية متدرجة.", "إعادة قياس انتقال الفئة إلى قريب من الإتقان أو أعلى."];
+      timeframe = "4 أسابيع";
+    } else if (ids.length === 1 && has("near_mastery")) {
+      issue = "تحويل القريبين من الإتقان إلى الإتقان";
+      action = "تنفيذ مراجعة مركزة قصيرة ومهام تصحيحية موجهة للفجوة المحدودة عن حد الإتقان ثم قياس خروج قريب.";
+      steps = ["تحديد الفجوة القصيرة المشتركة.", "تنفيذ مراجعة مركزة.", "قياس خروج ومراجعة بلوغ حد الإتقان."];
+      timeframe = "أسبوعان";
+    } else if (ids.length === 1 && has("mastery")) {
+      issue = "تثبيت الإتقان وإثراء الطلبة المتقنين";
+      action = "تنفيذ مهام تثبيت وإثراء تحافظ على مستوى الإتقان وتضيف تحديًا مناسبًا دون تحويل المتقنين إلى بديل عن التدريس.";
+      steps = ["تحديد مهمة إثرائية بمعيار نجاح واضح.", "تنفيذ المهمة ومراجعة جودة الأداء.", "تثبيت الإتقان في القياس اللاحق."];
+      timeframe = "4 أسابيع";
+    }
+
+    return {
+      ...item,
+      issue,
+      action,
+      implementationSteps: steps,
+      timeframe,
+      cohortContract: { applied: true, type: "assessment_component", groupIds: ids },
+      source: `${item?.source || "primary"}:assessment-component-cohort-guard`,
+    };
+  }
+
   function roundDecimal(value, decimals = 1) {
     const factor = 10 ** decimals;
     return Math.round((Number(value) + Number.EPSILON) * factor) / factor;
@@ -712,9 +840,16 @@
   function composePrimary(localEvidence, primaryResult, options = {}) {
     const result = canonicalize(localEvidence || {});
     if (!primaryResult || typeof primaryResult !== "object") throw new Error("لم تصل نتيجة التحليل الأساسية.");
+    const scoreLike = SCORE_TYPES.has(String(result.typeId || ""));
+    const guardedPrimary = scoreLike ? {
+      ...primaryResult,
+      diagnosticSections: (Array.isArray(primaryResult.diagnosticSections) ? primaryResult.diagnosticSections : []).map(clientGuardScoreDiagnostic),
+      findings: (Array.isArray(primaryResult.findings) ? primaryResult.findings : []).map(clientGuardScoreFinding),
+      interventions: (Array.isArray(primaryResult.interventions) ? primaryResult.interventions : []).map(clientGuardScoreInterventionInference),
+    } : primaryResult;
     const allowedEvidence = new Set((options.availableEvidenceRefs || []).map(String));
-    const executive = primaryResult.executive && typeof primaryResult.executive === "object" ? primaryResult.executive : {};
-    const profile = primaryResult.analysisProfile && typeof primaryResult.analysisProfile === "object" ? primaryResult.analysisProfile : {};
+    const executive = guardedPrimary.executive && typeof guardedPrimary.executive === "object" ? guardedPrimary.executive : {};
+    const profile = guardedPrimary.analysisProfile && typeof guardedPrimary.analysisProfile === "object" ? guardedPrimary.analysisProfile : {};
 
     result.executiveTitle = requirePrimaryText(executive.title, "العنوان التنفيذي");
     result.executiveSummary = requirePrimaryText(executive.summary, "الملخص التنفيذي");
@@ -728,7 +863,7 @@
       decisionUse: clampItems(profile.decisionUses, 10, 420),
     };
 
-    result.diagnosticSections = (Array.isArray(primaryResult.diagnosticSections) ? primaryResult.diagnosticSections : [])
+    result.diagnosticSections = (Array.isArray(guardedPrimary.diagnosticSections) ? guardedPrimary.diagnosticSections : [])
       .slice(0, 9)
       .map((item, index) => ({
         id: String(item?.id || `diagnostic.ai.${index + 1}`),
@@ -745,7 +880,7 @@
       }))
       .filter(item => item.title && item.analysis && item.evidenceRefs.length);
 
-    result.findings = (Array.isArray(primaryResult.findings) ? primaryResult.findings : [])
+    result.findings = (Array.isArray(guardedPrimary.findings) ? guardedPrimary.findings : [])
       .slice(0, 12)
       .map((item, index) => ({
         id: String(item?.id || `finding.ai.${index + 1}`),
@@ -762,7 +897,7 @@
       }))
       .filter(item => item.title && item.statement && item.evidenceRefs.length && item.educationalImpact && item.recommendedAction);
 
-    result.qualityTools = (Array.isArray(primaryResult.qualityTools) ? primaryResult.qualityTools : [])
+    result.qualityTools = (Array.isArray(guardedPrimary.qualityTools) ? guardedPrimary.qualityTools : [])
       .slice(0, 10)
       .map((item, index) => ({
         id: String(item?.id || `tool.ai.${index + 1}`),
@@ -787,7 +922,7 @@
       throw new Error("تعذر التحقق محليًا من نطاق عينة الزيارات الإشرافية.");
     }
 
-    result.improvementPlan = (Array.isArray(primaryResult.interventions) ? primaryResult.interventions : [])
+    result.improvementPlan = (Array.isArray(guardedPrimary.interventions) ? guardedPrimary.interventions : [])
       .slice(0, 8)
       .map((item, index) => {
         const base = {
@@ -815,13 +950,16 @@
           sourceAnalysisUnitTitle: trimText(item?.sourceAnalysisUnitTitle, 240),
           source: "gemini-primary",
         };
-        if (scoreInterventionContext) {
+        if (scoreInterventionContext && base.basisClaimType !== "hypothesis") {
           const guarded = clientGuardScoreIntervention(item, scoreInterventionContext);
           base.targetGroup = guarded.targetGroup;
           base.targetGroupIds = guarded.targetGroupIds;
           base.successIndicator = guarded.successIndicator;
           base.successMetric = guarded.successMetric;
           base.numericGuard = guarded.numericGuard;
+        }
+        if (String(result.typeId || "") === "assessment_component") {
+          Object.assign(base, assessmentComponentCohortContract(base, scoreInterventionContext));
         }
         if (multiVisitScopeContext) {
           const scoped = clientGuardMultiVisitScope(item, multiVisitScopeContext);
@@ -832,7 +970,7 @@
       })
       .filter(item => item.issue && item.targetGroup && item.action && item.successIndicator && item.evidenceRefs.length);
 
-    result.monitoringPlan = (Array.isArray(primaryResult.monitoringPlan) ? primaryResult.monitoringPlan : [])
+    result.monitoringPlan = (Array.isArray(guardedPrimary.monitoringPlan) ? guardedPrimary.monitoringPlan : [])
       .slice(0, 8)
       .map((item, index) => ({
         id: String(item?.id || `monitoring.ai.${index + 1}`),
@@ -854,8 +992,8 @@
     result.limitations = uniqueStrings([
       ...(localEvidence?.limitations || []),
       ...(executive.limitations || []),
-      ...(primaryResult.additionalCautions || []),
-      ...(primaryResult.missingDataRequests || []).map(item => `بيانات إضافية مطلوبة: ${item}`),
+      ...(guardedPrimary.additionalCautions || []),
+      ...(guardedPrimary.missingDataRequests || []).map(item => `بيانات إضافية مطلوبة: ${item}`),
     ]);
     result.cautions = uniqueStrings(primaryResult.additionalCautions || []);
     result.dataRequests = uniqueStrings(primaryResult.missingDataRequests || []);

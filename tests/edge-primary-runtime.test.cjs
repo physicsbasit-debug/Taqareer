@@ -618,3 +618,83 @@ test('Regression: the subject name الدراسات الاجتماعية is not 
   assert.ok(body.result.findings.some(item => item.title === 'مستوى التحصيل في الدراسات الاجتماعية'));
   assert.ok(!body.result.findings.some(item => item.claimType === 'hypothesis'));
 });
+
+test('End-to-End assessment-component contract owns cohorts and blocks motivational leakage from intervention mapping', async () => {
+  const p = payload();
+  p.recognizedType = { id: 'assessment_component', nameAr: 'درجات مكوّن تقويمي' };
+  const groups = [
+    { id: 'mastery', label: 'حققوا حد الإتقان', count: 141, percentage: 52.6 },
+    { id: 'near_mastery', label: 'قريبون من الإتقان', count: 47, percentage: 17.5 },
+    { id: 'moderate_gap', label: 'دون الإتقان بفجوة متوسطة', count: 71, percentage: 26.5 },
+    { id: 'deep_gap', label: 'دون الإتقان بفجوة عميقة', count: 9, percentage: 3.4 },
+  ];
+  p.availableEvidenceRefs = [
+    'metric:n', 'metric:masteryCount', 'metric:masteryPct', 'metric:nearMasteryCount', 'metric:moderateGapCount', 'metric:deepGapCount', 'metric:mean', 'metric:median', 'metric:sd', 'metric:skewness',
+  ];
+  p.evidenceAnalysis = {
+    metrics: [
+      { id: 'n', value: 268 }, { id: 'masteryCount', value: 141 }, { id: 'masteryPct', value: 52.6 },
+      { id: 'nearMasteryCount', value: 47 }, { id: 'moderateGapCount', value: 71 }, { id: 'deepGapCount', value: 9 },
+      { id: 'mean', value: 45.8 }, { id: 'median', value: 45 }, { id: 'sd', value: 7.3 }, { id: 'skewness', value: -0.87 },
+    ],
+    charts: [{ id: 'intervention-segments', data: groups }],
+    interventionMathContext: { totalCount: 268, baselineMasteryCount: 141, baselineMasteryRate: 52.6, groups },
+    evidenceCatalog: [],
+  };
+  const decision = {
+    executive: {
+      title: 'توزيع متمايز يحتاج دعمًا موجّهًا',
+      summary: 'تظهر البيانات فئات متمايزة حول حد الإتقان وتحتاج إلى استجابات تعليمية متفاوتة الشدة.',
+      overallJudgement: 'دعم متدرج قائم على الفئات المحسوبة.',
+      confidence: 'مرتفعة',
+      evidenceRefs: ['metric:masteryPct', 'metric:nearMasteryCount', 'metric:moderateGapCount', 'metric:deepGapCount'],
+    },
+    findings: [
+      {
+        title: 'توزيع مستويات الإتقان والفجوات',
+        diagnosticAnalysis: 'تظهر الفئات 47 قريبًا من الإتقان و71 بفجوة متوسطة و9 بفجوة عميقة.',
+        decisionFinding: 'تحتاج الفئات غير المتقنة إلى دعم متدرج بحسب شدة الفجوة.',
+        claimType: 'fact', evidenceRefs: ['metric:nearMasteryCount', 'metric:moderateGapCount', 'metric:deepGapCount'], confidence: 'مرتفعة', severity: 'high',
+        educationalImpact: 'يسمح التقسيم بتوجيه شدة الدعم بدل تقديم برنامج واحد للجميع.',
+        recommendedAction: 'تأهيل الطلبة القريبين من الإتقان ورفع الفئة المتوسطة مع فصل الفجوة العميقة في دعم مكثف.',
+        limitation: 'الدرجات لا تحدد المهارة المسببة للفجوة.', dataRequest: 'اختبار تشخيصي عند الحاجة.',
+      },
+      {
+        title: 'مؤشرات النزعة المركزية والتشتت',
+        diagnosticAnalysis: 'المتوسط 45.8 والوسيط 45 والانحراف 7.3 مع تمركز نسبي نحو الدرجات الأعلى.',
+        decisionFinding: 'التوزيع يحتاج متابعة فئوية لا تفسيرًا نفسيًا.',
+        claimType: 'fact', evidenceRefs: ['metric:mean', 'metric:median', 'metric:sd', 'metric:skewness'], confidence: 'مرتفعة', severity: 'medium',
+        educationalImpact: 'تعزيز دافعية الطلبة المتميزة واستمرار التفوق التحصيلي.',
+        recommendedAction: 'استثمار الدافعية المرتفعة لرفع بقية الفئات.',
+        limitation: 'الدرجات لا تقيس الدافعية مباشرة.', dataRequest: '',
+      },
+    ],
+    additionalCautions: [], missingDataRequests: [],
+  };
+  const runtime = await createRuntime([geminiRaw(decision)]);
+  const { status, body } = await invoke(runtime, p);
+  assert.equal(status, 200);
+  assert.equal(runtime.getCalls(), 1);
+
+  const serialized = JSON.stringify(body.result);
+  assert.doesNotMatch(serialized, /تعزيز دافعية|الدافعية المرتفعة|استثمار الدافعية/);
+  const hypothesis = body.result.findings.find(item => item.claimType === 'hypothesis');
+  assert.ok(hypothesis, 'unsupported motivation claim must remain a named low-confidence hypothesis');
+  assert.match(`${hypothesis.title} ${hypothesis.statement}`, /الدافعية/);
+
+  const plans = body.result.interventions;
+  assert.ok(plans.length >= 2);
+  const deep = plans.find(item => Array.isArray(item.targetGroupIds) && item.targetGroupIds.length === 1 && item.targetGroupIds[0] === 'deep_gap');
+  assert.ok(deep, 'deep-gap cohort needs its own deterministic intervention');
+  assert.match(deep.issue, /الفجوة العميقة/);
+  assert.match(deep.action, /تشخيص|دعم مكثف/);
+  assert.match(deep.successIndicator, /دون الإتقان بفجوة عميقة/);
+
+  const lift = plans.find(item => Array.isArray(item.targetGroupIds) && item.targetGroupIds.includes('moderate_gap') && item.targetGroupIds.includes('near_mastery'));
+  assert.ok(lift, 'moderate and near-mastery cohorts should stay bound to the same lift-to-mastery intervention');
+  assert.match(lift.issue, /الفجوة المتوسطة|القريبين من الإتقان/);
+  assert.match(lift.action, /دعم متدرج|مراجعة مركزة/);
+  assert.match(lift.targetGroup, /فجوة متوسطة/);
+  assert.match(lift.targetGroup, /قريبون من الإتقان/);
+  assert.match(lift.successIndicator, /طالبًا مستهدفًا/);
+});

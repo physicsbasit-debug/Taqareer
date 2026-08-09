@@ -1,4 +1,4 @@
-const EDGE_VERSION = "0.16.3";
+const EDGE_VERSION = "0.16.4";
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 const DEFAULT_MODEL = "gemini-3.6-flash";
 const DEFAULT_FAST_MODEL = "gemini-3.5-flash-lite";
@@ -21,7 +21,8 @@ const PRIMARY_ACTION_ATTEMPT_TIMEOUT_MS = 13_000;
 const PRIMARY_REPAIR_ATTEMPT_TIMEOUT_MS = 11_000;
 const PRIMARY_TRANSIENT_RESCUE_ATTEMPT_TIMEOUT_MS = 8_000;
 const PRIMARY_MIN_REMAINING_MS = 2_500;
-// v0.16.3: حراس استدلال تربوي على نواة القرار؛ يبقى طلب AI أساسي واحد + fallback واحد فقط،
+// v0.16.4: عقد فئات المكوّن التقويمي يملك cohort/action/indicator خادميًا، مع حراسة الاستدلال قبل التوسيع.
+// v0.16.3: حراس استدلال تربوي على نواة القرار؛ يبقى طلب AI أساسي واحد + fallback واحد فقط,
 // دون fan-out متعدد المقاطع أو سلاسل repair/rescue.
 const DEFAULT_DECISION_MODEL = "gemini-3.5-flash-lite";
 const DEFAULT_DECISION_FALLBACK_MODEL = "gemini-3.6-flash";
@@ -2229,6 +2230,142 @@ function scoreGroupSeeds(payload: JsonRecord): InterventionGroup[] {
   return priority.map(id => map.get(id)).filter((item): item is InterventionGroup => Boolean(item && item.count > 0));
 }
 
+function assessmentComponentInterventions(decision: JsonRecord, payload: JsonRecord, owner: string): JsonRecord[] {
+  const context = scoreInterventionContext(payload);
+  if (!context) return [];
+  const groupMap = new Map(context.groups.map(group => [group.id, group]));
+  const allowed = allowedRefsFromPayload(payload);
+  const decisionRefs = decisionEvidenceRefs(decision, payload);
+  const refsFor = (groupIds: string[]) => cleanRefs([
+    ...decisionRefs,
+    "metric:n",
+    "metric:masteryPct",
+    "metric:masteryCount",
+    ...groupIds.map(groupEvidenceRef),
+  ], allowed, 8);
+  const plans: JsonRecord[] = [];
+  const deep = groupMap.get("deep_gap");
+  const moderate = groupMap.get("moderate_gap");
+  const near = groupMap.get("near_mastery");
+  const mastery = groupMap.get("mastery");
+
+  if (deep?.count) {
+    plans.push({
+      priority: "عالية",
+      issue: "الفجوة العميقة تحتاج تشخيصًا ودعمًا مكثفًا",
+      targetGroup: deep.label,
+      targetGroupIds: ["deep_gap"],
+      action: "تنفيذ تشخيص قصير لتحديد المتطلبات السابقة المفقودة، ثم دعم مكثف في مجموعات صغيرة مع إعادة قياس قريبة.",
+      implementationSteps: [
+        "تطبيق قياس تشخيصي قصير قبل بدء الدعم.",
+        "تجميع الطلبة في مجموعات صغيرة وفق الاحتياج المشترك وتنفيذ دعم مركز.",
+        "إعادة قياس الفئة ومراجعة انتقالها إلى فئة أعلى قبل تعديل شدة التدخل.",
+      ],
+      responsibleRole: owner,
+      timeframe: "4 أسابيع",
+      successIndicator: "يُعاد بناؤه خادميًا من حجم الفئة.",
+      successMetric: { mode: "segment_reduction", targetValue: 20, targetSegmentId: "deep_gap" },
+      monitoringMethod: "اختبار تشخيصي قبلي وبعدي + سجل انتقال الفئة أسبوعيًا.",
+      contingency: "إذا لم يظهر انتقال موثق، تراجع المتطلبات السابقة وطريقة التجميع وتجمع أدلة إضافية قبل استمرار الخطة.",
+      resources: ["اختبار تشخيصي قصير", "مهام علاجية متدرجة"],
+      evidenceRefs: refsFor(["deep_gap"]),
+      basisClaimType: "fact",
+      basisConfidence: "مرتفعة",
+      inferenceGuardApplied: false,
+      guardedConstructs: [],
+      sourceAnalysisUnitTitle: "عقد فئات المكوّن التقويمي",
+      cohortContract: { applied: true, type: "assessment_component", groupIds: ["deep_gap"] },
+    });
+  }
+
+  const liftIds = [moderate?.count ? "moderate_gap" : "", near?.count ? "near_mastery" : ""].filter(Boolean);
+  if (liftIds.length) {
+    const labels = liftIds.map(id => groupMap.get(id)?.label).filter(Boolean).join(" و");
+    plans.push({
+      priority: moderate?.count ? "عالية" : "متوسطة",
+      issue: near?.count && moderate?.count ? "رفع الفجوة المتوسطة والقريبين من الإتقان نحو الإتقان" : near?.count ? "تحويل القريبين من الإتقان إلى الإتقان" : "رفع الفجوة المتوسطة إلى مستوى أعلى",
+      targetGroup: labels,
+      targetGroupIds: liftIds,
+      action: near?.count && moderate?.count
+        ? "تنفيذ دعم متدرج: مهام علاجية للفجوة المتوسطة ومراجعة مركزة قصيرة للقريبين من الإتقان، مع قياس خروج موحد لتتبع الانتقال."
+        : near?.count
+          ? "تنفيذ مراجعة مركزة قصيرة ومهام تصحيحية موجهة للفجوة المحدودة عن حد الإتقان ثم قياس خروج قريب."
+          : "تنفيذ دعم جماعي موجه للفجوة المتوسطة مع نمذجة وتغذية راجعة ومهام قصيرة متكررة.",
+      implementationSteps: [
+        "تثبيت خط الأساس لكل فئة قبل التدخل.",
+        "تنفيذ مهام متدرجة بحسب قرب الفئة من حد الإتقان.",
+        "إعادة القياس ومقارنة انتقال الطلبة من الفئات المستهدفة إلى الإتقان أو فئة أعلى.",
+      ],
+      responsibleRole: owner,
+      timeframe: "4 أسابيع",
+      successIndicator: "يُعاد بناؤه خادميًا من الفئات المستهدفة وخط الأساس.",
+      successMetric: { mode: "mastery_gain", targetValue: Math.min(100, context.baselineMasteryRate + 5), targetSegmentId: "" },
+      monitoringMethod: "مهام قصيرة أسبوعية + قياس مرحلي ونهائي باستخدام حد الإتقان نفسه.",
+      contingency: "إذا لم تتحسن معدلات الانتقال، تفصل الفئات في مسارين مستقلين وتراجع المهارات المسببة للفجوة بأداة تشخيصية.",
+      resources: ["مهام قصيرة متدرجة", "سجل انتقال بين فئات الإتقان"],
+      evidenceRefs: refsFor(liftIds),
+      basisClaimType: "fact",
+      basisConfidence: "مرتفعة",
+      inferenceGuardApplied: false,
+      guardedConstructs: [],
+      sourceAnalysisUnitTitle: "عقد فئات المكوّن التقويمي",
+      cohortContract: { applied: true, type: "assessment_component", groupIds: liftIds },
+    });
+  }
+
+  if (plans.length < 2 && mastery?.count) {
+    plans.push({
+      priority: "محددة",
+      issue: "تثبيت الإتقان وإثراء الطلبة المتقنين",
+      targetGroup: mastery.label,
+      targetGroupIds: ["mastery"],
+      action: "تنفيذ مهام تثبيت وإثراء تحافظ على مستوى الإتقان وتضيف تحديًا مناسبًا دون تحويل المتقنين إلى بديل عن التدريس.",
+      implementationSteps: ["تحديد مهمة إثرائية قصيرة بمعيار نجاح واضح.", "تنفيذ المهمة ومراجعة جودة الأداء.", "تثبيت الإتقان في القياس اللاحق."],
+      responsibleRole: owner,
+      timeframe: "4 أسابيع",
+      successIndicator: "يُعاد بناؤه خادميًا من عدد المتقنين الحالي.",
+      successMetric: { mode: "mastery_maintenance", targetValue: 90, targetSegmentId: "mastery" },
+      monitoringMethod: "Rubric مختصر + قياس الإتقان اللاحق.",
+      contingency: "إذا انخفض الإتقان، تراجع المهارات المتأثرة ويعاد توجيه الدعم قبل توسيع الإثراء.",
+      resources: ["مهمة إثرائية", "Rubric مختصر"],
+      evidenceRefs: refsFor(["mastery"]),
+      basisClaimType: "fact",
+      basisConfidence: "مرتفعة",
+      inferenceGuardApplied: false,
+      guardedConstructs: [],
+      sourceAnalysisUnitTitle: "عقد فئات المكوّن التقويمي",
+      cohortContract: { applied: true, type: "assessment_component", groupIds: ["mastery"] },
+    });
+  }
+
+  if (plans.length < 2 && deep?.count) {
+    plans.push({
+      priority: "عالية",
+      issue: "نقل الفجوة العميقة تدريجيًا نحو الإتقان",
+      targetGroup: deep.label,
+      targetGroupIds: ["deep_gap"],
+      action: "بعد الدعم التشخيصي المكثف، يطبق مسار انتقال تدريجي يقيس تقدم الفئة نفسها نحو مستوى أعلى دون تغيير تعريف الفئة أثناء المتابعة.",
+      implementationSteps: ["تثبيت خط الأساس للفئة نفسها.", "تنفيذ دعم متدرج بعد التشخيص.", "قياس انتقال الفئة إلى مستوى أعلى باستخدام المعيار نفسه."],
+      responsibleRole: owner,
+      timeframe: "6 أسابيع",
+      successIndicator: "يُعاد بناؤه خادميًا من خط الأساس والفئة نفسها.",
+      successMetric: { mode: "mastery_gain", targetValue: Math.min(100, context.baselineMasteryRate + 3), targetSegmentId: "" },
+      monitoringMethod: "قياس مرحلي للفئة نفسها كل أسبوعين.",
+      contingency: "إذا تعذر الانتقال، تراجع الحاجة إلى تدخل فردي أعمق وبيانات إضافية.",
+      resources: ["سجل متابعة فردي", "مهام علاجية متدرجة"],
+      evidenceRefs: refsFor(["deep_gap"]),
+      basisClaimType: "fact",
+      basisConfidence: "مرتفعة",
+      inferenceGuardApplied: false,
+      guardedConstructs: [],
+      sourceAnalysisUnitTitle: "عقد فئات المكوّن التقويمي",
+      cohortContract: { applied: true, type: "assessment_component", groupIds: ["deep_gap"] },
+    });
+  }
+
+  return plans.slice(0, 3);
+}
+
 function expandPrimaryDecision(decision: JsonRecord, payload: JsonRecord): JsonRecord {
   const units = (Array.isArray(decision.analysisUnits) ? decision.analysisUnits as JsonRecord[] : []).slice(0, 3);
   const recognized = payload.recognizedType && typeof payload.recognizedType === "object" ? payload.recognizedType as JsonRecord : {};
@@ -2238,10 +2375,12 @@ function expandPrimaryDecision(decision: JsonRecord, payload: JsonRecord): JsonR
   const groups = numericScoreType ? scoreGroupSeeds(payload) : [];
   const owner = primaryOwnerRole(payload);
   const allowed = allowedRefsFromPayload(payload);
-  const interventions: JsonRecord[] = [];
+  const interventions: JsonRecord[] = typeId === "assessment_component"
+    ? assessmentComponentInterventions(decision, payload, owner)
+    : [];
   const wanted = Math.max(2, Math.min(3, units.length));
 
-  for (let index = 0; index < wanted; index += 1) {
+  for (let index = 0; typeId !== "assessment_component" && index < wanted; index += 1) {
     const unit = units[index] || units[units.length - 1] || {};
     const severity = String(unit.severity || "medium");
     const refs = cleanRefs(unit.evidenceRefs, allowed, 6);

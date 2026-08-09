@@ -626,3 +626,29 @@ test('recovered short row receives its following nationality continuation instea
   assert.match(table.rows[1]['الجنسية'], /العربية التجريبية/);
   assert.doesNotMatch(table.rows[0]['الجنسية'], /العربية التجريبية/);
 });
+
+test('End-to-End metadata regression: combined grade line overrides school grade range for an assessment-component PDF', () => {
+  const window = load();
+  const pages = [page(1, [
+    ['سلطنة عمان'],
+    ['وزارة التعليم'],
+    ['الباسط للبنين الصفوف (10-8)'],
+    ['كشف مراجعة إدخال الدرجات لمادة دراسية ( الأحياء ) - للعام الدراسي : 2026/2025 في التقويم المستمر ( الفصل الأول )'],
+    ['الصف : التاسع - كل الشعب'],
+    ['م', 'اسم الطالب', 'عنصر المادة', 'درجة عنصر المادة', 'ملاحظات'],
+    ['1', 'طالب تجريبي', 'التقويم المستمر', '42.00', ''],
+    ['2', 'طالب ثان', 'التقويم المستمر', '47.00', ''],
+    ['3', 'طالب ثالث', 'التقويم المستمر', '51.00', ''],
+  ])];
+  const canonical = window.TaqareerPdfIntakeV2.normalizePdfPages(pages);
+  assert.equal(canonical.metadata.schoolGradeRange, '8-10');
+  assert.equal(canonical.metadata.analyzedGrade, 'التاسع');
+  assert.equal(canonical.metadata.grade, 'التاسع');
+  const report = window.TaqareerReports.buildReportData({
+    analysis: { metrics: [], charts: [], findings: [], qualityTools: [], improvementPlan: [], monitoringPlan: [], limitations: [], executiveTitle: 'اختبار الصف', executiveSummary: 'اختبار metadata', _reconciliation: { aiPrimary: true } },
+    type: { id: 'assessment_component', name: 'درجات مكوّن تقويمي' },
+    sourceName: 'component.pdf', sourceMeta: { metadata: canonical.metadata }, quality: { completeness: 100 }, recognitionStatus: 'معتمد',
+  });
+  assert.equal(report.meta.grade, 'التاسع');
+  assert.equal(canonical.metadata.schoolGradeRange, '8-10');
+});
