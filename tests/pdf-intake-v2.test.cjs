@@ -9,7 +9,7 @@ const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
 
 function load() {
   const sandbox = {
-    window: {}, console, Map, Set, Array, Object, String, Number, RegExp, JSON, Math, structuredClone,
+    window: {}, console, Map, Set, Array, Object, String, Number, RegExp, JSON, Math, Intl, Date, structuredClone,
     TextDecoder, DecompressionStream, Blob, Response, Uint8Array, DataView,
   };
   vm.createContext(sandbox);
@@ -17,6 +17,7 @@ function load() {
   vm.runInContext(read('assets/pdf-column-alignment.js'), sandbox, { filename: 'pdf-column-alignment.js' });
   vm.runInContext(read('assets/pdf-intake-v2.js'), sandbox, { filename: 'pdf-intake-v2.js' });
   vm.runInContext(read('assets/document-lite.js'), sandbox, { filename: 'document-lite.js' });
+  vm.runInContext(read('assets/report-system.js'), sandbox, { filename: 'report-system.js' });
   return sandbox.window;
 }
 
@@ -62,7 +63,7 @@ const indicatorPdf = [page(1, [
 test('canonical PDF intake separates metadata from a 13x2 indicator table without a type-specific adapter', () => {
   const window = load();
   const canonical = window.TaqareerPdfIntakeV2.normalizePdfPages(indicatorPdf);
-  assert.equal(canonical.canonicalDocumentVersion, '2.4.0');
+  assert.equal(canonical.canonicalDocumentVersion, '2.4.1');
   assert.equal(canonical.metadata.school, 'الباسط للبنين (8-10)');
   assert.equal(canonical.metadata.subject, 'الفيزياء');
   assert.equal(canonical.metadata.grade, '8-10');
@@ -86,7 +87,7 @@ test('canonical datasets carry provenance metadata and become the preferred clea
   const datasets = window.TaqareerPdfIntakeV2.datasetsFromCanonical(canonical);
   assert.equal(datasets.length, 1);
   assert.equal(datasets[0].meta.extractionMode, 'canonical-pdf-intake-v2');
-  assert.equal(datasets[0].meta.canonicalDocumentVersion, '2.4.0');
+  assert.equal(datasets[0].meta.canonicalDocumentVersion, '2.4.1');
   assert.equal(datasets[0].meta.metadata.subject, 'الفيزياء');
   assert.equal(datasets[0].meta.structuralConfidence >= 0.85, true);
   assert.ok(canonical.metadataProvenance.every(item => item.provenance?.sourceText));
@@ -119,7 +120,7 @@ test('narrative PDF remains narrative and is not forced into a table', () => {
   const specialized = window.TaqareerDocuments._test.detectAggregatedSupervisionNarrativePdf(pages, canonical);
   assert.ok(specialized);
   assert.equal(specialized.dataset.meta.metadata.school, 'الباسط للبنين (8-10)');
-  assert.equal(specialized.dataset.meta.canonicalDocumentVersion, '2.4.0');
+  assert.equal(specialized.dataset.meta.canonicalDocumentVersion, '2.4.1');
 });
 
 test('blind dimension-measure layout is normalized without report-type or filename rules', () => {
@@ -213,7 +214,7 @@ const blindHierarchicalDistributionPdf = [
 test('blind hierarchical PDF headers collapse to parent measures and repeated grand totals are deduplicated', () => {
   const window = load();
   const canonical = window.TaqareerPdfIntakeV2.normalizePdfPages(blindHierarchicalDistributionPdf);
-  assert.equal(canonical.canonicalDocumentVersion, '2.4.0');
+  assert.equal(canonical.canonicalDocumentVersion, '2.4.1');
   assert.equal(canonical.tables.length, 1);
   const table = canonical.tables[0];
   assert.equal(table.status, 'accepted');
@@ -432,6 +433,58 @@ test('PDF metadata distinguishes analyzed grade from school grade range and read
   assert.equal(canonical.metadata.school, 'الباسط للبنين (8-10)');
 });
 
+test('real PDF header geometry carries analyzed grade from intake through dataset metadata to final report', () => {
+  const window = load();
+  const item = (str, x, y, width, dir = 'rtl') => ({ str, transform: [1, 0, 0, 10, x, y], width, height: 10, dir });
+  const pageOneItems = [
+    item('الباسط للبنين الصفوف )10-8(', 460, 790, 107),
+    item('الثامن', 485, 752, 20),
+    item('كشف نتائج الطلب على مستوى المادة', 162, 752, 222),
+    item('الصف', 545, 746, 21), item(':', 506, 746, 4),
+    item('الشعبة', 545, 724, 23), item(': 8', 499, 724, 11),
+    item('الفصل الدراسي', 311, 724, 52), item(': الدور الأول', 245, 724, 44),
+    item('المادة', 145, 724, 19), item(': العلوم', 108, 724, 26),
+    item('دور ثاني', 20, 700, 55), item('المستوى', 120, 700, 48), item('المجموع', 190, 700, 48),
+    item('حالة القيد', 270, 700, 65), item('الجنسية', 355, 700, 50), item('اسم الطالب', 440, 700, 75), item('م', 675, 700, 10),
+    item('--', 25, 680, 20, 'ltr'), item('د', 135, 680, 12), item('58', 195, 680, 28, 'ltr'),
+    item('منقول', 275, 680, 45), item('عماني', 355, 680, 40), item('طالب اختبار 1', 430, 680, 150), item('1', 682, 680, 8, 'ltr'),
+    item('--', 25, 660, 20, 'ltr'), item('ب', 135, 660, 12), item('80', 195, 660, 28, 'ltr'),
+    item('منقول', 275, 660, 45), item('عماني', 355, 660, 40), item('طالب اختبار 2', 430, 660, 150), item('2', 682, 660, 8, 'ltr'),
+    item('--', 25, 640, 20, 'ltr'), item('أ', 135, 640, 12), item('95', 195, 640, 28, 'ltr'),
+    item('منقول', 275, 640, 45), item('عماني', 355, 640, 40), item('طالب اختبار 3', 430, 640, 150), item('3', 682, 640, 8, 'ltr'),
+  ];
+  const lines = window.TaqareerDocuments._test.groupPdfItemsIntoLines(pageOneItems);
+  const gradeValueLine = lines.find(line => line.cells.includes('الثامن'));
+  const gradeLabelLine = lines.find(line => line.cells.includes('الصف'));
+  assert.ok(gradeValueLine && gradeLabelLine, 'fixture must contain the real split grade geometry');
+  assert.notEqual(gradeValueLine.lineIndex, gradeLabelLine.lineIndex, 'grade value must reproduce the real adjacent-line split');
+
+  const canonical = window.TaqareerPdfIntakeV2.normalizePdfPages([{ pageNumber: 1, lines }]);
+  assert.equal(canonical.metadata.schoolGradeRange, '8-10');
+  assert.equal(canonical.metadata.analyzedGrade, 'الثامن');
+  assert.equal(canonical.metadata.grade, 'الثامن');
+  assert.equal(canonical.metadata.subject, 'العلوم');
+
+  const dataset = window.TaqareerPdfIntakeV2.datasetsFromCanonical(canonical)[0];
+  assert.ok(dataset, 'canonical dataset must survive the intake boundary');
+  assert.equal(dataset.meta.metadata.analyzedGrade, 'الثامن');
+  assert.equal(dataset.meta.metadata.schoolGradeRange, '8-10');
+
+  const context = {
+    analysis: { metrics: [], charts: [], findings: [], qualityTools: [], improvementPlan: [], monitoringPlan: [], limitations: [], _reconciliation: { aiPrimary: true } },
+    type: { id: 'single_subject', name: 'نتائج الطلبة في مادة واحدة' },
+    sourceName: 'real-grade8-results.pdf · جدول PDF منظم',
+    sourceMeta: dataset.meta,
+    quality: { completeness: 100 },
+    recognitionStatus: 'معتمد',
+  };
+  const report = window.TaqareerReports.buildReportData(context);
+  assert.equal(report.meta.grade, 'الثامن');
+  const html = window.TaqareerReports.buildReportHtml(context, { autoPrint: false });
+  assert.match(html, /الصف \/ الفئة<\/span><strong>الثامن<\/strong>/);
+  assert.doesNotMatch(html, /الصف \/ الفئة<\/span><strong>8-10<\/strong>/);
+});
+
 test('realistic 14-page geometry regression keeps all 319 serial rows after the serial width crosses three digits', () => {
   const window = load();
   const item = (str, x, y, width, dir = 'rtl') => ({ str, transform: [1, 0, 0, 10, x, y], width, height: 10, dir });
@@ -462,6 +515,14 @@ test('realistic 14-page geometry regression keeps all 319 serial rows after the 
   let serial = 1;
   pageSizes.forEach((pageSize, pageIndex) => {
     const items = [...headerItems(700)];
+    if (pageIndex === 0) items.push(
+      item('الباسط للبنين الصفوف )10-8(', 460, 790, 107),
+      item('الثامن', 485, 752, 20), item('كشف نتائج الطلب على مستوى المادة', 162, 752, 222),
+      item('الصف', 545, 746, 21), item(':', 506, 746, 4),
+      item('الشعبة', 545, 724, 23), item(': 8', 499, 724, 11),
+      item('الفصل الدراسي', 311, 724, 52), item(': الدور الأول', 245, 724, 44),
+      item('المادة', 145, 724, 19), item(': العلوم', 108, 724, 26)
+    );
     for (let rowIndex = 0; rowIndex < pageSize; rowIndex += 1) {
       items.push(...rowItems(serial, 680 - rowIndex * 16));
       serial += 1;
@@ -493,6 +554,22 @@ test('realistic 14-page geometry regression keeps all 319 serial rows after the 
   assert.equal(table.structure.pagination.serial.first, 1);
   assert.equal(table.structure.pagination.serial.last, 319);
   assert.equal(table.structure.pagination.serial.gaps.length, 0);
+  assert.equal(canonical.metadata.analyzedGrade, 'الثامن');
+  assert.equal(canonical.metadata.grade, 'الثامن');
+  assert.equal(canonical.metadata.schoolGradeRange, '8-10');
+  assert.equal(canonical.metadata.subject, 'العلوم');
+  const dataset = window.TaqareerPdfIntakeV2.datasetsFromCanonical(canonical)[0];
+  assert.equal(dataset.rows.length, 319);
+  assert.equal(dataset.meta.metadata.analyzedGrade, 'الثامن');
+  const report = window.TaqareerReports.buildReportData({
+    analysis: { metrics: [], charts: [], findings: [], qualityTools: [], improvementPlan: [], monitoringPlan: [], limitations: [], _reconciliation: { aiPrimary: true } },
+    type: { id: 'single_subject', name: 'نتائج الطلبة في مادة واحدة' },
+    sourceName: 'وزارة-نتائج-الصف-الثامن.pdf · جدول PDF منظم · الصفحات 1-14',
+    sourceMeta: dataset.meta,
+    quality: { completeness: 100 }, recognitionStatus: 'معتمد',
+  });
+  assert.equal(report.meta.grade, 'الثامن');
+  assert.equal(report.meta.subject, 'العلوم');
 });
 
 test('semantic geometry recovery keeps short RTL rows when adjacent PDF spans fuse multiple roles', () => {

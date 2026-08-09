@@ -1,8 +1,8 @@
 {
   "app": "تقارير",
-  "version": "1.2.32",
-  "phase": "Segment-Level Transient Rescue",
-  "releaseName": "Isolated Primary Segment Transient Rescue",
+  "version": "1.2.33",
+  "phase": "End-to-End PDF Grade Metadata Recovery",
+  "releaseName": "Real PDF Analyzed Grade Metadata Recovery",
   "buildType": "static-github-pages-plus-supabase-edge-function",
   "supportedInputs": {
     "table": [

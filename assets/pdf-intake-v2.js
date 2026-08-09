@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "2.4.0";
+  const VERSION = "2.4.1";
   const HIGH_CONFIDENCE = 0.85;
   const REVIEW_CONFIDENCE = 0.60;
 
@@ -572,6 +572,64 @@
     return null;
   }
 
+  function isAnalyzedGradeValue(value) {
+    const normalized = normalizeDigits(normalize(clean(value).replace(/^[:：]\s*/, "")))
+      .replace(/[ًٌٍَُِّْ]/g, "");
+    if (!normalized || gradeRangeFromText(normalized)) return false;
+    if (/^(?:[1-9]|1[0-2])$/.test(normalized)) return true;
+    return /^(?:الاول|الثاني|الثالث|الرابع|الخامس|السادس|السابع|الثامن|التاسع|العاشر|الحادي عشر|الثاني عشر)$/.test(normalized);
+  }
+
+  function metadataValueNearLabel(pageRecords, labelPattern, candidatePredicate, maxVerticalDistance = 14) {
+    const direct = metadataValueAfterLabel(pageRecords, labelPattern);
+    if (direct && (!candidatePredicate || candidatePredicate(direct.value))) return direct;
+
+    let best = null;
+    for (const page of pageRecords || []) {
+      const lines = Array.isArray(page?.lines) ? page.lines : [];
+      for (const labelLine of lines) {
+        const labelEntries = lineCellEntries(labelLine);
+        for (const labelEntry of labelEntries) {
+          const normalizedLabel = normalize(labelEntry.text).replace(/\s*[:：]\s*$/, "");
+          if (!labelPattern.test(normalizedLabel)) continue;
+          const labelY = Number(labelLine?.y);
+          if (!Number.isFinite(labelY)) continue;
+
+          for (const candidateLine of lines) {
+            if (candidateLine === labelLine) continue;
+            const candidateY = Number(candidateLine?.y);
+            if (!Number.isFinite(candidateY)) continue;
+            const verticalDistance = Math.abs(candidateY - labelY);
+            if (verticalDistance > maxVerticalDistance) continue;
+
+            for (const candidateEntry of lineCellEntries(candidateLine)) {
+              const value = clean(candidateEntry.text).replace(/^[:：]\s*/, "");
+              if (!value || metadataLabel(value) || (candidatePredicate && !candidatePredicate(value))) continue;
+
+              const labelCenter = Number(labelEntry.center);
+              const candidateCenter = Number(candidateEntry.center);
+              const labelX0 = Number(labelEntry.x0);
+              const candidateX1 = Number(candidateEntry.x1);
+              const geometryAvailable = [labelCenter, candidateCenter, labelX0, candidateX1].every(Number.isFinite);
+              let horizontalDistance = 0;
+              if (geometryAvailable) {
+                if (labelLine?.rtl !== false && candidateCenter > labelCenter + 8) continue;
+                horizontalDistance = Math.abs(labelX0 - candidateX1);
+                if (horizontalDistance > 160) continue;
+              }
+
+              const score = verticalDistance * 10 + horizontalDistance;
+              if (!best || score < best.score) {
+                best = { value, item: { pageNumber: page.pageNumber, line: candidateLine }, score };
+              }
+            }
+          }
+        }
+      }
+    }
+    return best ? { value: best.value, item: best.item } : null;
+  }
+
   function sameHeaderSignature(table, line) {
     const spec = inferHeaderSpec(line);
     if (!spec) return false;
@@ -643,7 +701,7 @@
       if (schoolGradeRange) add("schoolGradeRange", schoolGradeRange, schoolItem, 0.98);
     }
 
-    const explicitGrade = metadataValueAfterLabel(pageRecords, /^الصف$/);
+    const explicitGrade = metadataValueNearLabel(pageRecords, /^الصف$/, isAnalyzedGradeValue);
     if (explicitGrade?.value) {
       add("analyzedGrade", explicitGrade.value, explicitGrade.item, 0.98);
       add("grade", explicitGrade.value, explicitGrade.item, 0.98);
@@ -988,6 +1046,8 @@
       subjectFromTitle,
       subjectFromPageRecords,
       metadataValueAfterLabel,
+      metadataValueNearLabel,
+      isAnalyzedGradeValue,
       geometryAlignedValues,
       continuationCandidate,
       mergeContinuationRow,
