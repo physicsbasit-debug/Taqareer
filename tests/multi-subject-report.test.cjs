@@ -44,6 +44,8 @@ test('official report shows grade metadata, school formula and local ranking tab
     sourceName: 'كشف نتائج الطلاب العاشر.xlsx', sourceMeta: sheet,
     quality: { completeness: 100 }, recognitionStatus: 'معتمد',
   }, { autoPrint: false });
+  assert.match(html, /نوع المصدر<\/span><strong>كشف نتائج متعدد المواد/);
+  assert.match(html, /نطاق التحليل<\/span><strong>تحليل شامل/);
   assert.match(html, /الصف \/ الفئة<\/span><strong>العاشر/);
   assert.match(html, /2025\/2026 - الدور الأول/);
   assert.match(html, /المادة<\/span><strong>متعدد المواد/);
@@ -51,7 +53,7 @@ test('official report shows grade metadata, school formula and local ranking tab
   assert.match(html, /العشرة الأوائل على مستوى المدرسة \/ الدفعة/);
   assert.match(html, /العشرة الأوائل حسب الدرجة/);
   assert.match(html, /طالب اختبار 136/);
-  assert.match(html, /تقارير v1\.2\.39/);
+  assert.match(html, /تقارير v1\.2\.40/);
 });
 
 test('subject report includes only the selected subject top-ten table and selected-subject metadata', () => {
@@ -61,7 +63,10 @@ test('subject report includes only the selected subject top-ten table and select
     sourceName: 'كشف نتائج الطلاب العاشر.xlsx', sourceMeta: sheet,
     quality: { completeness: 100 }, recognitionStatus: 'معتمد',
   }, { autoPrint: false });
+  assert.match(html, /نوع المصدر<\/span><strong>كشف نتائج متعدد المواد/);
+  assert.match(html, /نطاق التحليل<\/span><strong>مادة واحدة/);
   assert.match(html, /المادة<\/span><strong>الرياضيات/);
+  assert.doesNotMatch(html, /نوع الاستمارة<\/span><strong>نتائج طلاب فردية متعددة المواد/);
   assert.match(html, /الأوائل في الرياضيات|>الرياضيات<\/h3>/);
   assert.doesNotMatch(html, /العشرة الأوائل على مستوى الدفعة/);
   assert.doesNotMatch(html, /الأوائل في الفيزياء/);

@@ -8,8 +8,8 @@ for (const ref of refs) {
   const localRef = ref.split('?')[0].split('#')[0];
   assert.ok(fs.existsSync(path.join(root, localRef)), `Missing static asset: ${ref}`);
 }
-assert.match(html, /v1\.2\.39/);
-assert.match(html, /تقارير \| منصة التحليل التربوي v1\.2\.39/);
+assert.match(html, /v1\.2\.40/);
+assert.match(html, /تقارير \| منصة التحليل التربوي v1\.2\.40/);
 assert.match(html, /إعداد خدمة التحليل/);
 assert.doesNotMatch(html, /إعداد الذكاء الاصطناعي|ذكاء اصطناعي حي جاهز|تحليل ذكاء اصطناعي موثق/);
 console.log(`PASS static site contract: ${refs.length} referenced files`);

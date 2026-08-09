@@ -1411,6 +1411,98 @@
     return Number(right.pairScore || 0) > Number(left.pairScore || 0) ? right : left;
   }
 
+  const MULTI_SUBJECT_NAME_NOISE = new Set([
+    "عماني", "عمانية", "باكستان", "تنزانيا", "جمهورية", "الجمهورية", "مصر", "السودان",
+    "العربية", "السورية", "الامارات", "الإمارات", "المتحدة", "الجنسية", "القيد", "اسم الطالب", "الاسم",
+  ].map(value => normalize(value)));
+
+  function multiSubjectNameFragment(value) {
+    const text = cleanMetadataValue(value || "");
+    const normalized = normalize(text);
+    if (!text || text.length < 3 || !/[\u0600-\u06FF]/.test(text)) return "";
+    if (/^(?:منقول|باق|مستجد|مرفع|راسب|ناجح)$/i.test(text)) return "";
+    if (isMultiSubjectScoreToken(text) || isMultiSubjectLevelToken(text)) return "";
+    if (/^(?:الدرجة|المستوى|المادة|الصف|الشعبة|إجمالي الطلبة|اجمالي الطلبة)$/i.test(text)) return "";
+    if (MULTI_SUBJECT_NAME_NOISE.has(normalized)) return "";
+    if (/^[لشغ]+$/i.test(text)) return "";
+    return text;
+  }
+
+  function multiSubjectNameTokenCount(value) {
+    return cleanMetadataValue(value || "").split(/\s+/).filter(Boolean).length;
+  }
+
+  function dedupeMultiSubjectNameParts(parts) {
+    const output = [];
+    for (const raw of parts) {
+      const text = multiSubjectNameFragment(raw);
+      if (!text) continue;
+      const key = normalize(text);
+      if (output.some(existing => normalize(existing) === key)) continue;
+      if (output.some(existing => {
+        const existingKey = normalize(existing);
+        return key.length >= 4 && existingKey.includes(key);
+      })) continue;
+      output.push(text);
+    }
+    return output;
+  }
+
+  function recoverMultiSubjectFullName(rawItems, parsed) {
+    if (!parsed?.serial || !Array.isArray(rawItems) || !rawItems.length) return parsed?.name || "";
+    const rtlOrigin = parsed.rtlOrigin || "left";
+    const entries = rawItems.map(raw => ({
+      raw,
+      text: cleanMetadataValue(raw?.str || ""),
+      x: rawPdfVisualCenter(raw, rtlOrigin),
+      y: rawPdfItemY(raw),
+    })).filter(entry => entry.text);
+    const serialPattern = new RegExp(`^${String(parsed.serial).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:\\s+.*)?$`);
+    const serialCandidates = entries.filter(entry => serialPattern.test(normalizeDigits(entry.text)));
+    if (!serialCandidates.length) return parsed.name || "";
+    const anchorY = Number(parsed.y || serialCandidates[0].y || 0);
+    const serialEntry = [...serialCandidates].sort((a, b) => Math.abs(a.y - anchorY) - Math.abs(b.y - anchorY))[0];
+    const statusCandidates = entries.filter(entry => /^(?:منقول|باق|مستجد|مرفع|راسب|ناجح)$/i.test(entry.text));
+    const statusEntry = statusCandidates.length
+      ? [...statusCandidates].sort((a, b) => Math.abs(a.y - serialEntry.y) - Math.abs(b.y - serialEntry.y))[0]
+      : null;
+    const nationalityKey = normalize(parsed.nationality || "");
+    const nationalityCandidates = entries.filter(entry => nationalityKey && normalize(entry.text) === nationalityKey);
+    const nationalityEntry = nationalityCandidates.length
+      ? [...nationalityCandidates].sort((a, b) => Math.abs(a.y - (statusEntry?.y ?? serialEntry.y)) - Math.abs(b.y - (statusEntry?.y ?? serialEntry.y)))[0]
+      : null;
+    const identityBoundary = Math.max(Number(statusEntry?.x || -Infinity), Number(nationalityEntry?.x || -Infinity));
+    if (!Number.isFinite(identityBoundary)) return parsed.name || "";
+
+    const embeddedName = multiSubjectNameFragment(serialEntry.text.replace(/^\s*\d{1,4}\s*/, ""));
+    const serialY = serialEntry.y;
+    const statusY = statusEntry?.y ?? serialY;
+    const identityParts = entries.filter(entry => {
+      if (entry.raw === serialEntry.raw || entry.raw === statusEntry?.raw || entry.raw === nationalityEntry?.raw) return false;
+      if (entry.x <= identityBoundary + 6) return false;
+      if (Math.min(Math.abs(entry.y - serialY), Math.abs(entry.y - statusY)) > 13.5) return false;
+      return Boolean(multiSubjectNameFragment(entry.text));
+    }).map(entry => ({
+      ...entry,
+      clean: multiSubjectNameFragment(entry.text),
+      serialDistance: Math.abs(entry.y - serialY),
+      statusDistance: Math.abs(entry.y - statusY),
+    }));
+
+    const mainParts = identityParts.filter(entry => entry.serialDistance <= entry.statusDistance + 0.6);
+    const tailParts = identityParts.filter(entry => entry.statusDistance + 0.6 < entry.serialDistance);
+    const orderParts = parts => [...parts].sort((a, b) => {
+      const tokenDelta = multiSubjectNameTokenCount(b.clean) - multiSubjectNameTokenCount(a.clean);
+      return tokenDelta || b.x - a.x;
+    }).map(entry => entry.clean);
+    const recoveredParts = dedupeMultiSubjectNameParts([embeddedName, ...orderParts(mainParts), ...orderParts(tailParts)]);
+    const recovered = recoveredParts.join(" ").replace(/\s+/g, " ").trim();
+    const current = cleanMetadataValue(parsed.name || "");
+    return multiSubjectNameTokenCount(recovered) >= multiSubjectNameTokenCount(current) && recovered.length >= current.length
+      ? recovered
+      : current;
+  }
+
   function rawBandRoleStats(band) {
     const texts = (band?.items || []).map(item => cleanMetadataValue(item?.str || "")).filter(Boolean);
     return {
@@ -1461,6 +1553,7 @@
       for (const band of candidates) {
         const parsed = parseMultiSubjectRawBand(band, subjectNames);
         if (!parsed) continue;
+        parsed.name = recoverMultiSubjectFullName(page.rawItems || [], parsed);
         parsed.page = Number(page.pageNumber || 0);
         if (!referenceCenters.length && parsed.pairCenters?.length >= Math.ceil(subjectNames.length * 0.8)) referenceCenters = parsed.pairCenters;
         const existing = bySerial.get(parsed.serial);

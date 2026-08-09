@@ -1,8 +1,8 @@
 {
   "app": "تقارير",
-  "version": "1.2.39",
-  "phase": "Browser-PDF.js Multi-Subject Header Recovery",
-  "releaseName": "Score-Level Pair Anchors for Fragmented RTL Subject Headers",
+  "version": "1.2.40",
+  "phase": "Multi-Subject Ranking Identity & Report Metadata Cleanup",
+  "releaseName": "Full Student Identity Recovery and Explicit Analysis Scope Metadata",
   "buildType": "static-github-pages-plus-supabase-edge-function",
   "supportedInputs": {
     "table": [
@@ -198,7 +198,10 @@
     "multi-subject-pdf-specialized-adapter",
     "multi-subject-pdf-serial-continuity-guard",
     "multi-subject-pdf-legend-page-exclusion",
-    "special-nonnumeric-student-record-preservation"
+    "special-nonnumeric-student-record-preservation",
+    "multi-subject-full-student-name-recovery",
+    "ranking-identity-end-to-end-guard",
+    "multi-subject-report-source-scope-metadata"
   ],
   "runtime": {
     "frontend": "GitHub Pages static site",
@@ -290,7 +293,7 @@
     "aggregateDistribution": "grouped level distributions use level columns and exclude aggregate rows from totals, then use aggregate values only for consistency checks",
     "multiSubjectWorkspace": "supports all-subject or one-subject analysis, local top-ten tables, weighted school ranking, standard competition ties, and exclusion of records missing a core subject",
     "visualizationEngine": "shared intent-first policy selects charts across all analyzers; report and workspace render the same semantic chart contract without modifying deterministic calculations",
-    "multiSubjectPdfIntake": "specialized adapter recovers the complete student-by-subject matrix from repeated RTL PDF pages, requires contiguous student serials, excludes legend-only pages, and preserves nonnumeric special records outside arithmetic"
+    "multiSubjectPdfIntake": "specialized adapter recovers the complete student-by-subject matrix and full student identity from repeated RTL PDF pages, requires contiguous student serials, excludes legend-only pages, and preserves nonnumeric special records outside arithmetic"
   },
   "performance": {
     "scoreContextRows": 24,

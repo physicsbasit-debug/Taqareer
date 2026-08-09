@@ -16,6 +16,7 @@ function load() {
   for (const rel of [
     'assets/pdf-table-structure.js', 'assets/pdf-column-alignment.js', 'assets/pdf-intake-v2.js', 'assets/document-lite.js',
     'assets/analysis-profile.js', 'assets/mastery-metrics.js', 'assets/visualization-policy.js', 'assets/deep-analysis.js',
+    'assets/display-terms.js', 'assets/report-system.js',
   ]) vm.runInContext(read(rel), sandbox, { filename: rel });
   return sandbox;
 }
@@ -279,4 +280,59 @@ test('multi-subject raw recovery tolerates RTL text origins shifted to the right
   assert.equal(dataset.rows.length, 6);
   assert.equal(dataset.meta.normalization.subjectCount, 11);
   assert.equal(dataset.rows[2]['حالة القيد'], 'باق');
+});
+
+function splitIdentityNameStudentItems(serial, y, fullNamePrefix, surname) {
+  const items = [
+    item(String(serial), 1010, y, 16),
+    item(fullNamePrefix, 910, y, 180),
+    item(surname, 945, y + 3.2, 60),
+    item('عماني', 815, y + 3.2, 38),
+    item('منقول', 765, y + 3.2, 42),
+  ];
+  subjects.forEach(([, center], index) => {
+    const score = serial === 1 ? (index === 0 ? '99' : '100') : String(80 + (index % 5));
+    const numeric = Number(score);
+    const level = numeric >= 90 ? 'أ' : numeric >= 80 ? 'ب' : numeric >= 65 ? 'ج' : numeric >= 50 ? 'د' : 'هـ';
+    items.push(item(score, center + 8, y + (index % 2 === 0 ? 3.8 : -3.2), 14));
+    items.push(item(level, center - 8, y + (index % 2 === 0 ? -3.2 : 3.8), 12));
+  });
+  return items;
+}
+
+function splitIdentityNamePageItems() {
+  const items = pdfJsFragmentedHeaderItems(6, 1);
+  items.push(...splitIdentityNameStudentItems(1, 500, 'سالم بن راشد بن ناصر', 'التجريبي'));
+  items.push(...splitIdentityNameStudentItems(2, 475, 'مازن بن خالد بن سعيد', 'الاختباري'));
+  [3, 4, 5, 6].forEach((serial, index) => items.push(...studentItems(serial, 450 - index * 25, false)));
+  return items;
+}
+
+test('multi-subject PDF reconstructs the full student name when the surname is on the status band', async () => {
+  const sandbox = load();
+  installPdfMock(sandbox, [splitIdentityNamePageItems()]);
+  sandbox.window.TaqareerPdfIntakeV2.normalizePdfPages = () => ({
+    tables: [{ structure: { pagination: { missingPages: [1], expectedPages: [1], parsedPages: [] } } }],
+    diagnostics: { reviewTableCount: 1 }, metadata: {},
+  });
+  sandbox.window.TaqareerPdfIntakeV2.datasetsFromCanonical = () => [];
+
+  const source = await sandbox.window.TaqareerDocuments.readPdf(fakeFile);
+  const dataset = source.datasets.find(entry => entry.id === source.preferredDatasetId);
+  assert.equal(dataset.rows[0]['اسم الطالب'], 'سالم بن راشد بن ناصر التجريبي');
+  assert.equal(dataset.rows[1]['اسم الطالب'], 'مازن بن خالد بن سعيد الاختباري');
+
+  const profile = sandbox.window.TaqareerAnalysisProfiler.profileTable({ headers: dataset.headers, rows: dataset.rows, sourceMeta: dataset.meta });
+  const analysis = sandbox.window.TaqareerDeepAnalytics.analyzeEvidence({
+    typeId: 'multi_subject_results', headers: dataset.headers, rows: dataset.rows, sourceMeta: dataset.meta, analysisProfile: profile,
+    analysisOptions: { mode: 'all', includeSubjectTopTen: true, includeSchoolRanking: true },
+  });
+  assert.equal(analysis.privateTables.schoolTopTen[0].name, 'سالم بن راشد بن ناصر التجريبي');
+
+  const html = sandbox.window.TaqareerReports.buildReportHtml({
+    analysis, type: { id: 'multi_subject_results', name: 'نتائج طلاب فردية متعددة المواد' },
+    sourceName: fakeFile.name, sourceMeta: dataset.meta, quality: { completeness: 100 }, recognitionStatus: 'معتمد',
+  }, { autoPrint: false, reportMode: 'full' });
+  assert.match(html, /سالم بن راشد بن ناصر التجريبي/);
+  assert.doesNotMatch(html, /<td>التجريبي<\/td>/);
 });
