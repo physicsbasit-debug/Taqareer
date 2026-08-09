@@ -1,4 +1,4 @@
-const EDGE_VERSION = "0.15.7";
+const EDGE_VERSION = "0.15.8";
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 const DEFAULT_MODEL = "gemini-3.6-flash";
 const DEFAULT_FAST_MODEL = "gemini-3.5-flash-lite";
@@ -8,7 +8,7 @@ const GENERAL_MODEL_FALLBACKS = Object.freeze(["gemini-3.6-flash", "gemini-3.5-f
 const PRIMARY_REASONING_MODELS = Object.freeze(["gemini-3.6-flash", "gemini-3.5-flash"]);
 const PRIMARY_ACTION_MODELS = Object.freeze(["gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.5-flash"]);
 const PRIMARY_REPAIR_MODELS = Object.freeze(["gemini-3.5-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"]);
-const PRIMARY_TRANSIENT_RESCUE_MODELS = Object.freeze(["gemini-3.5-flash-lite", "gemini-3.5-flash"]);
+const PRIMARY_TRANSIENT_RESCUE_MODELS = Object.freeze(["gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-3.5-flash"]);
 const MAX_REQUEST_BYTES = 9_000_000;
 const MAX_IMAGE_COUNT = 4;
 const MAX_IMAGE_DATA_URL_LENGTH = 2_800_000;
@@ -364,6 +364,16 @@ function shouldRetryGemini(status: number): boolean {
   return status === 408 || status === 429 || status >= 500;
 }
 
+type GeminiFailureKind = "rate_limit" | "capacity" | "timeout" | "network" | "unavailable" | "other";
+
+type GeminiRequestFailure = Error & {
+  status?: number;
+  failureKind?: GeminiFailureKind;
+  retryAfterMs?: number;
+  providerRequestId?: string;
+  attemptedModelNames?: string[];
+};
+
 function geminiErrorStatus(error: unknown): number {
   return Number((error as { status?: number })?.status || 0);
 }
@@ -372,11 +382,42 @@ function geminiErrorMessage(error: unknown): string {
   return String((error as { message?: string })?.message || "");
 }
 
-function modelIsTransientlyBusy(error: unknown): boolean {
+function geminiErrorRetryAfterMs(error: unknown): number {
+  return Math.max(0, Number((error as { retryAfterMs?: number })?.retryAfterMs || 0));
+}
+
+function geminiErrorAttemptedModels(error: unknown): string[] {
+  return Array.isArray((error as { attemptedModelNames?: string[] })?.attemptedModelNames)
+    ? [...new Set(((error as { attemptedModelNames?: string[] }).attemptedModelNames || []).map(normalizeModelName).filter(Boolean))]
+    : [];
+}
+
+function parseRetryAfterMs(value: string | null): number {
+  const raw = String(value || "").trim();
+  if (!raw) return 0;
+  const seconds = Number(raw);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.min(120_000, Math.round(seconds * 1000));
+  const target = Date.parse(raw);
+  if (Number.isFinite(target)) return Math.min(120_000, Math.max(0, target - Date.now()));
+  return 0;
+}
+
+function modelFailureKind(error: unknown): GeminiFailureKind {
+  const annotated = error as { failureKind?: GeminiFailureKind };
+  if (annotated?.failureKind) return annotated.failureKind;
   const status = geminiErrorStatus(error);
   const message = geminiErrorMessage(error);
-  return shouldRetryGemini(status)
-    || /high demand|spikes in demand|temporar(?:y|ily)|overload(?:ed)?|service unavailable|RESOURCE_EXHAUSTED|rate limit|quota|timeout|timed out/i.test(message);
+  if (status === 429 || /RESOURCE_EXHAUSTED|rate limit|quota|too many requests/i.test(message)) return "rate_limit";
+  if (status === 404 || /no longer available|not found|does not exist|unknown model|unsupported model|model.*unavailable/i.test(message)) return "unavailable";
+  if (status === 408 || status === 504 || /timeout|timed out|مهلة استجابة نموذج|مهلة التحليل/i.test(message)) return "timeout";
+  if (status === 503 || status >= 500 || /high demand|spikes in demand|temporar(?:y|ily)|overload(?:ed)?|service unavailable/i.test(message)) return "capacity";
+  if (/تعذر الاتصال|network|fetch failed|connection/i.test(message)) return "network";
+  return "other";
+}
+
+function modelIsTransientlyBusy(error: unknown): boolean {
+  const kind = modelFailureKind(error);
+  return kind === "capacity" || kind === "timeout" || kind === "network";
 }
 
 async function wait(ms: number): Promise<void> {
@@ -389,9 +430,17 @@ type GeminiRequestOptions = {
   minRemainingMs?: number;
 };
 
-function geminiRequestError(message: string, status: number): Error & { status?: number } {
-  const error = new Error(message) as Error & { status?: number };
+function geminiRequestError(
+  message: string,
+  status: number,
+  metadata: { failureKind?: GeminiFailureKind; retryAfterMs?: number; providerRequestId?: string; attemptedModelNames?: string[] } = {},
+): GeminiRequestFailure {
+  const error = new Error(message) as GeminiRequestFailure;
   error.status = status;
+  error.failureKind = metadata.failureKind || modelFailureKind({ status, message });
+  error.retryAfterMs = Math.max(0, Number(metadata.retryAfterMs || 0));
+  error.providerRequestId = String(metadata.providerRequestId || "");
+  error.attemptedModelNames = Array.isArray(metadata.attemptedModelNames) ? [...metadata.attemptedModelNames] : [];
   return error;
 }
 
@@ -437,7 +486,8 @@ async function geminiRequest(
         ? `انتهت مهلة استجابة نموذج Gemini بعد ${Math.round(attemptTimeoutMs / 1000)} ثانية.`
         : `تعذر الاتصال بنموذج Gemini: ${String((error as { message?: string })?.message || error || "خطأ شبكة")}`;
       const status = aborted ? 504 : 503;
-      if (attempt === attemptLimit - 1) throw geminiRequestError(lastMessage, status);
+      const failureKind: GeminiFailureKind = aborted ? "timeout" : "network";
+      if (attempt === attemptLimit - 1) throw geminiRequestError(lastMessage, status, { failureKind });
       const baseDelay = 500 * (2 ** attempt);
       await wait(baseDelay + Math.floor(Math.random() * 200));
       continue;
@@ -452,8 +502,10 @@ async function geminiRequest(
     if (response.ok) return { raw, requestId };
     const errorObject = raw.error && typeof raw.error === "object" ? raw.error as JsonRecord : {};
     lastMessage = String(errorObject.message || `فشل Gemini برمز ${response.status}.`);
-    if (!shouldRetryGemini(response.status) || attempt === attemptLimit - 1) {
-      throw geminiRequestError(lastMessage, response.status);
+    const retryAfterMs = parseRetryAfterMs(response.headers.get("retry-after"));
+    const failureKind = modelFailureKind({ status: response.status, message: lastMessage });
+    if (!shouldRetryGemini(response.status) || attempt === attemptLimit - 1 || failureKind === "rate_limit") {
+      throw geminiRequestError(lastMessage, response.status, { failureKind, retryAfterMs, providerRequestId: requestId || "" });
     }
     const baseDelay = 500 * (2 ** attempt);
     await wait(baseDelay + Math.floor(Math.random() * 200));
@@ -471,16 +523,23 @@ function modelIsUnavailable(error: unknown): boolean {
   return item?.status === 404 || /no longer available|not found|does not exist|unknown model|unsupported model|model.*unavailable/i.test(message);
 }
 
-type GeminiFallbackError = Error & {
-  status?: number;
+type GeminiFallbackError = GeminiRequestFailure & {
   attemptedModels?: number;
+  attemptedModelNames?: string[];
   fallbackReason?: string;
 };
 
-function annotateGeminiFallbackFailure(error: unknown, attemptedModels: number, fallbackReason: string): GeminiFallbackError {
+function annotateGeminiFallbackFailure(
+  error: unknown,
+  attemptedModelNames: string[],
+  fallbackReason: string,
+): GeminiFallbackError {
   const annotated = (error instanceof Error ? error : new Error(String(error || "تعذر تشغيل نموذج Gemini."))) as GeminiFallbackError;
-  annotated.attemptedModels = Math.max(1, attemptedModels);
+  const names = [...new Set(attemptedModelNames.map(normalizeModelName).filter(Boolean))];
+  annotated.attemptedModels = Math.max(1, names.length);
+  annotated.attemptedModelNames = names;
   annotated.fallbackReason = fallbackReason || "";
+  annotated.failureKind = annotated.failureKind || modelFailureKind(annotated);
   return annotated;
 }
 
@@ -489,24 +548,30 @@ async function geminiRequestWithFallback(
   requestBody: JsonRecord,
   maxAttempts = 2,
   options: GeminiRequestOptions = {},
-): Promise<{ raw: JsonRecord; requestId: string | null; modelUsed: string; fallbackUsed: boolean; fallbackReason: string; attemptedModels: number }> {
+): Promise<{ raw: JsonRecord; requestId: string | null; modelUsed: string; fallbackUsed: boolean; fallbackReason: string; attemptedModels: number; attemptedModelNames: string[] }> {
   let lastError: unknown = null;
   let fallbackReason = "";
+  const attemptedModelNames: string[] = [];
   for (let index = 0; index < models.length; index += 1) {
     const model = normalizeModelName(models[index]);
+    attemptedModelNames.push(model);
     try {
       const response = await geminiRequest(model, requestBody, maxAttempts, options);
-      return { ...response, modelUsed: model, fallbackUsed: index > 0, fallbackReason, attemptedModels: index + 1 };
+      return { ...response, modelUsed: model, fallbackUsed: index > 0, fallbackReason, attemptedModels: attemptedModelNames.length, attemptedModelNames: [...attemptedModelNames] };
     } catch (error) {
       lastError = error;
-      const canSwitchModel = modelIsUnavailable(error) || modelIsTransientlyBusy(error);
+      const kind = modelFailureKind(error);
+      // 429 يعني حد معدل/حصة. تبديل النموذج فورًا يضاعف ضغط المشروع وقد يمدد المشكلة؛
+      // نوقف fan-out ونحافظ على 429 كما هو حتى يطبق العميل backoff مناسبًا.
+      if (kind === "rate_limit") throw annotateGeminiFallbackFailure(error, attemptedModelNames, "rate_limit");
+      const canSwitchModel = kind === "unavailable" || kind === "capacity" || kind === "timeout" || kind === "network";
       if (!canSwitchModel || index === models.length - 1) {
-        throw annotateGeminiFallbackFailure(error, index + 1, fallbackReason);
+        throw annotateGeminiFallbackFailure(error, attemptedModelNames, fallbackReason);
       }
-      fallbackReason = modelIsUnavailable(error) ? "model_unavailable" : "transient_capacity";
+      fallbackReason = kind === "unavailable" ? "model_unavailable" : `transient_${kind}`;
     }
   }
-  throw annotateGeminiFallbackFailure(lastError, models.length, fallbackReason);
+  throw annotateGeminiFallbackFailure(lastError, attemptedModelNames, fallbackReason);
 }
 
 function candidateResult(raw: JsonRecord): { text: string; finishReason: string } {
@@ -1492,6 +1557,7 @@ type PrimarySegmentRun = {
   fallbackUsed: boolean;
   fallbackReason: string;
   attemptedModels: number;
+  attemptedModelNames: string[];
   repaired: boolean;
   firstError: string;
   repairModelUsed: string;
@@ -1587,6 +1653,7 @@ async function repairPrimarySegment(
     fallbackUsed: response.fallbackUsed,
     fallbackReason: response.fallbackReason || "",
     attemptedModels: response.attemptedModels || 1,
+    attemptedModelNames: response.attemptedModelNames || [response.modelUsed],
     repaired: true,
     firstError: cleanString(rejectionReason, 520),
     repairModelUsed: response.modelUsed,
@@ -1597,6 +1664,7 @@ async function repairPrimarySegment(
 type PrimarySegmentRequestOptions = {
   models?: string[];
   attemptTimeoutMs?: number;
+  excludeModels?: string[];
 };
 
 async function requestPrimarySegment(
@@ -1605,8 +1673,13 @@ async function requestPrimarySegment(
   deadlineAt: number,
   options: PrimarySegmentRequestOptions = {},
 ): Promise<PrimarySegmentRun> {
+  const excluded = new Set((options.excludeModels || []).map(normalizeModelName));
+  const modelCandidates = (options.models || primarySegmentModels(segment)).map(normalizeModelName).filter(model => model && !excluded.has(model));
+  if (!modelCandidates.length) {
+    throw geminiRequestError(`لا يوجد نموذج إنقاذ جديد متاح لمقطع ${segment} دون إعادة نموذج فشل سابقًا.`, 503, { failureKind: "capacity", attemptedModelNames: [...excluded] });
+  }
   const response = await geminiRequestWithFallback(
-    options.models || primarySegmentModels(segment),
+    modelCandidates,
     primaryRequestBody(
       payload,
       primarySegmentInstructions(segment),
@@ -1643,6 +1716,7 @@ async function requestPrimarySegment(
     fallbackUsed: response.fallbackUsed,
     fallbackReason: response.fallbackReason || "",
     attemptedModels: response.attemptedModels || 1,
+    attemptedModelNames: response.attemptedModelNames || [response.modelUsed],
     repaired: false,
     firstError: "",
     repairModelUsed: "",
@@ -1658,12 +1732,14 @@ async function rescueTransientPrimarySegment(
   segment: PrimarySegmentName,
   payload: JsonRecord,
   deadlineAt: number,
+  excludeModels: string[] = [],
 ): Promise<PrimarySegmentRun> {
-  // هذه محاولة إنقاذ شبكية للمقطع المتعثر فقط. لا نعيد تشغيل المقطع الذي نجح بالتوازي.
-  // تبدأ بـ Flash-Lite لأنه غير مستخدم أصلًا في مسار reasoning، وتصلح أيضًا كإعادة محاولة خفيفة لـ action بعد انتهاء fallbacks العادية.
+  // الإنقاذ يستخدم نموذجًا لم يُجرّب في المقطع نفسه متى أمكن. إعادة نفس النموذج
+  // الذي أعاد 503/timeout قبل ثوانٍ تهدر ميزانية الإنقاذ وتزيد الضغط بلا فائدة.
   await wait(250 + Math.floor(Math.random() * 150));
   return requestPrimarySegment(segment, payload, deadlineAt, {
     models: primaryTransientRescueModels(),
+    excludeModels,
     attemptTimeoutMs: PRIMARY_TRANSIENT_RESCUE_ATTEMPT_TIMEOUT_MS,
   });
 }
@@ -1712,6 +1788,10 @@ async function analyzePrimary(payload: JsonRecord): Promise<JsonRecord> {
     const message = settled.reason instanceof Error ? settled.reason.message : String(settled.reason || "خطأ غير معروف");
     initialSegmentErrors[segment] = cleanString(message, 520);
     failedInitialAttemptedModels += Math.max(1, Number((settled.reason as GeminiFallbackError)?.attemptedModels || 1));
+    const failureKind = modelFailureKind(settled.reason);
+    // لا نحول 429 إلى سلسلة fallback/rescue. هذا حد معدل/حصة ويجب الحفاظ عليه
+    // كي لا يضاعف الطلب الواحد عدد استدعاءات Gemini ويزيد مدة الحظر.
+    if (failureKind === "rate_limit") throw settled.reason;
     if (!modelIsTransientlyBusy(settled.reason)) {
       throw new Error(`فشل مقطع ${segment} بعد استجابة Gemini غير قابلة للإنقاذ الشبكي: ${message}`);
     }
@@ -1720,7 +1800,12 @@ async function analyzePrimary(payload: JsonRecord): Promise<JsonRecord> {
 
   if (transientFailures.length) {
     const rescueSettled = await Promise.allSettled(
-      transientFailures.map(item => rescueTransientPrimarySegment(item.segment, payload, transientRescueDeadlineAt)),
+      transientFailures.map(item => rescueTransientPrimarySegment(
+        item.segment,
+        payload,
+        transientRescueDeadlineAt,
+        geminiErrorAttemptedModels(item.error),
+      )),
     );
     for (let index = 0; index < rescueSettled.length; index += 1) {
       const failed = transientFailures[index];
@@ -1733,9 +1818,18 @@ async function analyzePrimary(payload: JsonRecord): Promise<JsonRecord> {
       const rescueMessage = rescued.reason instanceof Error ? rescued.reason.message : String(rescued.reason || "خطأ غير معروف");
       const firstMessage = initialSegmentErrors[failed.segment] || "تعثر شبكي أولي";
       const status = geminiErrorStatus(rescued.reason) || geminiErrorStatus(failed.error) || 503;
+      const combinedAttempts = [...new Set([
+        ...geminiErrorAttemptedModels(failed.error),
+        ...geminiErrorAttemptedModels(rescued.reason),
+      ])];
       throw geminiRequestError(
         `فشل مقطع ${failed.segment} بعد إنقاذ شبكي معزول. المحاولة الأولى: ${firstMessage}. محاولة الإنقاذ: ${rescueMessage}`,
         status,
+        {
+          failureKind: modelFailureKind(rescued.reason),
+          retryAfterMs: geminiErrorRetryAfterMs(rescued.reason) || geminiErrorRetryAfterMs(failed.error),
+          attemptedModelNames: combinedAttempts,
+        },
       );
     }
   }
@@ -1855,13 +1949,16 @@ async function analyzePrimary(payload: JsonRecord): Promise<JsonRecord> {
   };
 }
 
-function errorInfo(message: string): { status: number; errorCode: string; retryable: boolean } {
+function errorInfo(error: unknown): { status: number; errorCode: string; retryable: boolean } {
+  const message = geminiErrorMessage(error);
+  const status = geminiErrorStatus(error);
+  const kind = modelFailureKind(error);
   if (/رمز الوصول غير صحيح|النطاق غير مسموح|حجم الطلب أكبر|العملية المطلوبة غير مدعومة/i.test(message)) return { status: 400, errorCode: "REQUEST_NOT_RETRYABLE", retryable: false };
   if (/api key|مفتاح.*غير صالح|GEMINI_API_KEY|model.*not found|النموذج.*غير/i.test(message)) return { status: 502, errorCode: "GEMINI_CONFIGURATION", retryable: false };
-  if (/429|rate limit|quota|RESOURCE_EXHAUSTED/i.test(message)) return { status: 429, errorCode: "GEMINI_RATE_LIMIT", retryable: true };
+  if (kind === "rate_limit" || status === 429) return { status: 429, errorCode: "GEMINI_RATE_LIMIT", retryable: true };
   if (/حد الإخراج|MAX_TOKENS|استنفد Gemini/i.test(message)) return { status: 502, errorCode: "GEMINI_OUTPUT_EXHAUSTED", retryable: false };
   if (/فشل إصلاح (?:مقاطع )?عقد التحليل|مقطع (?:reasoning|action) لم يرجع|لم يبلغ عمق القرار|لم ينتج المحلل الذكي ملخصًا|التدخلات الذكية لم تقدم تمايزًا|كررت الشرح التشخيصي/i.test(message)) return { status: 502, errorCode: "GEMINI_CONTRACT_REJECTED", retryable: true };
-  if (/high demand|spikes in demand|temporar(?:y|ily)|timeout|مهلة التحليل الذكي|مهلة استجابة نموذج|تعذر الاتصال|unavailable|overload|503|500|504/i.test(message)) return { status: 503, errorCode: "GEMINI_TRANSIENT", retryable: true };
+  if (kind === "capacity" || kind === "timeout" || kind === "network" || /high demand|spikes in demand|temporar(?:y|ily)|timeout|مهلة التحليل الذكي|مهلة استجابة نموذج|تعذر الاتصال|unavailable|overload|503|500|504/i.test(message)) return { status: 503, errorCode: "GEMINI_TRANSIENT", retryable: true };
   return { status: 500, errorCode: "GEMINI_RESPONSE", retryable: false };
 }
 
@@ -1923,13 +2020,21 @@ Deno.serve(async (req: Request) => {
   } catch (error) {
     console.error("taqareer-ai-error", error);
     const message = error instanceof Error ? error.message : "حدث خطأ غير متوقع في وظيفة التحليل.";
-    const info = errorInfo(message);
+    const info = errorInfo(error);
+    const retryAfterMs = geminiErrorRetryAfterMs(error);
+    const attemptedModelNames = geminiErrorAttemptedModels(error);
     return jsonResponse({
       ok: false,
       operation,
       error: publicErrorMessage(info, message),
       errorCode: info.errorCode,
       retryable: info.retryable,
+      retryAfterMs,
+      diagnostic: {
+        providerStatus: geminiErrorStatus(error) || info.status,
+        providerKind: modelFailureKind(error),
+        attemptedModels: attemptedModelNames,
+      },
       requestId: req.headers.get("x-taqareer-request-id") || "",
       edgeVersion: EDGE_VERSION,
     }, info.status, origin);

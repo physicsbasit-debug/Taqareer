@@ -128,7 +128,7 @@ test('primary analysis automatically retries one retryable Edge 503 response ins
         return jsonResponse({
           ok: false,
           operation: 'analyze_primary',
-          edgeVersion: '0.15.7',
+          edgeVersion: '0.15.8',
           errorCode: 'GEMINI_TRANSIENT',
           retryable: true,
           error: 'خدمة التحليل مزدحمة مؤقتًا.',
@@ -137,7 +137,7 @@ test('primary analysis automatically retries one retryable Edge 503 response ins
       return jsonResponse({
         ok: true,
         operation: 'analyze_primary',
-        edgeVersion: '0.15.7',
+        edgeVersion: '0.15.8',
         aiKeyConfigured: true,
         result: { contractVersion: '6.6.0' },
       });
@@ -152,7 +152,7 @@ test('primary analysis automatically retries one retryable Edge 503 response ins
 });
 
 
-test('primary analysis survives two fast retryable Edge 503 responses before succeeding without a manual click', async () => {
+test('primary analysis stops after one full-request replay when Edge remains transient', async () => {
   const operations = [];
   let analysisCalls = 0;
   const { api } = loadClient(async (_url, options) => {
@@ -160,33 +160,48 @@ test('primary analysis survives two fast retryable Edge 503 responses before suc
     operations.push(body.operation);
     if (body.operation === 'analyze_primary') {
       analysisCalls += 1;
-      if (analysisCalls <= 2) {
-        return jsonResponse({
-          ok: false,
-          operation: 'analyze_primary',
-          edgeVersion: '0.15.7',
-          errorCode: 'GEMINI_TRANSIENT',
-          retryable: true,
-          error: 'خدمة التحليل مزدحمة مؤقتًا.',
-        }, 503);
-      }
       return jsonResponse({
-        ok: true,
+        ok: false,
         operation: 'analyze_primary',
-        edgeVersion: '0.15.7',
-        aiKeyConfigured: true,
-        result: { contractVersion: '6.6.0' },
-      });
+        edgeVersion: '0.15.8',
+        errorCode: 'GEMINI_TRANSIENT',
+        retryable: true,
+        error: 'خدمة التحليل مزدحمة مؤقتًا.',
+      }, 503);
     }
     throw new Error(`unexpected operation ${body.operation}`);
   });
   api.saveConfig({ endpoint: 'https://abc123.supabase.co', anonKey: 'anon-key', enabled: true });
-  const response = await api.analyzePrimaryDetailed({ sample: true });
-  assert.deepEqual(operations, ['analyze_primary', 'analyze_primary', 'analyze_primary']);
-  assert.equal(analysisCalls, 3);
-  assert.equal(response.result.contractVersion, '6.6.0');
+  await assert.rejects(() => api.analyzePrimaryDetailed({ sample: true }), error => error.code === 'GEMINI_TRANSIENT');
+  assert.deepEqual(operations, ['analyze_primary', 'analyze_primary']);
+  assert.equal(analysisCalls, 2);
 });
 
+test('primary analysis never replays the whole Edge request immediately after GEMINI_RATE_LIMIT', async () => {
+  const operations = [];
+  const { api } = loadClient(async (_url, options) => {
+    const body = JSON.parse(options.body);
+    operations.push(body.operation);
+    return jsonResponse({
+      ok: false,
+      operation: 'analyze_primary',
+      edgeVersion: '0.15.8',
+      errorCode: 'GEMINI_RATE_LIMIT',
+      retryable: true,
+      retryAfterMs: 12000,
+      diagnostic: { providerStatus: 429, providerKind: 'rate_limit', attemptedModels: ['gemini-3.6-flash'] },
+      error: 'تم بلوغ حد طلبات الذكاء الاصطناعي مؤقتًا.',
+    }, 429);
+  });
+  api.saveConfig({ endpoint: 'https://abc123.supabase.co', anonKey: 'anon-key', enabled: true });
+  await assert.rejects(() => api.analyzePrimaryDetailed({ sample: true }), error => {
+    assert.equal(error.code, 'GEMINI_RATE_LIMIT');
+    assert.equal(error.retryAfterMs, 12000);
+    assert.equal(error.diagnostic.providerKind, 'rate_limit');
+    return true;
+  });
+  assert.deepEqual(operations, ['analyze_primary']);
+});
 
 test('End-to-End: primary analysis is not blocked by a failed health preflight when the real analysis request is reachable', async () => {
   const operations = [];
@@ -202,7 +217,7 @@ test('End-to-End: primary analysis is not blocked by a failed health preflight w
       return jsonResponse({
         ok: true,
         operation: 'analyze_primary',
-        edgeVersion: '0.15.7',
+        edgeVersion: '0.15.8',
         aiKeyConfigured: true,
         result: { contractVersion: '6.6.0' },
       });

@@ -3,7 +3,7 @@
 
   const STORAGE_KEY = "taqareer.ai.config.v1";
   const ACCESS_KEY = "taqareer.ai.access-code.v1";
-  const CLIENT_VERSION = "1.2.45";
+  const CLIENT_VERSION = "1.2.46";
   const HEALTH_MAX_AGE_MS = 120000;
   const defaults = window.TAQAREER_CONFIG || {};
   let healthState = {
@@ -216,6 +216,8 @@
           error.retryable = Boolean(body.retryable);
           error.requestId = body.requestId || response.headers.get("x-taqareer-request-id") || response.headers.get("x-request-id") || response.headers.get("x-goog-request-id") || requestId;
           error.edgeVersion = edgeVersion;
+          error.retryAfterMs = Math.max(0, Number(body.retryAfterMs || body.diagnostic?.retryAfterMs || 0));
+          error.diagnostic = body.diagnostic && typeof body.diagnostic === "object" ? body.diagnostic : null;
           throw error;
         }
         body.clientTiming = { durationMs: Math.max(0, (globalThis.performance?.now?.() ?? Date.now()) - startedAt) };
@@ -256,17 +258,21 @@
           const attemptDurationMs = Math.max(0, (globalThis.performance?.now?.() ?? Date.now()) - attemptStartedAt);
           const transientCapacity = code === "GEMINI_TRANSIENT" || status === 503 || status === 504;
 
-          // 503 السريعة تعني غالبًا موجة سعة عابرة. المحاولة القديمة كانت تعاد بعد نحو
-          // ثانية فقط، فتدخل غالبًا في الموجة نفسها. نستخدم backoff متدرجًا، ونسمح
-          // بالمحاولة الثالثة فقط إذا كان الخطأ رجع سريعًا. أما الطلب البطيء فلا نمدد
-          // الانتظار إلى ثلاث دورات كاملة.
-          if (transientCapacity && attempt >= 2 && attemptDurationMs > 20_000) throw error;
+          // rate-limit: لا نعيد الطلب الكامل فورًا. Edge أوقف model fan-out عمدًا حتى لا
+          // تتحول ضغطة واحدة إلى عاصفة طلبات تزيد RPM/TPM أو مدة الحظر.
+          if (code === "GEMINI_RATE_LIMIT" || status === 429) {
+            setHealth({ status: "failed", endpoint: config.endpoint, errorCode: "GEMINI_RATE_LIMIT", geminiReady: false });
+            throw error; // rate-limit: preserve provider backoff instead of replaying the whole analysis.
+          }
+
+          // Edge نفسها جرّبت fallback/rescue للمقاطع. نسمح بإعادة طلب خادمي واحدة فقط
+          // لأخطاء 503/504؛ المحاولة الثالثة كانت تضاعف ضغط Gemini بلا مكسب موثوق.
+          if (transientCapacity && attempt >= 2) throw error;
+          if (transientCapacity && attemptDurationMs > 20_000) throw error;
 
           setHealth({ status: "checking", endpoint: config.endpoint, errorCode: code, geminiReady: false });
           if (transientCapacity) {
-            const baseDelay = attempt === 1 ? 2600 : 5600;
-            const jitter = attempt === 1 ? 1200 : 1800;
-            await delay(baseDelay + Math.round(Math.random() * jitter));
+            await delay(2600 + Math.round(Math.random() * 1200));
           } else {
             await delay(900 + Math.round(Math.random() * 500));
           }

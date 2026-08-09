@@ -18,7 +18,7 @@ function storage() {
 function jsonResponse(body, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'content-type': 'application/json', 'x-taqareer-edge-version': '0.15.7' },
+    headers: { 'content-type': 'application/json', 'x-taqareer-edge-version': '0.15.8' },
   });
 }
 
@@ -61,7 +61,7 @@ function loadRuntime(fetchImpl) {
   return { api: window.TaqareerAI, orchestrator: context.TaqareerDeepOrchestrator };
 }
 
-test('End-to-End: compact analysis payload survives two transient Edge 503 responses and completes on the third automatic attempt', async () => {
+test('End-to-End: compact analysis payload allows one full Edge replay after a transient 503 and then completes', async () => {
   const operations = [];
   let primaryCalls = 0;
   const { api, orchestrator } = loadRuntime(async (_url, options) => {
@@ -70,11 +70,11 @@ test('End-to-End: compact analysis payload survives two transient Edge 503 respo
     assert.equal(options.headers['x-taqareer-attempt'], undefined);
     if (body.operation === 'analyze_primary') {
       primaryCalls += 1;
-      if (primaryCalls <= 2) {
+      if (primaryCalls === 1) {
         return jsonResponse({
           ok: false,
           operation: 'analyze_primary',
-          edgeVersion: '0.15.7',
+          edgeVersion: '0.15.8',
           errorCode: 'GEMINI_TRANSIENT',
           retryable: true,
           error: 'خدمة التحليل مزدحمة مؤقتًا.',
@@ -83,7 +83,7 @@ test('End-to-End: compact analysis payload survives two transient Edge 503 respo
       return jsonResponse({
         ok: true,
         operation: 'analyze_primary',
-        edgeVersion: '0.15.7',
+        edgeVersion: '0.15.8',
         aiKeyConfigured: true,
         result: { contractVersion: '6.6.0', executive: { headline: 'تحليل مكتمل' } },
       });
@@ -103,12 +103,11 @@ test('End-to-End: compact analysis payload survives two transient Edge 503 respo
     ai: api,
   });
 
-  assert.deepEqual(operations, ['analyze_primary', 'analyze_primary', 'analyze_primary']);
-  assert.equal(primaryCalls, 3);
+  assert.deepEqual(operations, ['analyze_primary', 'analyze_primary']);
+  assert.equal(primaryCalls, 2);
   assert.equal(output.result.contractVersion, '6.6.0');
   assert.equal(output.result.executive.headline, 'تحليل مكتمل');
 });
-
 
 test('End-to-End: orchestrated analysis proceeds when advisory health would fail but analyze_primary is reachable', async () => {
   const operations = [];
@@ -120,7 +119,7 @@ test('End-to-End: orchestrated analysis proceeds when advisory health would fail
       return jsonResponse({
         ok: true,
         operation: 'analyze_primary',
-        edgeVersion: '0.15.7',
+        edgeVersion: '0.15.8',
         aiKeyConfigured: true,
         result: { contractVersion: '6.6.0', executive: { headline: 'تحليل مباشر مكتمل' } },
       });

@@ -1,3 +1,12 @@
+# v1.2.46 — Rate-Aware AI Orchestration
+
+- فحص End-to-End بعد فشل v1.2.45 أثبت ثغرة في إدارة أخطاء Gemini: كان `429/RESOURCE_EXHAUSTED` يُعامل كازدحام عابر يسمح بتبديل النماذج ثم rescue ثم إعادة الطلب الكامل من العميل، ما قد يضاعف ضغط RPM/TPM بدل تخفيفه.
+- أصبح Edge يميز `rate_limit` عن `capacity/timeout/network`: عند 429 يوقف model fan-out فورًا ويحافظ على الخطأ كـ `GEMINI_RATE_LIMIT` بدل أن يتحول لاحقًا إلى `GEMINI_TRANSIENT`.
+- يحتفظ كل مقطع بأسماء النماذج التي جُرّبت، ويستبعدها من `segment transient rescue`; أضيف `gemini-3.1-flash-lite` كنموذج إنقاذ مستقل بدل إعادة نفس النموذج الذي فشل قبل ثوانٍ.
+- العميل لا يعيد طلب `analyze_primary` كاملًا فورًا عند `GEMINI_RATE_LIMIT`; أما 503/504 فمسموح لها بإعادة خادمية واحدة فقط لأن Edge نفسها نفذت fallback/rescue داخل الطلب الأول.
+- أضيف تشخيص آمن في استجابة الخطأ: نوع فشل المزود، الحالة، النماذج المجربة و`retryAfterMs` عندما يرسله المزود، دون كشف أسرار.
+- Supabase Edge أصبح `V0.15.8`. يلزم إعادة نشر `supabase/functions/analyze-educational-form/index.ts`. لا SQL ولا Secret جديد.
+
 # v1.2.45 — Reserved AI Rescue Budget E2E
 
 - إصلاح End-to-End لمسار `analyze_primary` عند استمرار ازدحام Gemini: كانت المرحلة الأولى قادرة على استهلاك معظم مهلة الخادم البالغة 45 ثانية قبل بدء الإنقاذ الشبكي، فيصل `segment transient rescue` بلا وقت كافٍ.

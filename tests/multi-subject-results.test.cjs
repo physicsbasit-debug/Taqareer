@@ -108,7 +108,7 @@ test('frontend and Edge recognize the new type, hide score settings semantically
   assert.match(app, /الجنسيه\|الجنسية/);
   assert.match(edge, /multi_subject_results/);
   assert.match(edge, /سجل نتائج فردي متعدد المواد/);
-  assert.match(edge, /EDGE_VERSION = "0\.15\.7"/);
+  assert.match(edge, /EDGE_VERSION = "0\.15\.8"/);
 });
 
 

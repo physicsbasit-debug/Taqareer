@@ -22,8 +22,10 @@ test('primary AI request is split into bounded reasoning and action segments', (
   assert.match(edge, /PRIMARY_INITIAL_PHASE_DEADLINE_MS = 26_000/);
   assert.match(edge, /PRIMARY_TRANSIENT_RESCUE_PHASE_DEADLINE_MS = 36_500/);
   assert.match(edge, /PRIMARY_REASONING_ATTEMPT_TIMEOUT_MS = 15_000/);
-  assert.match(client, /transientCapacity && attempt >= 2 && attemptDurationMs > 20_000/);
-  assert.match(client, /const baseDelay = attempt === 1 \? 2600 : 5600/);
+  assert.match(client, /code === "GEMINI_RATE_LIMIT" \|\| status === 429/);
+  assert.match(client, /transientCapacity && attempt >= 2/);
+  assert.match(client, /transientCapacity && attemptDurationMs > 20_000/);
+  assert.match(client, /await delay\(2600 \+ Math\.round\(Math\.random\(\) \* 1200\)\)/);
   assert.match(client, /attempt < Math\.min\(maxAttempts, 2\).*AI_PRIMARY_TIMEOUT/s);
   assert.match(edge, /PRIMARY_ACTION_ATTEMPT_TIMEOUT_MS = 13_000/);
   assert.match(edge, /PRIMARY_REPAIR_ATTEMPT_TIMEOUT_MS = 11_000/);

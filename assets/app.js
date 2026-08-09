@@ -281,7 +281,10 @@
       return "خدمة التحليل مزدحمة مؤقتًا. حاول التطبيق تلقائيًا إعادة الطلب واستخدام مسار بديل، لكن الخدمة لم تستجب الآن. أعد المحاولة بعد قليل.";
     }
     if (code === "GEMINI_RATE_LIMIT" || /RESOURCE_EXHAUSTED|rate limit|quota|\b429\b/i.test(message)) {
-      return "تم بلوغ حد طلبات خدمة التحليل مؤقتًا. انتظر قليلًا ثم أعد المحاولة.";
+      const waitSeconds = Math.ceil(Math.max(0, Number(error?.retryAfterMs || 0)) / 1000);
+      return waitSeconds > 0
+        ? `تم بلوغ حد طلبات خدمة التحليل. أوقف التطبيق إعادة الطلب حتى لا يزيد الضغط. أعد المحاولة بعد نحو ${waitSeconds} ثانية.`
+        : "تم بلوغ حد طلبات خدمة التحليل. أوقف التطبيق إعادة الطلب حتى لا يزيد الضغط. انتظر قليلًا ثم أعد المحاولة.";
     }
     if (code === "AI_PRIMARY_TIMEOUT") return "لم تصل استجابة تحليل صالحة ضمن المهلة السريعة المعتمدة. أوقف التطبيق الانتظار بدل إبقائك عالقًا، ولم يعتمد نتيجة ناقصة.";
     return message || "تعذر تنفيذ التحليل التربوي.";
@@ -767,7 +770,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "1.2.45",
+      appVersion: "1.2.46",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -1654,7 +1657,7 @@
     if (!window.TaqareerReconciliation?.composePrimary) throw new Error("محرك التحقق من التحليل الذكي غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "1.2.45",
+      appVersion: "1.2.46",
       pipeline: {
         mode: "ai-primary-analysis-v1",
         instruction: "المحرك المحلي يحسب المؤشرات والرسوم فقط. يبني الذكاء الاصطناعي التشخيص والاستنتاجات والتدخلات من الأدلة، ثم تتحقق البوابة من المراجع قبل عرض التقرير."
@@ -2335,7 +2338,7 @@
   function exportAnalysis() {
     const payload = {
       app: "تقارير",
-      version: "1.2.45",
+      version: "1.2.46",
       generatedAt: new Date().toISOString(),
       source: state.sourceName,
       sourceMeta: state.sourceMeta,
@@ -2348,7 +2351,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v1.2.45.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v1.2.46.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }

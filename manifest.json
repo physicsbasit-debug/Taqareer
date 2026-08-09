@@ -1,8 +1,8 @@
 {
   "app": "تقارير",
-  "version": "1.2.45",
-  "phase": "Multi-Subject Ranking Identity & Report Metadata Cleanup",
-  "releaseName": "Full Student Identity Recovery and Explicit Analysis Scope Metadata",
+  "version": "1.2.46",
+  "phase": "Rate-Aware AI Orchestration",
+  "releaseName": "Rate Limit Containment and Non-Repeating Segment Rescue",
   "buildType": "static-github-pages-plus-supabase-edge-function",
   "supportedInputs": {
     "table": [
@@ -213,7 +213,7 @@
     "legacyAnalyzeThinkingBudget": 1024,
     "classificationThinkingBudget": 0,
     "reconciliationContractVersion": "6.6.0",
-    "edgeFunctionVersion": "0.15.7",
+    "edgeFunctionVersion": "0.15.8",
     "fastEnhancementModel": "gemini-3.5-flash-lite",
     "fastEnhancementThinkingBudget": 192,
     "fastEnhancementMaxOutputTokens": 2600,

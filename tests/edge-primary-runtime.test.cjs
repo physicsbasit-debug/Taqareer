@@ -463,7 +463,7 @@ test('edge transient rescue reruns only reasoning after its normal model chain i
   assert.match(urls[0], /gemini-3\.6-flash:generateContent/);
   assert.match(urls[1], /gemini-3\.5-flash-lite:generateContent/);
   assert.match(urls[2], /gemini-3\.5-flash:generateContent/);
-  assert.match(urls[3], /gemini-3\.5-flash-lite:generateContent/);
+  assert.match(urls[3], /gemini-3\.1-flash-lite:generateContent/);
 });
 
 test('edge transient rescue reruns only action after its normal model chain is exhausted', async () => {
@@ -516,6 +516,23 @@ test('edge treats an aborted reasoning response body as transient and fails over
   assert.equal(status, 200);
   assert.equal(body.ok, true);
   assert.equal(runtime.getCalls(), 3);
+});
+
+test('edge stops model fan-out immediately when a primary segment hits provider rate limit', async () => {
+  const full = primaryResult();
+  const rateLimited = httpError(429, 'RESOURCE_EXHAUSTED: rate limit exceeded for this project');
+  const runtime = await createRuntime([
+    rateLimited,
+    geminiRaw(actionResult(full)),
+  ]);
+  const { status, body } = await invoke(runtime);
+  assert.equal(status, 429);
+  assert.equal(body.ok, false);
+  assert.equal(body.errorCode, 'GEMINI_RATE_LIMIT');
+  assert.equal(body.retryable, true);
+  assert.equal(body.diagnostic.providerKind, 'rate_limit');
+  assert.deepEqual(body.diagnostic.attemptedModels, ['gemini-3.6-flash']);
+  assert.equal(runtime.getCalls(), 2, 'the successful parallel action call may finish, but reasoning must not fan out to fallback/rescue models');
 });
 
 test('edge returns a retryable Arabic transient error when every segment model is unavailable', async () => {
@@ -615,9 +632,10 @@ test('edge reserves enough wall-clock budget for transient action rescue after s
     }
     if (/gemini-3\.5-flash-lite:generateContent/.test(url)) {
       fastLiteCalls += 1;
-      return fastLiteCalls === 1
-        ? busy('slow busy action model one', 12_000)
-        : { __advanceMs: 7_800, __body: geminiRaw(actionResult(full)) };
+      return busy('slow busy action model one', 12_000);
+    }
+    if (/gemini-3\.1-flash-lite:generateContent/.test(url)) {
+      return { __advanceMs: 7_800, __body: geminiRaw(actionResult(full)) };
     }
     if (/gemini-3\.5-flash:generateContent/.test(url)) {
       return busy('slow busy action model three', 12_900);
