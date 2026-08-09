@@ -46,7 +46,7 @@ test('primary analysis failure preserves local evidence and tells the user to re
 
 test('primary analysis retries transport failures without changing the semantic contract', () => {
   const client = read('assets/ai-client.js');
-  assert.match(client, /invoke\("analyze_primary", payload, \{ timeoutMs: 60000, networkRetry: true \}\)/);
+  assert.match(client, /invoke\("analyze_primary", payload, \{ timeoutMs: 60000, networkRetry: true, maxAttempts: 3 \}\)/);
 });
 
 

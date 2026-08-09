@@ -3,7 +3,7 @@
 
   const STORAGE_KEY = "taqareer.ai.config.v1";
   const ACCESS_KEY = "taqareer.ai.access-code.v1";
-  const CLIENT_VERSION = "1.2.40";
+  const CLIENT_VERSION = "1.2.41";
   const HEALTH_MAX_AGE_MS = 120000;
   const defaults = window.TAQAREER_CONFIG || {};
   let healthState = {
@@ -168,10 +168,12 @@
 
     const timeoutMs = Math.max(8000, Number(options.timeoutMs || config.timeoutMs));
     const requestId = options.requestId || createRequestId(operation);
-    const maxAttempts = options.networkRetry === true ? 2 : 1;
+    const requestedMaxAttempts = Math.max(1, Number(options.maxAttempts || (options.networkRetry === true ? 2 : 1)));
+    const maxAttempts = options.networkRetry === true ? requestedMaxAttempts : 1;
     const startedAt = globalThis.performance?.now?.() ?? Date.now();
 
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      const attemptStartedAt = globalThis.performance?.now?.() ?? Date.now();
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
       const headers = {
@@ -180,6 +182,7 @@
         "Authorization": `Bearer ${config.anonKey}`,
         "x-taqareer-client-version": CLIENT_VERSION,
         "x-taqareer-request-id": requestId,
+        "x-taqareer-attempt": String(attempt),
       };
       const accessCode = getAccessCode();
       if (accessCode) headers["x-taqareer-access-code"] = accessCode;
@@ -221,6 +224,13 @@
         return body;
       } catch (error) {
         if (error?.name === "AbortError") {
+          // كانت المهلة تُصنّف retryable ثم تُرمى فورًا، فلا تُستهلك حتى محاولة الشبكة
+          // الثانية. نسمح بمحاولة واحدة فقط بعد المهلة حتى لا يتحول التعافي إلى انتظار طويل.
+          if (attempt < Math.min(maxAttempts, 2) && options.networkRetry === true) {
+            setHealth({ status: "checking", endpoint: config.endpoint, errorCode: "AI_PRIMARY_TIMEOUT", geminiReady: false });
+            await delay(1200 + Math.round(Math.random() * 700));
+            continue;
+          }
           setHealth({ status: "failed", endpoint: config.endpoint, errorCode: "AI_PRIMARY_TIMEOUT" });
           const timeoutError = new Error("انتهت مهلة التحليل الذكي الأساسي قبل اكتمال النتيجة. لم يعتمد التطبيق تحليلًا ناقصًا.");
           timeoutError.code = "AI_PRIMARY_TIMEOUT";
@@ -242,8 +252,25 @@
         // للطلبات التي طلبت networkRetry، مع مهلة قصيرة حتى لا نعيد الطلب داخل
         // نفس موجة الازدحام فورًا.
         if (attempt < maxAttempts && options.networkRetry === true && Boolean(error?.retryable)) {
-          setHealth({ status: "checking", endpoint: config.endpoint, errorCode: String(error?.code || ""), geminiReady: false });
-          await delay(900 + Math.round(Math.random() * 500));
+          const code = String(error?.code || "");
+          const status = Number(error?.status || 0);
+          const attemptDurationMs = Math.max(0, (globalThis.performance?.now?.() ?? Date.now()) - attemptStartedAt);
+          const transientCapacity = code === "GEMINI_TRANSIENT" || status === 503 || status === 504;
+
+          // 503 السريعة تعني غالبًا موجة سعة عابرة. المحاولة القديمة كانت تعاد بعد نحو
+          // ثانية فقط، فتدخل غالبًا في الموجة نفسها. نستخدم backoff متدرجًا، ونسمح
+          // بالمحاولة الثالثة فقط إذا كان الخطأ رجع سريعًا. أما الطلب البطيء فلا نمدد
+          // الانتظار إلى ثلاث دورات كاملة.
+          if (transientCapacity && attempt >= 2 && attemptDurationMs > 20_000) throw error;
+
+          setHealth({ status: "checking", endpoint: config.endpoint, errorCode: code, geminiReady: false });
+          if (transientCapacity) {
+            const baseDelay = attempt === 1 ? 2600 : 5600;
+            const jitter = attempt === 1 ? 1200 : 1800;
+            await delay(baseDelay + Math.round(Math.random() * jitter));
+          } else {
+            await delay(900 + Math.round(Math.random() * 500));
+          }
           continue;
         }
         throw error;
@@ -282,7 +309,7 @@
 
   async function analyzePrimaryDetailed(payload) {
     await ensureHealthy();
-    return invoke("analyze_primary", payload, { timeoutMs: 60000, networkRetry: true });
+    return invoke("analyze_primary", payload, { timeoutMs: 60000, networkRetry: true, maxAttempts: 3 });
   }
 
   // يبقى للتوافق مع نتائج v0.9.7 القديمة، لكنه ليس جزءًا من المسار الحالي.

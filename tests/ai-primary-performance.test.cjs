@@ -17,9 +17,12 @@ test('primary AI request is split into bounded reasoning and action segments', (
   assert.match(edge, /primarySegmentOutputLimit\(segment: PrimarySegmentName\)/);
   assert.match(edge, /return segment === "reasoning" \? 2700 : 2300/);
   assert.match(edge, /thinkingConfig: \{ thinkingLevel \}/);
-  assert.match(client, /analyze_primary", payload, \{ timeoutMs: 60000, networkRetry: true \}/);
+  assert.match(client, /analyze_primary", payload, \{ timeoutMs: 60000, networkRetry: true, maxAttempts: 3 \}/);
   assert.match(edge, /PRIMARY_ANALYSIS_DEADLINE_MS = 45_000/);
   assert.match(edge, /PRIMARY_REASONING_ATTEMPT_TIMEOUT_MS = 15_000/);
+  assert.match(client, /transientCapacity && attempt >= 2 && attemptDurationMs > 20_000/);
+  assert.match(client, /const baseDelay = attempt === 1 \? 2600 : 5600/);
+  assert.match(client, /attempt < Math\.min\(maxAttempts, 2\).*AI_PRIMARY_TIMEOUT/s);
   assert.match(edge, /PRIMARY_ACTION_ATTEMPT_TIMEOUT_MS = 13_000/);
   assert.match(edge, /PRIMARY_REPAIR_ATTEMPT_TIMEOUT_MS = 11_000/);
   assert.match(edge, /PRIMARY_REASONING_MODELS = Object\.freeze\(\["gemini-3\.6-flash", "gemini-3\.5-flash"\]\)/);

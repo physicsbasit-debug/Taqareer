@@ -157,6 +157,45 @@ test('primary analysis automatically retries one retryable Edge 503 response ins
   assert.equal(response.result.contractVersion, '6.6.0');
 });
 
+
+test('primary analysis survives two fast retryable Edge 503 responses before succeeding without a manual click', async () => {
+  const operations = [];
+  let analysisCalls = 0;
+  const { api } = loadClient(async (_url, options) => {
+    const body = JSON.parse(options.body);
+    operations.push(body.operation);
+    if (body.operation === 'health') {
+      return jsonResponse({ ok: true, operation: 'health', edgeVersion: '0.15.6', aiKeyConfigured: true, result: { status: 'ready' } });
+    }
+    if (body.operation === 'analyze_primary') {
+      analysisCalls += 1;
+      if (analysisCalls <= 2) {
+        return jsonResponse({
+          ok: false,
+          operation: 'analyze_primary',
+          edgeVersion: '0.15.6',
+          errorCode: 'GEMINI_TRANSIENT',
+          retryable: true,
+          error: 'خدمة التحليل مزدحمة مؤقتًا.',
+        }, 503);
+      }
+      return jsonResponse({
+        ok: true,
+        operation: 'analyze_primary',
+        edgeVersion: '0.15.6',
+        aiKeyConfigured: true,
+        result: { contractVersion: '6.6.0' },
+      });
+    }
+    throw new Error(`unexpected operation ${body.operation}`);
+  });
+  api.saveConfig({ endpoint: 'https://abc123.supabase.co', anonKey: 'anon-key', enabled: true });
+  const response = await api.analyzePrimaryDetailed({ sample: true });
+  assert.deepEqual(operations, ['health', 'analyze_primary', 'analyze_primary', 'analyze_primary']);
+  assert.equal(analysisCalls, 3);
+  assert.equal(response.result.contractVersion, '6.6.0');
+});
+
 test('rejects malformed endpoints before attempting network access', async () => {
   let calls = 0;
   const { api } = loadClient(async () => { calls += 1; return jsonResponse({ ok: true }); });
