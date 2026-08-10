@@ -22,6 +22,19 @@ const obsoletePaths = new Set([
   'src',
   'supabase/functions/generate-source-questions',
 
+  // Recovery guard: Wathiq files accidentally uploaded into Taqareer must never live here.
+  'references',
+  'tsconfig.json',
+  'scripts/build.mjs',
+  'scripts/check-repository-hygiene.mjs',
+  'scripts/serve.mjs',
+  'docs/DRIVE_SOURCE_LAYOUT.md',
+  'docs/HISTORY.md',
+  'docs/OPERATIONS.md',
+  'docs/REPOSITORY_MAINTENANCE.md',
+  'docs/SCIENCE_ASSESSMENT_REFERENCE_2025_2026.md',
+  'supabase/config.toml',
+
   'docs/AI_CONTRACT.md',
   'docs/AI_SETUP.md',
   'docs/ANALYTICAL_RECONCILIATION_ARCHITECTURE.md',
@@ -133,6 +146,30 @@ function collectGarbage() {
 
   for (const item of obsoletePaths) {
     if (fs.existsSync(path.join(root, item))) hits.add(item);
+  }
+
+  // Taqareer has no active .mjs test suite. These belong to the accidentally uploaded Wathiq tree.
+  const testsDir = path.join(root, 'tests');
+  if (fs.existsSync(testsDir)) {
+    for (const name of fs.readdirSync(testsDir)) {
+      if (name.endsWith('.mjs')) hits.add(`tests/${name}`);
+    }
+  }
+
+  // Taqareer keeps one Supabase function only: analyze-educational-form.
+  const supabaseDir = path.join(root, 'supabase');
+  if (fs.existsSync(supabaseDir)) {
+    for (const name of fs.readdirSync(supabaseDir)) {
+      const item = `supabase/${name}`;
+      const abs = path.join(supabaseDir, name);
+      if (fs.lstatSync(abs).isFile() && name.endsWith('.sql')) hits.add(item);
+    }
+  }
+  const functionsDir = path.join(root, 'supabase/functions');
+  if (fs.existsSync(functionsDir)) {
+    for (const name of fs.readdirSync(functionsDir)) {
+      if (name !== 'analyze-educational-form') hits.add(`supabase/functions/${name}`);
+    }
   }
 
   return [...hits].sort();

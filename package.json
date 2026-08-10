@@ -1,24 +1,25 @@
 {
-  "name": "wathiq",
-  "version": "0.0.66",
+  "name": "taqareer",
+  "version": "1.4.6",
   "private": true,
-  "type": "module",
-  "description": "واثق: منصة لإعداد اختبارات مواد العلوم من مصادر موثقة، بخطة تقويم حتمية وتوليد تدريجي دائم وتحقيق علمي ومرئي وتصدير Word/PDF.",
+  "description": "تقارير: محرك تحليل تربوي تكيفي يفهم بنية كل ملف دلاليًا ويختار مسار الحساب والتحليل المناسب بدل فرض طريقة موحدة.",
   "scripts": {
-    "build": "node scripts/build.mjs",
-    "dev": "node scripts/serve.mjs",
-    "test": "npm run build && node --test tests/*.test.mjs",
-    "check": "npm run test",
-    "repo:check": "node scripts/check-repository-hygiene.mjs"
-  },
-  "devDependencies": {
-    "typescript": "^5.8.0"
+    "build": "node scripts/verify-static.cjs",
+    "test": "node --test tests/setup-policy.test.cjs tests/pdf-intake-v2.test.cjs tests/narrative-adapter.test.cjs tests/report-a4-layout.test.cjs tests/report-v2.test.cjs tests/visualization-policy.test.cjs tests/recognition-policy.test.cjs tests/ui-professional-polish.test.cjs tests/ai-recovery-ux.test.cjs tests/scale-semantics-guard.test.cjs tests/semantic-analysis-router.test.cjs tests/multi-subject-results.test.cjs tests/multi-subject-ranking.test.cjs tests/multi-subject-report.test.cjs tests/multi-subject-workbook-intake.test.cjs tests/multi-subject-pdf-intake.test.cjs tests/ai-network-transport.test.cjs tests/ai-primary-request-lifecycle.test.cjs tests/ai-cors-contract.test.cjs tests/ai-rate-limit-containment.test.cjs tests/ai-transient-e2e.test.cjs tests/edge-network-health.test.cjs tests/ai-primary-analysis.test.cjs tests/report-ai-primary.test.cjs tests/ai-primary-performance.test.cjs tests/edge-primary-runtime.test.cjs tests/docx-metadata.test.cjs tests/narrative-context.test.cjs tests/multi-visit-pdf.test.cjs tests/educational-reasoning-guardrails.test.cjs tests/version-cache-coherence.test.cjs tests/report-presentation-cleanup.test.cjs tests/report-final-print-polish.test.cjs && node tests/mastery-metrics.test.js && node tests/mastery-integration.test.js && node tests/deep-analysis.test.js && node tests/chart-completeness.test.js",
+    "check:syntax": "node scripts/check-syntax.cjs",
+    "check:static": "node scripts/verify-static.cjs",
+    "check": "npm run test && npm run check:syntax && npm run check:contracts && npm run check:static && npm run check:hygiene",
+    "check:contracts": "node scripts/check-contracts.cjs",
+    "check:hygiene": "node scripts/repository-hygiene.cjs"
   },
   "engines": {
     "node": ">=20"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/physicsbasit-debug/wathiq.git"
+    "url": "https://github.com/physicsbasit-debug/Taqareer.git"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
   }
 }
