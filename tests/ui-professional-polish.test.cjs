@@ -32,6 +32,17 @@ test('public workspace hides development clutter and exposes compact review cont
   assert.match(index, /class="setup-support-column setup-support-plan"/);
   assert.match(css, /\.setup-support-grid \{/);
   assert.match(css, /grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(index, /class="setup-heading-copy"/);
+  assert.match(index, /class="setup-title-line"/);
+  assert.match(index, /class="inline-message setup-status-message hidden"/);
+  assert.match(index, /class="soft-note info-note"/);
+  assert.match(css, /#panel-3 \.setup-grid \{[\s\S]*grid-template-columns: minmax\(0, 1fr\)/);
+  assert.match(css, /#panel-3 #measurementCard \.form-grid \{[\s\S]*repeat\(4, minmax\(0, 1fr\)\)/);
+  assert.match(css, /setup-status-message:not\(\.error\)/);
+  assert.match(css, /prefers-reduced-motion/);
+  assert.match(css, /#panel-1 \.format-grid \{[\s\S]*repeat\(3, minmax\(0, 1fr\)\)/);
+  assert.match(css, /textarea:focus, input:focus, select:focus/);
+  assert.match(css, /primary:hover:not\(:disabled\)/);
 });
 
 test('public terminology normalizes leaked implementation-language fragments', () => {

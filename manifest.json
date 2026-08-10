@@ -1,8 +1,8 @@
 {
   "app": "تقارير",
-  "version": "1.4.1",
-  "phase": "Print Report V2 Production",
-  "releaseName": "Page-Centric Educational Report Renderer",
+  "version": "1.4.2",
+  "phase": "Workspace Visual Polish",
+  "releaseName": "Analysis Setup Workspace Visual Polish",
   "buildType": "static-github-pages-plus-supabase-edge-function",
   "supportedInputs": {
     "table": [

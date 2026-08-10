@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="تقارير - منصة للتحليل التربوي للبيانات والاستمارات التعليمية" />
-  <title>تقارير | منصة التحليل التربوي v1.4.1</title>
-  <link rel="stylesheet" href="assets/styles.css?v=1.4.1" />
+  <title>تقارير | منصة التحليل التربوي v1.4.2</title>
+  <link rel="stylesheet" href="assets/styles.css?v=1.4.2" />
 </head>
 <body>
   <div class="app-shell">
@@ -18,7 +18,7 @@
         </div>
       </a>
       <div class="top-actions">
-        <span class="version-badge version-badge-muted">v1.4.1</span>
+        <span class="version-badge version-badge-muted">v1.4.2</span>
         <span id="aiHeaderStatus" class="version-badge">خدمة التحليل غير مربوطة</span>
         <button id="openAiSettingsTopBtn" class="ghost-button top-action-button" type="button">إعداد خدمة التحليل</button>
         <button id="resetTopBtn" class="ghost-button top-action-button top-action-primary" type="button">بدء تحليل جديد</button>
@@ -196,11 +196,14 @@
 
       <section id="panel-3" class="panel">
         <div class="panel-heading">
-          <div>
+          <div class="setup-heading-copy">
             <span class="eyebrow">الخطوة الثالثة</span>
-            <h3>أكمل الإعدادات الضرورية فقط</h3>
+            <div class="setup-title-line">
+              <h3>أكمل الإعدادات الضرورية فقط</h3>
+              <span class="ai-chip">خطة تحليل متكيفة</span>
+            </div>
+            <p class="setup-heading-note">اضبط ما يحتاجه هذا الملف فقط، ثم راجع الخطة والأدلة قبل التنفيذ.</p>
           </div>
-          <span class="ai-chip">خطة تحليل متكيفة</span>
         </div>
 
         <div class="setup-grid">
@@ -212,7 +215,7 @@
               <label><span>حد الإتقان (%)</span><input id="masteryThresholdInput" type="number" min="1" max="100" step="1" value="75" /></label>
               <label><span>عمود المستوى، إن وُجد</span><select id="levelColumnSelect"></select></label>
             </div>
-            <div class="soft-note">لا يفترض النظام الدرجة الكلية من أعلى درجة ظهرت. أكّدها فقط عند رغبتك في حساب النسب والإتقان.</div>
+            <div class="soft-note info-note">لا يفترض النظام الدرجة الكلية من أعلى درجة ظهرت. أكّدها فقط عند رغبتك في حساب النسب والإتقان.</div>
           </article>
 
           <article id="multiSubjectWorkspaceCard" class="card hidden">
@@ -256,13 +259,13 @@
                   <button id="openAiSettingsBtn" class="secondary compact" type="button">إعداد الاتصال واختباره</button>
                 </div>
                 <ul class="clean-list"><li>قراءة الصور وملفات PDF الممسوحة.</li><li>فهم نوع النموذج وهدفه حتى عند ظهور نوع جديد.</li><li>ربط الاستنتاجات بمراجع صفوف أو أسطر أو مؤشرات.</li><li>إنشاء تشخيص واستنتاجات وفرضيات وتدخلات مخصصة للسياق.</li></ul>
-                <div class="soft-note">تتم المعالجة الخارجية بعد تطبيق ضوابط الخصوصية، وتبقى أسرار الخدمة خارج المتصفح.</div>
+                <div class="soft-note privacy-note">تتم المعالجة الخارجية بعد تطبيق ضوابط الخصوصية، وتبقى أسرار الخدمة خارج المتصفح.</div>
               </article>
             </div>
           </div>
         </div>
 
-        <div id="setupMessage" class="inline-message hidden"></div>
+        <div id="setupMessage" class="inline-message setup-status-message hidden" role="status" aria-live="polite"></div>
         <div class="actions">
           <button id="backToReviewBtn" class="secondary" type="button">رجوع</button>
           <button id="runAnalysisBtn" class="primary" type="button">تنفيذ التحليل</button>
@@ -352,7 +355,7 @@
 
     </main>
 
-    <footer class="app-footer"><span>تقارير · v1.4.1</span><span>الحسابات المحلية مصدر الحقيقة، والقراءة التربوية قابلة للمراجعة.</span></footer>
+    <footer class="app-footer"><span>تقارير · v1.4.2</span><span>الحسابات المحلية مصدر الحقيقة، والقراءة التربوية قابلة للمراجعة.</span></footer>
   </div>
 
   <dialog id="sheetDialog">
@@ -405,25 +408,25 @@
     </form>
   </dialog>
 
-  <script src="assets/runtime-config.js?v=1.4.1"></script>
-  <script src="assets/xlsx-lite.js?v=1.4.1"></script>
-  <script src="assets/pdf-table-structure.js?v=1.4.1"></script>
-  <script src="assets/pdf-column-alignment.js?v=1.4.1"></script>
-  <script src="assets/pdf-intake-v2.js?v=1.4.1"></script>
-  <script src="assets/document-lite.js?v=1.4.1"></script>
-  <script src="assets/performance-pipeline.js?v=1.4.1"></script>
-  <script src="assets/analysis-profile.js?v=1.4.1"></script>
-  <script src="assets/recognition-policy.js?v=1.4.1"></script>
-  <script src="assets/display-terms.js?v=1.4.1"></script>
-  <script src="assets/setup-policy.js?v=1.4.1"></script>
-  <script src="assets/ai-client.js?v=1.4.1"></script>
-  <script src="assets/mastery-metrics.js?v=1.4.1"></script>
-  <script src="assets/visualization-policy.js?v=1.4.1"></script>
-  <script src="assets/deep-analysis.js?v=1.4.1"></script>
-  <script src="assets/analysis-reconciliation.js?v=1.4.1"></script>
-  <script src="assets/deep-analysis-orchestrator.js?v=1.4.1"></script>
-  <script src="assets/report-system.js?v=1.4.1"></script>
-  <script src="assets/print-report-v2.js?v=1.4.1"></script>
-  <script src="assets/app.js?v=1.4.1"></script>
+  <script src="assets/runtime-config.js?v=1.4.2"></script>
+  <script src="assets/xlsx-lite.js?v=1.4.2"></script>
+  <script src="assets/pdf-table-structure.js?v=1.4.2"></script>
+  <script src="assets/pdf-column-alignment.js?v=1.4.2"></script>
+  <script src="assets/pdf-intake-v2.js?v=1.4.2"></script>
+  <script src="assets/document-lite.js?v=1.4.2"></script>
+  <script src="assets/performance-pipeline.js?v=1.4.2"></script>
+  <script src="assets/analysis-profile.js?v=1.4.2"></script>
+  <script src="assets/recognition-policy.js?v=1.4.2"></script>
+  <script src="assets/display-terms.js?v=1.4.2"></script>
+  <script src="assets/setup-policy.js?v=1.4.2"></script>
+  <script src="assets/ai-client.js?v=1.4.2"></script>
+  <script src="assets/mastery-metrics.js?v=1.4.2"></script>
+  <script src="assets/visualization-policy.js?v=1.4.2"></script>
+  <script src="assets/deep-analysis.js?v=1.4.2"></script>
+  <script src="assets/analysis-reconciliation.js?v=1.4.2"></script>
+  <script src="assets/deep-analysis-orchestrator.js?v=1.4.2"></script>
+  <script src="assets/report-system.js?v=1.4.2"></script>
+  <script src="assets/print-report-v2.js?v=1.4.2"></script>
+  <script src="assets/app.js?v=1.4.2"></script>
 </body>
 </html>
