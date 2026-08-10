@@ -169,22 +169,23 @@
   }
 
   const SCORE_SAMPLE_TYPES = new Set(["student_results", "single_subject", "assessment_component"]);
+  const SMALL_SAMPLE_TYPES = new Set([...SCORE_SAMPLE_TYPES, "multi_subject_results"]);
 
   function buildSampleGuard(n) {
     const count = Math.max(0, Math.trunc(Number(n) || 0));
     if (count < 5) return {
       applied: true, mode: "case_description", n: count, inferenceStrength: "محدودة", confidenceCap: "منخفضة",
-      allowGeneralization: false, allowBoxPlot: false, allowSensitivity: false,
+      allowGeneralization: false, allowBoxPlot: false, allowSensitivity: false, allowCorrelation: false,
       notice: `العينة صغيرة جدًا (${count} حالات)؛ النتائج تصف الحالات المتاحة فقط ولا تُعمم على الصف أو المجتمع.`
     };
     if (count < 15) return {
       applied: true, mode: "exploratory_small_sample", n: count, inferenceStrength: "متوسطة إلى محدودة", confidenceCap: "متوسطة",
-      allowGeneralization: false, allowBoxPlot: false, allowSensitivity: true,
+      allowGeneralization: false, allowBoxPlot: false, allowSensitivity: true, allowCorrelation: false,
       notice: `العينة محدودة (${count} حالة)؛ التحليل استكشافي ويحتاج عينة أوسع قبل التعميم.`
     };
     return {
       applied: false, mode: "standard", n: count, inferenceStrength: count >= 30 ? "مرتفعة للتحليل الوصفي" : "متوسطة", confidenceCap: "مرتفعة",
-      allowGeneralization: true, allowBoxPlot: true, allowSensitivity: true, notice: ""
+      allowGeneralization: true, allowBoxPlot: true, allowSensitivity: true, allowCorrelation: true, notice: ""
     };
   }
 
@@ -230,8 +231,12 @@
   }
 
   function applySmallSampleGuard(result, context) {
-    if (!SCORE_SAMPLE_TYPES.has(context.typeId)) return;
-    const guard = buildSampleGuard(result.n);
+    if (!SMALL_SAMPLE_TYPES.has(context.typeId)) return;
+    const metricCount = (result.metrics || []).find(item => item.id === "studentCount" || item.id === "n")?.value;
+    const sampleCount = Number.isFinite(Number(result.n)) ? Number(result.n)
+      : Number.isFinite(Number(result.scopeContext?.studentCount)) ? Number(result.scopeContext.studentCount)
+      : Number(metricCount);
+    const guard = buildSampleGuard(sampleCount);
     result.sampleGuard = guard;
     result.reasoningGuardrails = { ...(result.reasoningGuardrails || {}), inferenceStrength: guard.inferenceStrength, sampleGuard: guard };
     if (!guard.applied) return;
@@ -248,6 +253,36 @@
       if (tool.id === "sensitivity" && !guard.allowSensitivity) return { ...tool, conditionsMet: false, reason: "حساسية معيار الإتقان لا تُستخدم لاتخاذ قرار جماعي مع عينة صغيرة جدًا." };
       return tool;
     });
+    if (context.typeId === "multi_subject_results") {
+      if (!guard.allowCorrelation) {
+        result.correlations = [];
+        result.limitations = [...new Set([...(result.limitations || []), `لا تُستخدم معاملات الارتباط بين المواد مع عينة من ${guard.n} سجلات؛ يلزم عدد أكبر قبل تفسير العلاقات الوصفية.`])];
+      }
+      if (guard.mode === "case_description") {
+        const subjectCount = Number((result.metrics || []).find(item => item.id === "subjectCount")?.value || result.scopeContext?.subjectCount || 0);
+        const scoreCount = Number((result.metrics || []).find(item => item.id === "scoreCount")?.value || 0);
+        const selectedSubject = String(result.scopeContext?.selectedSubject || "").trim();
+        result.executiveTitle = "وصف محدود لسجلات الطلبة المتاحة";
+        result.executiveSummary = selectedSubject
+          ? `يتضمن المصدر ${guard.n} سجلات صالحة فقط في مادة ${selectedSubject}. تعرض النتائج هذه الحالات كما وردت ولا تُعمم على الصف أو المدرسة.`
+          : `يتضمن المصدر ${guard.n} سجلات صالحة فقط عبر ${subjectCount} مادة و${scoreCount} درجة قابلة للتحليل. تعرض النتائج هذه الحالات كما وردت ولا تُعمم على الصف أو المدرسة.`;
+        const directEvidence = ["metric:studentCount", ...(subjectCount ? ["metric:subjectCount"] : []), ...(scoreCount ? ["metric:scoreCount"] : [])];
+        result.findings = [finding(
+          "وصف السجلات المتاحة",
+          selectedSubject
+            ? `تتوفر ${guard.n} درجات صالحة في مادة ${selectedSubject}؛ أي نسبة أو متوسط يصف هذه الحالات فقط.`
+            : `تتوفر ${guard.n} سجلات طلاب و${subjectCount} مادة و${scoreCount} درجة صالحة للتحليل داخل الملف الحالي فقط.`,
+          "مرتفعة",
+          "الأرقام مباشرة من السجلات المرفوعة، لكن حجم العينة لا يسمح بتقدير نمط عام للصف أو المدرسة.",
+          "مراجعة الحالات فرديًا وجمع عينة أوسع قبل اعتماد قرار جماعي.",
+          "medium",
+          directEvidence,
+          [guard.notice]
+        )];
+        result.improvementPlan = (result.improvementPlan || []).slice(0, 1);
+      }
+      return;
+    }
     if (guard.mode === "case_description") {
       const masteryText = Number.isFinite(result.masteryPct)
         ? `حقق ${result.masteryCount} من أصل ${result.n} حالات حد الإتقان المحدد (${result.masteryPctDisplay}%)؛ هذه نسبة وصفية للحالات المتاحة وليست تقديرًا لمجتمع أكبر.`
@@ -783,6 +818,7 @@
       : context.rows.map((_, index) => index);
     const rows = rowIndexes.map(index => ({ row: context.rows[index], index })).filter(item => item.row);
     if (!rows.length) throw new Error("لا توجد سجلات طلاب صالحة للتحليل متعدد المواد.");
+    result.n = rows.length;
 
     const options = context.analysisOptions && typeof context.analysisOptions === "object" ? context.analysisOptions : {};
     const analysisMode = options.mode === "subject" ? "subject" : "all";

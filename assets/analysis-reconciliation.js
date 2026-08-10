@@ -1069,6 +1069,9 @@
       })
       .filter(item => item.issue && item.targetGroup && item.action && item.successIndicator && item.evidenceRefs.length);
 
+    const activeSampleGuard = sampleGuardFromLocal(localEvidence);
+    if (activeSampleGuard?.mode === "case_description") result.improvementPlan = result.improvementPlan.slice(0, 1);
+
     result.monitoringPlan = (Array.isArray(guardedPrimary.monitoringPlan) ? guardedPrimary.monitoringPlan : [])
       .slice(0, 8)
       .map((item, index) => ({
@@ -1084,7 +1087,7 @@
       }))
       .filter(item => item.stage && item.measure);
 
-    const minimumInterventions = sampleGuardFromLocal(localEvidence)?.mode === "case_description" ? 1 : 2;
+    const minimumInterventions = activeSampleGuard?.mode === "case_description" ? 1 : 2;
     if (result.diagnosticSections.length < 2 || result.findings.length < 2 || result.improvementPlan.length < minimumInterventions || result.monitoringPlan.length < 3) {
       throw new Error(`رفض محرك التحقق تحليلًا لم يقدم وحدات قرار كافية و${minimumInterventions} تدخل/تدخلات مدعومة وثلاث مراحل متابعة مرتبطة بالأدلة.`);
     }

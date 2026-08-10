@@ -145,6 +145,15 @@ test('client reasoning guards allow one intervention for case-description sample
       { stage: 'إعادة قياس', timing: 'بعد أسبوعين', measure: 'مقارنة بخط الأساس.', owner: 'المعلم', evidenceRefs: ['metric:masteryPct'] },
     ], additionalCautions: [], missingDataRequests: [],
   };
+  primary.interventions.push({
+    ...primary.interventions[0],
+    priority: 'متوسطة',
+    issue: 'إثراء الحالة المتقنة',
+    targetGroup: 'الحالة المتقنة',
+    targetGroupIds: ['mastery'],
+    action: 'مهمة إثرائية فردية قصيرة.',
+    evidenceRefs: ['metric:masteryCount', 'metric:n'],
+  });
   const analysis = window.TaqareerReconciliation.composePrimary(local, primary, { availableEvidenceRefs: Object.keys(local.evidenceMap) });
   assert.equal(analysis.improvementPlan.length, 1);
   assert.equal(analysis.executiveConfidence, 'منخفضة');
@@ -153,4 +162,42 @@ test('client reasoning guards allow one intervention for case-description sample
   assert.equal(analysis.improvementPlan[0].successMetric.targetValue, 0);
   assert.equal(analysis.improvementPlan[0].targetBasis, 'مقارنة بخط الأساس');
   assert.match(analysis.limitations.join(' '), /لا تُعمم/);
+});
+
+test('multi-subject n<5 uses case-description guard and suppresses correlations', () => {
+  const window = deepWindow();
+  const rows = [
+    { 'اسم الطالب':'طالب 1', 'الفيزياء - الدرجة':95, 'الفيزياء - المستوى':'أ', 'الكيمياء - الدرجة':70, 'الكيمياء - المستوى':'ج', 'الأحياء - الدرجة':55, 'الأحياء - المستوى':'د' },
+    { 'اسم الطالب':'طالب 2', 'الفيزياء - الدرجة':85, 'الفيزياء - المستوى':'ب', 'الكيمياء - الدرجة':65, 'الكيمياء - المستوى':'ج', 'الأحياء - الدرجة':50, 'الأحياء - المستوى':'د' },
+    { 'اسم الطالب':'طالب 3', 'الفيزياء - الدرجة':75, 'الفيزياء - المستوى':'ج', 'الكيمياء - الدرجة':60, 'الكيمياء - المستوى':'د', 'الأحياء - الدرجة':45, 'الأحياء - المستوى':'هـ' },
+    { 'اسم الطالب':'طالب 4', 'الفيزياء - الدرجة':65, 'الفيزياء - المستوى':'ج', 'الكيمياء - الدرجة':55, 'الكيمياء - المستوى':'د', 'الأحياء - الدرجة':40, 'الأحياء - المستوى':'هـ' },
+  ];
+  const result = window.TaqareerDeepAnalytics.analyze({
+    typeId: 'multi_subject_results',
+    headers: Object.keys(rows[0]),
+    rows,
+    sourceMeta: { normalization: { levelSource: 'reported' }, metadata: { grade: 'العاشر', period: 'الدور الأول', academicYear: '2025/2026' } },
+    analysisProfile: {
+      columnRoles: {
+        studentName: 'اسم الطالب',
+        subjects: [
+          { subject:'الفيزياء', scoreHeader:'الفيزياء - الدرجة', levelHeader:'الفيزياء - المستوى' },
+          { subject:'الكيمياء', scoreHeader:'الكيمياء - الدرجة', levelHeader:'الكيمياء - المستوى' },
+          { subject:'الأحياء', scoreHeader:'الأحياء - الدرجة', levelHeader:'الأحياء - المستوى' },
+        ],
+      },
+      rowRoles: { dataRowIndexes:[0,1,2,3] },
+    },
+    analysisOptions: { mode:'all', includeSubjectTopTen:false, includeSchoolRanking:false },
+    quality: {},
+  });
+  assert.equal(result.n, 4);
+  assert.equal(result.sampleGuard.mode, 'case_description');
+  assert.equal(result.sampleGuard.allowGeneralization, false);
+  assert.equal(result.reasoningGuardrails.inferenceStrength, 'محدودة');
+  assert.deepEqual(Array.from(result.correlations || []), []);
+  assert.match(result.executiveTitle, /وصف محدود/);
+  assert.match(result.executiveSummary, /لا تُعمم/);
+  assert.equal(result.findings.length, 1);
+  assert.match(result.limitations.join(' '), /معاملات الارتباط/);
 });

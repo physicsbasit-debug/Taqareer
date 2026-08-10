@@ -1,6 +1,6 @@
 {
   "app": "تقارير",
-  "version": "1.4.5",
+  "version": "1.4.6",
   "phase": "Educational Reasoning Guardrails",
   "releaseName": "Evidence-Calibrated Educational Reasoning",
   "buildType": "static-github-pages-plus-supabase-edge-function",

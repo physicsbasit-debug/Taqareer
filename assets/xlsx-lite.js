@@ -612,10 +612,11 @@
       samples.push(values);
     }
     const candidates = [];
+    const minimumEvidenceRows = samples.length >= 4 ? 4 : Math.max(2, samples.length);
     for (let col = 0; col + 1 < maxColumns; col++) {
       for (const orientation of ["level-score", "score-level"]) {
         const candidate = pairCandidate(samples, col, col + 1, orientation);
-        if (candidate.considered >= 4 && candidate.ratio >= 0.72) candidates.push(candidate);
+        if (candidate.considered >= minimumEvidenceRows && candidate.ratio >= 0.72) candidates.push(candidate);
       }
     }
     if (!candidates.length) return null;
@@ -655,7 +656,8 @@
     for (let col = 0; col < maxColumns; col++) {
       if (pairColumns.has(col)) continue;
       const values = sampleRows.map(row => cleanText(row[col])).filter(Boolean);
-      if (values.length < Math.max(3, Math.ceil(sampleRows.length * .2))) continue;
+      const minimumIdentityEvidence = sampleRows.length >= 3 ? 3 : Math.max(2, sampleRows.length);
+      if (values.length < minimumIdentityEvidence) continue;
       const numericValues = values.filter(value => /^\d+$/.test(value)).map(Number);
       const numericRatio = numericValues.length / values.length;
       const avgLength = values.reduce((sum, value) => sum + value.length, 0) / values.length;
@@ -813,7 +815,7 @@
       numericHits += hits;
       if (hits >= Math.max(2, Math.ceil(subjects.length * .55))) validRows += 1;
     }
-    if (validRows < 5) return null;
+    if (validRows < 2) return null;
     const score = subjects.length * 150 + validRows * 5 + numericHits / Math.max(1, considered) - startRow;
     return { startRow, height, headers, subjects, identities: { ...identities, name: nameCol }, dataStartRow, validRows, score };
   }
@@ -858,7 +860,7 @@
       }
       rows.push(record);
     }
-    if (rows.length < 5) return null;
+    if (rows.length < 2) return null;
     const metadata = metadataFromHeaderRows(layout, dataStartRow);
     const scoreCount = rows.reduce((sum, row) => sum + subjects.filter(item => Number.isFinite(numericValue(row[`${item.subject} - الدرجة`]))).length, 0);
     return {
@@ -967,7 +969,7 @@
       });
       rows.push(record);
     }
-    if (rows.length < 5) return null;
+    if (rows.length < 2) return null;
     const metadata = headerMetadata(layout.matrix[firstHeaderRow] || []);
     const scoreCount = rows.reduce((sum, row) => sum + subjects.filter(subject => Number.isFinite(numericValue(row[`${subject} - الدرجة`]))).length, 0);
     return {

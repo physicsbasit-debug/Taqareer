@@ -3,7 +3,7 @@
 
   const STORAGE_KEY = "taqareer.ai.config.v1";
   const ACCESS_KEY = "taqareer.ai.access-code.v1";
-  const CLIENT_VERSION = "1.4.5";
+  const CLIENT_VERSION = "1.4.6";
   const PRIMARY_ANALYSIS_CLIENT_TIMEOUT_MS = 50_000;
   const PRIMARY_ANALYSIS_CLIENT_MAX_ATTEMPTS = 1;
   const PRIMARY_ANALYSIS_FAST_CAPACITY_REPLAY_MAX_MS = 12_000;

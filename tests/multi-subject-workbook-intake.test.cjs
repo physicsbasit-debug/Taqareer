@@ -121,3 +121,50 @@ test('browser reader detects a dominant comprehensive score-only sheet inside a 
   assert.equal(comprehensive.normalization.subjectCount, 5);
   assert.equal(comprehensive.headers.length, 15);
 });
+
+test('paired multi-subject ministry layout remains specialized for 2-4 student records', () => {
+  const xlsx = loadXlsx();
+  const header = [
+    'الكــل','الشعبة :','العاشر','الصف :','الدور الأول','الفترة :','م',2026,'/',2025,'العام الدراسي :',
+    'الطلبه المنقولون','المهارات الحياتية','تقنية المعلومات','المهارات الموسيقية','الفنون التشكيلية','الرياضة المدرسية','الدراسات الاجتماعية',
+    'الكيمياء','الفيزياء','الاحياء','الرياضيات','اللغة الانجليزية','اللغة العربية','التربية الاسلامية','خدمة التوجيه المهني','المادة','الاسم',null,'م',
+    'المستوى','الدرجة','المستوى','الدرجة','المستوى','الدرجة','المستوى','الدرجة','المستوى','الدرجة','المستوى','الدرجة','المستوى','الدرجة',
+    'المستوى','الدرجة','المستوى','الدرجة','المستوى','الدرجة','المستوى','الدرجة','المستوى','الدرجة','المستوى','الدرجة','المستوى','الدرجة','المستوى','الدرجة','القيد','الجنسية'
+  ];
+  const makeRow = (index, offset) => [
+    '', '', 'أ', 96-offset, 'ب', 86-offset, 'ج', 76-offset, 'د', 66-offset, 'أ', 95-offset, 'ب', 85-offset, 'ج', 75-offset,
+    'د', 65-offset, 'أ', 94-offset, 'ب', 84-offset, 'ج', 74-offset, 'د', 64-offset, 'أ', 93-offset,
+    'منقول', 'عماني', `طالب تجريبي ${index}`, index,
+  ];
+  const data = [makeRow(1,0), makeRow(2,1), makeRow(3,2), makeRow(4,3)];
+
+  for (const count of [2, 3, 4]) {
+    const sheet = xlsx.normalizeMatrix([header, ...data.slice(0, count)], { rightToLeft: true });
+    assert.equal(sheet.specializedType, 'multi_subject_results', `count=${count}`);
+    assert.equal(sheet.normalization.engine, 'multi-subject-results-normalizer-v2', `count=${count}`);
+    assert.equal(sheet.rows.length, count, `count=${count}`);
+    assert.equal(sheet.normalization.subjectCount, 13, `count=${count}`);
+    assert.equal(sheet.metadata.grade, 'العاشر', `count=${count}`);
+    assert.equal(sheet.rows[0]['اسم الطالب'], 'طالب تجريبي 1', `count=${count}`);
+    assert.equal(sheet.rows[0]['الكيمياء - الدرجة'], '75', `count=${count}`);
+  }
+});
+
+test('score-only multi-subject layout remains specialized for 2-4 student records when identity headers are explicit', () => {
+  const xlsx = loadXlsx();
+  const header = [
+    'الكــل','الشعبة :','العاشر','الصف :','الدور الأول','الفترة :','م',2026,'/',2025,'العام الدراسي :',
+    'اللغة العربية','الرياضيات','الفيزياء','الكيمياء','الاحياء','الاسم','الجنسية','القيد'
+  ];
+  const data = Array.from({ length: 4 }, (_, i) => [
+    '', '', '', '', '', '', i + 1, '', '', '', '',
+    90 - i, 82 - i, 74 - i, 66 - i, 58 + i, `طالب صغير ${i + 1}`, 'عماني', 'منقول'
+  ]);
+  for (const count of [2, 3, 4]) {
+    const sheet = xlsx.normalizeMatrix([header, ...data.slice(0, count)], { rightToLeft: true });
+    assert.equal(sheet.specializedType, 'multi_subject_results', `count=${count}`);
+    assert.equal(sheet.normalization.engine, 'multi-subject-results-normalizer-v3', `count=${count}`);
+    assert.equal(sheet.rows.length, count, `count=${count}`);
+    assert.equal(sheet.normalization.subjectCount, 5, `count=${count}`);
+  }
+});
