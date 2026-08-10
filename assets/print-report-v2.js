@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.4.3";
+  const VERSION = "1.4.4";
   const RENDERER_ID = "print-report-v2";
 
   function esc(value) {

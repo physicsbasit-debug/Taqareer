@@ -82,8 +82,8 @@ button { cursor: pointer; }
 .format-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 12px; }
 .format-card { display: flex; justify-content: space-between; gap: 10px; padding: 13px; border: 1px solid var(--line); border-radius: 13px; background: #fff; }
 .format-card span { font-size: 11px; color: var(--muted); }
-.format-card.ready { border-color: #c8e7df; background: #f4fbf9; }
-.format-card.ready span { color: var(--teal); }
+.format-card.ready, .format-card.ai-ready { border-color: #c8e7df; background: #f4fbf9; }
+.format-card.ready span, .format-card.ai-ready span { color: var(--teal); }
 .field-label { display: block; margin-bottom: 8px; font-weight: 800; }
 textarea, input, select { width: 100%; border: 1px solid #ccd4df; border-radius: 12px; padding: 11px 12px; background: #fff; color: var(--ink); }
 textarea { resize: vertical; direction: rtl; line-height: 1.7; }
@@ -246,8 +246,7 @@ dialog::backdrop { background: rgba(12,22,42,.5); backdrop-filter: blur(3px); }
 
 /* Phase 1-B1: live AI gateway, OCR and evidence-linked analysis */
 .version-badge.ai-live { color: #075e54; background: #ddf7ef; border-color: #afe6d7; }
-.format-card.ai-ready { border-color: #cfd8ff; background: #f4f6ff; }
-.format-card.ai-ready span { color: #334b9b; }
+/* ai-ready remains a semantic intake marker only; visual treatment is unified with ready above. */
 .ai-controls { display: grid; gap: 10px; margin: 15px 0; }
 .switch-row { display: flex; align-items: center; gap: 9px; color: #344054; font-size: 12px; font-weight: 800; }
 .switch-row input { width: 17px; height: 17px; accent-color: var(--primary); }

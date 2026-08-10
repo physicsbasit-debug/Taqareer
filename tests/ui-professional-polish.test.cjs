@@ -49,6 +49,9 @@ test('public workspace hides development clutter and exposes compact review cont
   assert.match(css, /setup-status-message:not\(\.error\)/);
   assert.match(css, /prefers-reduced-motion/);
   assert.match(css, /#panel-1 \.format-grid \{[\s\S]*repeat\(3, minmax\(0, 1fr\)\)/);
+  assert.match(css, /\.format-card\.ready, \.format-card\.ai-ready \{[^}]*border-color: #c8e7df;[^}]*background: #f4fbf9;/);
+  assert.match(css, /\.format-card\.ready span, \.format-card\.ai-ready span \{[^}]*color: var\(--teal\);/);
+  assert.doesNotMatch(css, /\.format-card\.ai-ready \{[^}]*#cfd8ff|\.format-card\.ai-ready \{[^}]*#f4f6ff/);
   assert.match(css, /textarea:focus, input:focus, select:focus/);
   assert.match(css, /primary:hover:not\(:disabled\)/);
 });

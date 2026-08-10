@@ -1,8 +1,8 @@
 {
   "app": "تقارير",
-  "version": "1.4.3",
-  "phase": "Single Full Report Path",
-  "releaseName": "Remove Redundant Executive Report Action",
+  "version": "1.4.4",
+  "phase": "Unified Intake Card Styling",
+  "releaseName": "Unify Visual Treatment for Supported Input Formats",
   "buildType": "static-github-pages-plus-supabase-edge-function",
   "supportedInputs": {
     "table": [
