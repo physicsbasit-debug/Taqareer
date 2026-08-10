@@ -106,6 +106,8 @@ test('Print Report V2 produces page-centric A4 HTML with inference ranks and ful
   const pages = [...html.matchAll(/<section class="sheet /g)].length;
   assert.ok(pages >= 7 && pages <= 12, `unexpected V2 full page count: ${pages}`);
   assert.match(html, /Print Report V2/);
+  assert.match(html, /الخلاصة العامة/);
+  assert.match(html, /الحكم العام/);
   assert.match(html, /@page\{size:A4 portrait;margin:0\}/);
   assert.match(html, /مؤكد من البيانات/);
   assert.match(html, /استنتاج مدعوم/);
@@ -121,6 +123,7 @@ test('Print Report V2 executive report stays within five A4 pages and excludes r
   assert.ok(pages >= 3 && pages <= 5, `unexpected V2 executive page count: ${pages}`);
   assert.doesNotMatch(html, /العشرة الأوائل على مستوى المدرسة/);
   assert.match(html, /خطة التحسين والمتابعة/);
+  assert.match(html, /الملخص التنفيذي/);
 });
 
 test('Print Report V2 contains a runtime integrity guard for page overflow and semantic block counts', () => {

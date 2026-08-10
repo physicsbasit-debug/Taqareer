@@ -770,7 +770,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "1.4.2",
+      appVersion: "1.4.3",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -1657,7 +1657,7 @@
     if (!window.TaqareerReconciliation?.composePrimary) throw new Error("محرك التحقق من التحليل الذكي غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "1.4.2",
+      appVersion: "1.4.3",
       pipeline: {
         mode: "ai-decision-core-v1",
         instruction: "المحرك المحلي يحسب المؤشرات والرسوم. يبني Gemini نواة القرار التشخيصية مرة واحدة، ثم يبني الخادم التدخلات والمتابعة من القرار والأرقام الحتمية ويطبق حراس الأدلة قبل العرض."
@@ -2325,7 +2325,7 @@
     if(showSuggested){$("aiSuggestedTypeName").textContent=suggested.nameAr||"نوع تحليلي جديد";$("aiSuggestedTypePurpose").textContent=suggested.purpose||"يحتاج الغرض التربوي إلى مراجعة المستخدم.";const tags=[...(suggested.requiredFields||[]).map(item=>`حقل: ${item}`),...(suggested.analysisFamily||[]).map(item=>`تحليل: ${item}`)];$("aiSuggestedTypeMeta").innerHTML=tags.map(item=>`<span>${escapeHtml(item)}</span>`).join("");}
   }
 
-  function openOfficialReport(reportMode = "full") {
+  function openOfficialReport() {
     if (!state.reconciledAnalysis?._reconciliation?.aiPrimary) {
       alert("لا يوجد تحليل تربوي مكتمل لإنشاء التقرير الرسمي.");
       return;
@@ -2345,7 +2345,7 @@
         headers: state.headers,
         rows: state.rows
       };
-      const reportOptions = { reportMode: reportMode === "executive" ? "executive" : "full" };
+      const reportOptions = { reportMode: "full" };
       const renderer = window.TaqareerPrintReportV2?.openReport ? window.TaqareerPrintReportV2 : window.TaqareerReports;
       try {
         renderer.openReport(reportContext, reportOptions);
@@ -2365,7 +2365,7 @@
   function exportAnalysis() {
     const payload = {
       app: "تقارير",
-      version: "1.4.2",
+      version: "1.4.3",
       generatedAt: new Date().toISOString(),
       source: state.sourceName,
       sourceMeta: state.sourceMeta,
@@ -2378,7 +2378,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v1.4.2.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v1.4.3.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
@@ -2458,7 +2458,7 @@
     $("includeSchoolRankingInput").addEventListener("change", renderMultiSubjectWorkspace);
     $("backToReviewBtn").addEventListener("click",()=>showPanel(2));
     $("runAnalysisBtn").addEventListener("click",runAnalysis);
-    $("restartBtn").addEventListener("click",reset); $("resetTopBtn").addEventListener("click",reset); $("exportBtn").addEventListener("click",exportAnalysis); $("executiveReportBtn").addEventListener("click",()=>openOfficialReport("executive")); $("officialReportBtn").addEventListener("click",()=>openOfficialReport("full"));
+    $("restartBtn").addEventListener("click",reset); $("resetTopBtn").addEventListener("click",reset); $("exportBtn").addEventListener("click",exportAnalysis); $("officialReportBtn").addEventListener("click",openOfficialReport);
     $("openAiSettingsBtn").addEventListener("click", openAiSettings);
     $("openAiSettingsTopBtn").addEventListener("click", openAiSettings);
     $("saveAiSettingsBtn").addEventListener("click", e => { e.preventDefault(); saveAndTestAiSettings(); });

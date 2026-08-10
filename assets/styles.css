@@ -219,7 +219,7 @@ dialog::backdrop { background: rgba(12,22,42,.5); backdrop-filter: blur(3px); }
 @media print {
   body { background: #fff; }
   body::before {
-    content: "استخدم زر «فتح التقرير الرسمي» من شاشة النتائج لإنشاء نسخة A4 مخصصة للطباعة.";
+    content: "استخدم زر «فتح التقرير الكامل» من شاشة النتائج لإنشاء نسخة A4 مخصصة للطباعة.";
     display: block;
     margin: 35mm auto;
     width: 160mm;

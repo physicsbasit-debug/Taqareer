@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.4.2";
+  const VERSION = "1.4.3";
 
   function escapeHtml(value) {
     return String(value ?? "").replace(/[&<>'"]/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" }[char]));
@@ -353,8 +353,11 @@
       : [["نوع الاستمارة",context.type?.name||"—"],["المدرسة",meta.school||"غير محددة في الملف"],["المادة",meta.subject||"غير محددة"],["الصف / الفئة",meta.grade||"غير محدد"],["العام / الفترة",[meta.academicYear,meta.period].filter(Boolean).join(" - ")||"غير محدد"],["مصدر البيانات",sourceDisplay]];
     const metaHtml=`<div class="meta-grid${metaEntries.length===7?" meta-grid-7":""}">${metaEntries.map(([label,value])=>`<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join("")}</div>`;
     const primaryVisualLoad=primaryCharts.reduce((sum,chart)=>sum+(Array.isArray(chart.data)?chart.data.length:0),0);
-    const exec=`<div class="executive-page-layout${primaryVisualLoad>=12?" executive-dense-charts":""}"><div class="report-title"><div><span>التقرير التحليلي الرسمي</span><h1>${escapeHtml(title)}</h1><p>${escapeHtml(subtitle)}</p></div><div class="report-date"><small>تاريخ التقرير</small><strong>${escapeHtml(formatDate(data.generatedAt))}</strong></div></div>${metaHtml}<div class="section-heading"><div><span>01</span><h2>الملخص التنفيذي</h2></div><p>القراءة العليا للقرار قبل الانتقال إلى الطبقات الإحصائية والتشخيصية.</p></div><div class="executive-grid"><article class="executive-summary"><small>الحكم التنفيذي</small><h2>${escapeHtml(analysis.executiveTitle||title)}</h2><p>${escapeHtml(analysis.executiveSummary||"")}</p></article><article class="analysis-status"><small>حالة التحليل</small><strong>${data.aiUsed?"تحليل تربوي موثق":data.localFallbackUsed?"تحليل تربوي محلي موثوق":"تحليل غير مكتمل"}</strong><p>${escapeHtml(data.profile.dataSufficiency||"كفاية البيانات غير محددة")}</p></article></div><div class="metric-grid core-metrics">${metricGroups.core.map(metricCard).join("")}</div>${primaryCharts.length?`<div class="chart-grid primary-charts">${primaryCharts.map((chart,i)=>chartCard(chart,i+1)).join("")}</div>`:""}</div>`;
-    pages.push({section:"الملخص التنفيذي",content:exec});
+    const overviewSection=reportMode==="executive"?"الملخص التنفيذي":"الخلاصة العامة";
+    const overviewNote=reportMode==="executive"?"القراءة العليا للقرار قبل الانتقال إلى الطبقات الإحصائية والتشخيصية.":"خلاصة مركزة للنتائج قبل الانتقال إلى التفاصيل الإحصائية والتشخيصية.";
+    const judgementLabel=reportMode==="executive"?"الحكم التنفيذي":"الحكم العام";
+    const exec=`<div class="executive-page-layout${primaryVisualLoad>=12?" executive-dense-charts":""}"><div class="report-title"><div><span>التقرير التحليلي الرسمي</span><h1>${escapeHtml(title)}</h1><p>${escapeHtml(subtitle)}</p></div><div class="report-date"><small>تاريخ التقرير</small><strong>${escapeHtml(formatDate(data.generatedAt))}</strong></div></div>${metaHtml}<div class="section-heading"><div><span>01</span><h2>${escapeHtml(overviewSection)}</h2></div><p>${escapeHtml(overviewNote)}</p></div><div class="executive-grid"><article class="executive-summary"><small>${escapeHtml(judgementLabel)}</small><h2>${escapeHtml(analysis.executiveTitle||title)}</h2><p>${escapeHtml(analysis.executiveSummary||"")}</p></article><article class="analysis-status"><small>حالة التحليل</small><strong>${data.aiUsed?"تحليل تربوي موثق":data.localFallbackUsed?"تحليل تربوي محلي موثوق":"تحليل غير مكتمل"}</strong><p>${escapeHtml(data.profile.dataSufficiency||"كفاية البيانات غير محددة")}</p></article></div><div class="metric-grid core-metrics">${metricGroups.core.map(metricCard).join("")}</div>${primaryCharts.length?`<div class="chart-grid primary-charts">${primaryCharts.map((chart,i)=>chartCard(chart,i+1)).join("")}</div>`:""}</div>`;
+    pages.push({section:overviewSection,content:exec});
 
     if(metricGroups.advanced.length||advancedChartSplit.first.length||advancedChartSplit.restPages.length){
       const firstAdvancedBody=`<div class="section-heading"><div><span>${String(pages.length+1).padStart(2,"0")}</span><h2>التحليل الإحصائي والبصري المتقدم</h2></div><p>مؤشرات التشتت والشكل والحساسية تفسر ما يخفيه المتوسط العام.</p></div>${metricGroups.advanced.length?`<div class="metric-grid advanced-metrics">${metricGroups.advanced.map(metricCard).join("")}</div>`:""}${profileBlock(data.profile)}${advancedChartSplit.first.length?`<div class="chart-grid analytical-charts">${advancedChartSplit.first.map((chart,i)=>chartCard(chart,primaryCharts.length+i+1)).join("")}</div>`:""}`;

@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.4.2";
+  const VERSION = "1.4.3";
   const RENDERER_ID = "print-report-v2";
 
   function esc(value) {
@@ -109,10 +109,14 @@
   function executivePage(data, context, mode) {
     const analysis = data.analysis || {}, groups = metricGroups(data), core = groups.core.slice(0,6), charts = (data.charts || []).slice(0,2), status = inferStatus(data), title = reportTitle(data, context);
     const meta = metaEntries(data, context);
+    const fullMode = mode !== "executive";
+    const overviewTitle = fullMode ? "الخلاصة العامة" : "الملخص التنفيذي";
+    const overviewNote = fullMode ? "خلاصة مركزة للنتائج قبل الانتقال إلى التفاصيل الإحصائية والتشخيصية" : "صفحة قرار سريعة قبل التفاصيل";
+    const judgementLabel = fullMode ? "الحكم العام" : "الحكم التنفيذي";
     return `<div class="title-row"><div><span class="kicker">التقرير التحليلي الرسمي</span><h1 class="title">${esc(title)}</h1><p class="subtitle">${esc(data.meta?.title || sourceLabel(context))}</p></div><div class="datebox"><small>تاريخ التقرير</small><strong>${esc(formatDate(data.generatedAt))}</strong></div></div>
       <div class="meta">${meta.map(([label,value]) => `<div><span>${esc(label)}</span><strong>${esc(value)}</strong></div>`).join("")}</div>
-      ${sectionTitle("01","الملخص التنفيذي","صفحة قرار سريعة قبل التفاصيل")}
-      <div class="exec"><article class="exec-main"><small>الحكم التنفيذي</small><h3>${esc(analysis.executiveTitle || title)}</h3><p>${esc(analysis.executiveSummary || "")}</p></article><article class="status ${status.cls}"><small>حالة التحليل</small><strong>${esc(status.label)}</strong><p>${esc(status.detail)}</p></article></div>
+      ${sectionTitle("01",overviewTitle,overviewNote)}
+      <div class="exec"><article class="exec-main"><small>${esc(judgementLabel)}</small><h3>${esc(analysis.executiveTitle || title)}</h3><p>${esc(analysis.executiveSummary || "")}</p></article><article class="status ${status.cls}"><small>حالة التحليل</small><strong>${esc(status.label)}</strong><p>${esc(status.detail)}</p></article></div>
       <div class="kpis">${core.map(metricCard).join("")}</div>
       ${charts.length ? `<div class="grid2 executive-charts">${charts.map((chart,i) => chartPanel(chart,i+1,true)).join("")}</div>` : ""}`;
   }
@@ -171,7 +175,7 @@
     blocks.forEach(block=>{const cost=block.rows.length+3;if(current.length&&(current.length>=3||budget+cost>34))flush();current.push(block);budget+=cost;});flush();return pages;
   }
   function buildFullPages(data,context){
-    const pages=[{section:"الملخص التنفيذي",body:executivePage(data,context,"full")}];
+    const pages=[{section:"الخلاصة العامة",body:executivePage(data,context,"full")}];
     pages.push(...indicatorPages(data));
     pages.push(...diagnosticPages(data));
     pages.push(...findingPages(data));

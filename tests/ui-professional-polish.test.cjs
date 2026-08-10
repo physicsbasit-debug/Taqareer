@@ -19,6 +19,14 @@ test('public workspace hides development clutter and exposes compact review cont
   assert.match(index, /id="qualityDetails"/);
   assert.match(index, /خدمة التحليل التربوي/);
   assert.match(index, /تنزيل بيانات التحليل/);
+  assert.match(index, /id="officialReportBtn"[^>]*>فتح التقرير الكامل<\/button>/);
+  assert.doesNotMatch(index, /executiveReportBtn|فتح التقرير التنفيذي/);
+  assert.doesNotMatch(app, /executiveReportBtn|openOfficialReport\(["']executive["']\)/);
+  assert.match(app, /const reportOptions = \{ reportMode: ["']full["'] \};/);
+  assert.match(app, /\$\("officialReportBtn"\)\.addEventListener\("click",openOfficialReport\)/);
+  const reportV2 = read('assets/print-report-v2.js');
+  assert.match(reportV2, /fullMode \? "الخلاصة العامة" : "الملخص التنفيذي"/);
+  assert.match(reportV2, /fullMode \? "الحكم العام" : "الحكم التنفيذي"/);
   assert.doesNotMatch(index, /شفافية التطوير|ما يعمل الآن وما يأتي لاحقًا|قلب التحليل الذكي|تنبيهات وحدود التحليل الذكي|تصدير JSON/);
   assert.doesNotMatch(index, /Edge 0\.15\.4/);
 

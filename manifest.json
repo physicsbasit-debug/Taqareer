@@ -1,8 +1,8 @@
 {
   "app": "تقارير",
-  "version": "1.4.2",
-  "phase": "Workspace Visual Polish",
-  "releaseName": "Analysis Setup Workspace Visual Polish",
+  "version": "1.4.3",
+  "phase": "Single Full Report Path",
+  "releaseName": "Remove Redundant Executive Report Action",
   "buildType": "static-github-pages-plus-supabase-edge-function",
   "supportedInputs": {
     "table": [
@@ -208,7 +208,8 @@
     "legacy-report-renderer-fallback",
     "report-v2-semantic-block-integrity-guard",
     "report-v2-executive-3-to-5-page-contract",
-    "report-v2-ranking-table-packing"
+    "report-v2-ranking-table-packing",
+    "single-user-facing-full-report-path"
   ],
   "runtime": {
     "frontend": "GitHub Pages static site",
