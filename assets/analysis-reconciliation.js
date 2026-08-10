@@ -712,43 +712,32 @@
     const groups = targetGroupIds.map(id => groupMap.get(id)).filter(Boolean);
     const targetGroup = groups.map(group => `${group.label} (${group.count} طالبًا)`).join("، ");
     const mode = String(guard.mode || item?.successMetric?.mode || "");
+    if (Number(guard.totalCount) !== context.totalCount) throw new Error("رفض محرك التحقق تدخلًا بُني على إجمالي سجلات لا يطابق الحساب المحلي.");
+    // توافق آمن أثناء انتقال Edge: حتى لو وصل numericGuard قديم يحمل هدفًا رقميًا،
+    // لا نثق بالهدف ولا نرفض التحليل كله. نعيد بناء المؤشر من خط الأساس المحلي فقط.
+    const legacyNumericTargetDiscarded = guard.targetPolicy !== "baseline_comparison"
+      || Number(item?.successMetric?.targetValue || 0) !== 0
+      || Number(guard.targetCount || guard.targetSegmentCount || guard.reductionCount || guard.feasibleGain || guard.targetRate || guard.targetReductionRate || 0) !== 0;
+
     let successIndicator = "";
-
-    if (Number(guard.totalCount) !== context.totalCount) {
-      throw new Error("رفض محرك التحقق تدخلًا بُني على إجمالي سجلات لا يطابق الحساب المحلي.");
-    }
-
+    let sanitizedGuard = { applied: true, mode, targetPolicy: "baseline_comparison", totalCount: context.totalCount, targetDefined: false, adjusted: legacyNumericTargetDiscarded, adjustmentReasons: legacyNumericTargetDiscarded ? ["أُلغي مستهدف رقمي غير موثق وأعيدت صياغة القياس كمقارنة بخط الأساس المحلي."] : [] };
     if (mode === "mastery_gain") {
       const eligibleCount = groups.filter(group => group.id !== "mastery").reduce((sum, group) => sum + group.count, 0);
-      const baselineCount = Math.trunc(Number(guard.baselineCount));
-      const feasibleGain = Math.trunc(Number(guard.feasibleGain));
-      const targetCount = Math.trunc(Number(guard.targetCount));
-      const targetRate = roundDecimal((targetCount / context.totalCount) * 100, 1);
-      if (baselineCount !== context.baselineMasteryCount || eligibleCount !== Math.trunc(Number(guard.eligibleCount)) || feasibleGain < 1 || feasibleGain > eligibleCount || targetCount !== baselineCount + feasibleGain || targetCount > baselineCount + eligibleCount || Math.abs(targetRate - Number(guard.targetRate)) > 0.11) {
-        throw new Error("رفض محرك التحقق هدف إتقان غير متسق مع حجم الفئات المستهدفة.");
-      }
-      const conversionRate = roundDecimal((feasibleGain / eligibleCount) * 100, 1);
-      successIndicator = `رفع عدد المتقنين من ${baselineCount} إلى ${targetCount} طالبًا على الأقل، عبر انتقال ${feasibleGain} من أصل ${eligibleCount} طالبًا مستهدفًا (${conversionRate}%) إلى الإتقان، بما يرفع النسبة من ${context.baselineMasteryRate}% إلى ${targetRate}% تقريبًا.`;
+      if (Math.trunc(Number(guard.baselineCount)) !== context.baselineMasteryCount || Math.trunc(Number(guard.eligibleCount)) !== eligibleCount) throw new Error("رفض محرك التحقق خط أساس إتقان لا يطابق الحساب المحلي.");
+      successIndicator = `زيادة عدد المتقنين مقارنة بخط الأساس (${context.baselineMasteryCount} من ${context.totalCount}) مع توثيق عدد المنتقلين من الفئة المستهدفة إلى الإتقان؛ لا يعتمد هدف رقمي مسبق دون معيار خارجي.`;
+      sanitizedGuard = { ...sanitizedGuard, baselineCount: context.baselineMasteryCount, baselineRate: context.baselineMasteryRate, eligibleCount };
     } else if (mode === "segment_reduction") {
       const segment = groupMap.get(String(guard.segmentId || ""));
-      const baselineSegmentCount = Math.trunc(Number(guard.baselineSegmentCount));
-      const reductionCount = Math.trunc(Number(guard.reductionCount));
-      const targetSegmentCount = Math.trunc(Number(guard.targetSegmentCount));
-      if (!segment || segment.id === "mastery" || baselineSegmentCount !== segment.count || reductionCount < 1 || reductionCount > segment.count || targetSegmentCount !== segment.count - reductionCount) {
-        throw new Error("رفض محرك التحقق هدف خفض فئة غير متسق مع التوزيع المحلي.");
-      }
-      const reductionRate = roundDecimal((reductionCount / segment.count) * 100, 1);
-      successIndicator = `خفض عدد ${segment.label} من ${segment.count} إلى ${targetSegmentCount} طالبًا على الأكثر، أي انتقال ${reductionCount} طالبًا (${reductionRate}%) إلى فئة أعلى في القياس اللاحق.`;
+      if (!segment || segment.id === "mastery" || Math.trunc(Number(guard.baselineSegmentCount)) !== segment.count) throw new Error("رفض محرك التحقق خط أساس فئة لا يطابق التوزيع المحلي.");
+      successIndicator = `انخفاض عدد ${segment.label} مقارنة بخط الأساس (${segment.count} طالبًا) مع توثيق الانتقال إلى فئة أعلى في القياس اللاحق، دون فرض نسبة خفض غير مستندة إلى معيار خارجي.`;
+      sanitizedGuard = { ...sanitizedGuard, segmentId: segment.id, baselineSegmentCount: segment.count };
     } else if (mode === "mastery_maintenance") {
       const mastery = groupMap.get("mastery") || { label: SCORE_GROUP_LABELS.mastery, count: context.baselineMasteryCount };
-      const retainedCount = Math.trunc(Number(guard.retainedCount));
-      if (Math.trunc(Number(guard.baselineMasteryCount)) !== mastery.count || retainedCount < 0 || retainedCount > mastery.count) {
-        throw new Error("رفض محرك التحقق هدف تثبيت لا يطابق عدد المتقنين المحلي.");
-      }
-      const retentionRate = mastery.count ? roundDecimal((retainedCount / mastery.count) * 100, 1) : 0;
-      successIndicator = mastery.count
-        ? `الحفاظ على إتقان ما لا يقل عن ${retainedCount} من أصل ${mastery.count} طالبًا متقنًا (${retentionRate}%)، مع تحقق معيار المهمة الإثرائية المحدد في المتابعة.`
-        : "لا توجد فئة متقنة حاليًا؛ يُستبدل هدف التثبيت بقياس كسب الإتقان بعد التدخل العلاجي.";
+      if (Math.trunc(Number(guard.baselineMasteryCount)) !== mastery.count) throw new Error("رفض محرك التحقق خط أساس تثبيت لا يطابق عدد المتقنين المحلي.");
+      successIndicator = mastery.count > 0
+        ? `عدم تراجع عدد المتقنين عن خط الأساس (${mastery.count} طالبًا) مع تحقق معيار المهمة الإثرائية المحدد في المتابعة.`
+        : "لا توجد فئة متقنة حاليًا؛ يركز القياس اللاحق على كسب الإتقان بدل هدف تثبيت غير موجود.";
+      sanitizedGuard = { ...sanitizedGuard, baselineMasteryCount: mastery.count };
     } else {
       throw new Error("رفض محرك التحقق نمط مؤشر رقمي غير مدعوم لملف الدرجات.");
     }
@@ -757,8 +746,10 @@
       targetGroup: targetGroup || trimText(item?.targetGroup, 360),
       targetGroupIds,
       successIndicator,
-      successMetric: clone(item?.successMetric || {}),
-      numericGuard: clone(guard),
+      successMetric: { ...(clone(item?.successMetric || {})), targetValue: 0 },
+      numericGuard: sanitizedGuard,
+      targetBasis: "مقارنة بخط الأساس",
+      targetGuardApplied: true,
     };
   }
 
@@ -835,6 +826,104 @@
       "المستويات أ-هـ مشتقة محليًا من الدرجات الرقمية؛ لذلك لا يُعرض فحص اتساق مستقل بين الدرجة والمستوى.",
     ]);
     return true;
+  }
+
+  function confidenceRank(value) {
+    return ({ "منخفضة": 1, "متوسطة": 2, "مرتفعة": 3 })[String(value || "")] || 2;
+  }
+
+  function capConfidence(value, cap) {
+    return confidenceRank(value) <= confidenceRank(cap) ? value : cap;
+  }
+
+  function sampleGuardFromLocal(localEvidence) {
+    const guard = localEvidence?.sampleGuard && typeof localEvidence.sampleGuard === "object" ? localEvidence.sampleGuard : null;
+    return guard?.applied ? guard : null;
+  }
+
+  function comparabilityGuardFromLocal(localEvidence) {
+    const guard = localEvidence?.comparabilityGuard && typeof localEvidence.comparabilityGuard === "object" ? localEvidence.comparabilityGuard : null;
+    return guard?.applied ? guard : null;
+  }
+
+  function hasUnverifiedNumericTarget(value) {
+    return /(?:رفع|خفض|بلوغ|الوصول|انتقال|الحفاظ|تحسن|انخفاض|ارتفاع)[^\n]{0,100}?(?:\d+(?:[.,]\d+)?\s*%|\d+\s*(?:طالب|حاله|حالة|نقطه|نقطة))/i.test(String(value || ""));
+  }
+
+  function baselineIndicatorForPrimary(item, localEvidence) {
+    const typeId = String(localEvidence?.typeId || "");
+    const issue = trimText(item?.issue, 220) || "المؤشر المستهدف";
+    if (typeId === "behavior_attendance") return "انخفاض التكرار مقارنة بخط الأساس عبر فترة تسجيل مماثلة، مع توثيق حجم المجتمع والفترة نفسها.";
+    if (typeId === "level_distribution") return "انخفاض الفئات الأدنى مقارنة بخط الأساس في القياس اللاحق بالأداة نفسها، دون اعتماد نسبة مستهدفة غير موثقة.";
+    return `تحسن موثق في «${issue}» مقارنة بخط الأساس عند إعادة القياس بالأداة أو المعيار نفسه.`;
+  }
+
+  function applyPrimaryReasoningGuards(result, localEvidence) {
+    const sampleGuard = sampleGuardFromLocal(localEvidence);
+    const comparabilityGuard = comparabilityGuardFromLocal(localEvidence);
+    result.reasoningGuardrails = {
+      ...(localEvidence?.reasoningGuardrails || {}),
+      sampleGuard: sampleGuard || localEvidence?.sampleGuard || null,
+      comparabilityGuard: comparabilityGuard || localEvidence?.comparabilityGuard || null,
+      targetPolicy: localEvidence?.targetPolicy || null,
+      missingIsNotZero: true,
+      claimHierarchy: "fact -> inference -> hypothesis -> verification",
+    };
+
+    result.diagnosticSections = (result.diagnosticSections || []).map(item => {
+      if (item.claimType === "hypothesis") return {
+        ...item, confidence: "منخفضة",
+        limitations: uniqueStrings([...(item.limitations || []), "هذه فرضية تفسيرية وليست حقيقة مثبتة." ]),
+        dataRequests: uniqueStrings([...(item.dataRequests || []), "جمع دليل مستقل مباشر قبل اعتماد التفسير." ]),
+      };
+      if (sampleGuard && item.claimType !== "fact") return {
+        ...item, confidence: capConfidence(item.confidence, sampleGuard.confidenceCap || "متوسطة"),
+        limitations: uniqueStrings([...(item.limitations || []), sampleGuard.notice]),
+      };
+      return item;
+    });
+
+    result.findings = (result.findings || []).map(item => {
+      if (item.claimType === "hypothesis") return {
+        ...item, confidence: "منخفضة",
+        limitations: uniqueStrings([...(item.limitations || []), "فرضية تحتاج تحققًا بدليل مستقل قبل استخدامها لتفسير السبب." ]),
+      };
+      if (sampleGuard && item.claimType !== "fact") return {
+        ...item, confidence: capConfidence(item.confidence, sampleGuard.confidenceCap || "متوسطة"),
+        limitations: uniqueStrings([...(item.limitations || []), sampleGuard.notice]),
+      };
+      return item;
+    });
+
+    if (sampleGuard) {
+      result.executiveConfidence = capConfidence(result.executiveConfidence, sampleGuard.confidenceCap || "متوسطة");
+      result.analysisProfile.dataAdequacy = sampleGuard.mode === "case_description" ? "محدودة جدًا - وصف حالات فقط" : "محدودة - تحليل استكشافي";
+      result.limitations = uniqueStrings([...(result.limitations || []), sampleGuard.notice]);
+    }
+
+    if (comparabilityGuard && comparabilityGuard.allowTrendInference === false) {
+      result.analysisProfile.dataAdequacy = `${result.analysisProfile.dataAdequacy || "كفاية البيانات غير محددة"} · المقارنة بين الزيارات وصفية فقط`;
+      result.limitations = uniqueStrings([
+        ...(result.limitations || []),
+        "لا يُستنتج اتجاه زمني من الزيارات الحالية؛ المقارنة وصفية فقط حتى تثبت وحدة الحالة والأداة والمقياس عبر الزمن.",
+        ...(comparabilityGuard.reasons || []),
+      ]);
+      result.diagnosticSections = (result.diagnosticSections || []).map(item => ({
+        ...item,
+        confidence: /عبر الزمن|اتجاه زمني|تحسن زمني|تراجع زمني/.test(String(item.analysis || "")) ? "منخفضة" : item.confidence,
+        limitations: /عبر الزمن|اتجاه زمني|تحسن زمني|تراجع زمني/.test(String(item.analysis || ""))
+          ? uniqueStrings([...(item.limitations || []), "قابلية المقارنة الحالية لا تسمح ببناء اتجاه زمني."])
+          : item.limitations,
+      }));
+      result.findings = (result.findings || []).map(item => ({
+        ...item,
+        confidence: /عبر الزمن|اتجاه زمني|تحسن زمني|تراجع زمني/.test(String(item.statement || "")) ? "منخفضة" : item.confidence,
+        limitations: /عبر الزمن|اتجاه زمني|تحسن زمني|تراجع زمني/.test(String(item.statement || ""))
+          ? uniqueStrings([...(item.limitations || []), "قابلية المقارنة الحالية لا تسمح ببناء اتجاه زمني."])
+          : item.limitations,
+      }));
+    }
+    return { sampleGuardApplied: Boolean(sampleGuard), comparabilityGuardApplied: Boolean(comparabilityGuard) };
   }
 
   function composePrimary(localEvidence, primaryResult, options = {}) {
@@ -957,6 +1046,8 @@
           base.successIndicator = guarded.successIndicator;
           base.successMetric = guarded.successMetric;
           base.numericGuard = guarded.numericGuard;
+          base.targetBasis = guarded.targetBasis;
+          base.targetGuardApplied = guarded.targetGuardApplied;
         }
         if (String(result.typeId || "") === "assessment_component") {
           Object.assign(base, assessmentComponentCohortContract(base, scoreInterventionContext));
@@ -965,6 +1056,14 @@
           const scoped = clientGuardMultiVisitScope(item, multiVisitScopeContext);
           base.targetGroup = scoped.targetGroup;
           base.scopeGuard = scoped.scopeGuard;
+        }
+        if (!scoreInterventionContext) {
+          const explicitTarget = Boolean(localEvidence?.targetPolicy?.explicitTarget);
+          if (!explicitTarget && hasUnverifiedNumericTarget(base.successIndicator)) {
+            base.successIndicator = baselineIndicatorForPrimary(base, localEvidence);
+            base.targetGuardApplied = true;
+          }
+          base.targetBasis = explicitTarget ? "مستهدف صريح في المصدر" : "مقارنة بخط الأساس";
         }
         return base;
       })
@@ -985,8 +1084,9 @@
       }))
       .filter(item => item.stage && item.measure);
 
-    if (result.diagnosticSections.length < 2 || result.findings.length < 2 || result.improvementPlan.length < 2 || result.monitoringPlan.length < 3) {
-      throw new Error("رفض محرك التحقق تحليلًا لم يقدم وحدات قرار وتدخلين متمايزين وثلاث مراحل متابعة مرتبطة بالأدلة.");
+    const minimumInterventions = sampleGuardFromLocal(localEvidence)?.mode === "case_description" ? 1 : 2;
+    if (result.diagnosticSections.length < 2 || result.findings.length < 2 || result.improvementPlan.length < minimumInterventions || result.monitoringPlan.length < 3) {
+      throw new Error(`رفض محرك التحقق تحليلًا لم يقدم وحدات قرار كافية و${minimumInterventions} تدخل/تدخلات مدعومة وثلاث مراحل متابعة مرتبطة بالأدلة.`);
     }
 
     result.limitations = uniqueStrings([
@@ -999,6 +1099,7 @@
     result.dataRequests = uniqueStrings(primaryResult.missingDataRequests || []);
     result.suggestedNewType = primaryResult.suggestedNewType || null;
     const levelProvenanceGuardApplied = applyLevelProvenanceGuard(result, localEvidence);
+    const reasoningGuards = applyPrimaryReasoningGuards(result, localEvidence);
 
     const first = result.improvementPlan[0];
     result.action = first ? {
@@ -1024,6 +1125,9 @@
       addedMonitoring: result.monitoringPlan.length,
       addedTools: result.qualityTools.length,
       levelProvenanceGuardApplied,
+      sampleGuardApplied: reasoningGuards.sampleGuardApplied,
+      comparabilityGuardApplied: reasoningGuards.comparabilityGuardApplied,
+      targetGuardApplied: result.improvementPlan.some(item => item.targetGuardApplied),
       lockedCounts: null,
     };
     return result;

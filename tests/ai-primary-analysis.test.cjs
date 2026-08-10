@@ -94,15 +94,15 @@ function primaryFixture() {
       {
         id: 'i1', priority: 'عالية', issue: 'الفجوة العميقة', targetGroup: 'مسودة يتجاهلها العميل', targetGroupIds: ['deep_gap'],
         action: 'تدخل متدرج مبني على تشخيص قصير.', implementationSteps: ['تشخيص', 'تجميع مرن', 'إعادة قياس'], responsibleRole: 'معلم المادة', timeframe: 'أسبوعان',
-        successIndicator: 'مسودة يتجاهلها العميل', successMetric: { mode: 'segment_reduction', targetValue: 20, targetSegmentId: 'deep_gap' },
-        numericGuard: { applied: true, mode: 'segment_reduction', totalCount: 100, segmentId: 'deep_gap', baselineSegmentCount: 38, reductionCount: 8, targetSegmentCount: 30, targetReductionRate: 21.1, adjusted: false, adjustmentReasons: [] },
+        successIndicator: 'مسودة يتجاهلها العميل', successMetric: { mode: 'segment_reduction', targetValue: 0, targetSegmentId: 'deep_gap' },
+        numericGuard: { applied: true, mode: 'segment_reduction', targetPolicy: 'baseline_comparison', targetDefined: false, totalCount: 100, segmentId: 'deep_gap', baselineSegmentCount: 38, adjusted: false, adjustmentReasons: [] },
         monitoringMethod: 'مقارنة قبلي وبعدي', contingency: 'تدخل فردي للحالات غير المتحسنة', resources: ['مهام قصيرة'], evidenceRefs: ['metric:masteryPct', 'metric:deepGapCount', 'metric:n']
       },
       {
         id: 'i2', priority: 'متوسطة', issue: 'فرصة رفع الإتقان', targetGroup: 'مسودة يتجاهلها العميل', targetGroupIds: ['near_mastery', 'moderate_gap'],
         action: 'تنويع مستوى المهام.', implementationSteps: ['تصنيف الفئات', 'مهام متدرجة'], responsibleRole: 'معلم المادة', timeframe: 'ثلاثة أسابيع',
-        successIndicator: 'مسودة يتجاهلها العميل', successMetric: { mode: 'mastery_gain', targetValue: 55, targetSegmentId: '' },
-        numericGuard: { applied: true, mode: 'mastery_gain', totalCount: 100, baselineCount: 42, baselineRate: 42, eligibleCount: 20, requestedTargetRate: 55, requiredGain: 13, feasibleGain: 13, targetCount: 55, targetRate: 55, adjusted: false, adjustmentReasons: [] },
+        successIndicator: 'مسودة يتجاهلها العميل', successMetric: { mode: 'mastery_gain', targetValue: 0, targetSegmentId: '' },
+        numericGuard: { applied: true, mode: 'mastery_gain', targetPolicy: 'baseline_comparison', targetDefined: false, totalCount: 100, baselineCount: 42, baselineRate: 42, eligibleCount: 20, adjusted: false, adjustmentReasons: [] },
         monitoringMethod: 'متابعة التوزيع', contingency: 'مراجعة صعوبة الأدوات', resources: [], evidenceRefs: ['metric:masteryPct', 'metric:nearMasteryCount', 'metric:moderateGapCount', 'metric:n']
       },
     ],
@@ -139,14 +139,22 @@ test('AI primary composition replaces local prose templates and accepts variable
   assert.equal(result.metrics[1].value, 42);
 });
 
-test('client independently rejects an impossible score intervention target', () => {
+test('client discards an unverified numeric target and rebuilds the success indicator from local baseline', () => {
   const window = loadBrowserScript('assets/analysis-reconciliation.js');
-  const bad = primaryFixture();
-  bad.interventions[1].numericGuard.targetCount = 80;
-  bad.interventions[1].numericGuard.feasibleGain = 38;
-  assert.throws(() => window.TaqareerReconciliation.composePrimary(localScoreEvidence(), bad, {
+  const legacy = primaryFixture();
+  legacy.interventions[1].successMetric.targetValue = 80;
+  delete legacy.interventions[1].numericGuard.targetPolicy;
+  legacy.interventions[1].numericGuard.targetCount = 80;
+  legacy.interventions[1].numericGuard.feasibleGain = 38;
+  const result = window.TaqareerReconciliation.composePrimary(localScoreEvidence(), legacy, {
     availableEvidenceRefs: scoreRefs,
-  }), /هدف إتقان غير متسق/);
+  });
+  const guarded = result.improvementPlan.find(item => item.successMetric?.mode === 'mastery_gain');
+  assert.equal(guarded.successMetric.targetValue, 0);
+  assert.equal(guarded.numericGuard.targetPolicy, 'baseline_comparison');
+  assert.equal(guarded.targetBasis, 'مقارنة بخط الأساس');
+  assert.match(guarded.successIndicator, /مقارنة بخط الأساس/);
+  assert.doesNotMatch(JSON.stringify(guarded.numericGuard), /targetCount|feasibleGain|targetRate/);
 });
 
 test('AI primary composition rejects an analysis without enough evidence-backed reasoning', () => {
@@ -156,7 +164,7 @@ test('AI primary composition rejects an analysis without enough evidence-backed 
   bad.findings = [{ ...bad.findings[0], evidenceRefs: ['metric:not-allowed'] }];
   assert.throws(() => window.TaqareerReconciliation.composePrimary(localScoreEvidence(), bad, {
     availableEvidenceRefs: scoreRefs,
-  }), /وحدات قرار وتدخلين متمايزين وثلاث مراحل متابعة/);
+  }), /وحدات قرار كافية و2 تدخل\/تدخلات مدعومة وثلاث مراحل متابعة/);
 });
 
 test('client rejects a primary result with one intervention or fewer than three monitoring stages', () => {
@@ -166,7 +174,7 @@ test('client rejects a primary result with one intervention or fewer than three 
   bad.monitoringPlan = bad.monitoringPlan.slice(0, 2);
   assert.throws(() => window.TaqareerReconciliation.composePrimary(localScoreEvidence(), bad, {
     availableEvidenceRefs: scoreRefs,
-  }), /تدخلين متمايزين وثلاث مراحل متابعة/);
+  }), /2 تدخل\/تدخلات مدعومة وثلاث مراحل متابعة/);
 });
 
 test('primary orchestrator sends evidence, not local interpretive prose', () => {

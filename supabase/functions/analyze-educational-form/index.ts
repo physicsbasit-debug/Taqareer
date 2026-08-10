@@ -1,4 +1,4 @@
-const EDGE_VERSION = "0.16.4";
+const EDGE_VERSION = "0.16.5";
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 const DEFAULT_MODEL = "gemini-3.6-flash";
 const DEFAULT_FAST_MODEL = "gemini-3.5-flash-lite";
@@ -21,6 +21,7 @@ const PRIMARY_ACTION_ATTEMPT_TIMEOUT_MS = 13_000;
 const PRIMARY_REPAIR_ATTEMPT_TIMEOUT_MS = 11_000;
 const PRIMARY_TRANSIENT_RESCUE_ATTEMPT_TIMEOUT_MS = 8_000;
 const PRIMARY_MIN_REMAINING_MS = 2_500;
+// v0.16.5: حراس الاستدلال التربوي للعينة الصغيرة، غياب الدليل، قابلية المقارنة، ومصادر المستهدفات.
 // v0.16.4: عقد فئات المكوّن التقويمي يملك cohort/action/indicator خادميًا، مع حراسة الاستدلال قبل التوسيع.
 // v0.16.3: حراس استدلال تربوي على نواة القرار؛ يبقى طلب AI أساسي واحد + fallback واحد فقط,
 // دون fan-out متعدد المقاطع أو سلاسل repair/rescue.
@@ -196,7 +197,7 @@ const PRIMARY_ANALYSIS_SCHEMA: JsonRecord = {
     },
     interventions: {
       type: "array",
-      minItems: 2,
+      minItems: 1,
       maxItems: 3,
       items: {
         type: "object",
@@ -902,7 +903,12 @@ function primaryAnalysisInstructions(): string {
 19) في زيارات الإشراف المتعددة التزم حرفيًا بنطاق evidenceAnalysis.scopeContext. لا توسع targetGroup إلى الهيئة التدريسية أو جميع معلمي المدرسة إذا كانت العينة تخص قسمًا أو مواد أو زيارات محددة. اجعل التدخل محصورًا في المعلمين المشمولين بالزيارات أو في فئة أضيق تدعمها الأدلة.
 20) إذا كان recognizedType.semanticProfile موجودًا، استخدمه لتحديد وحدة التحليل ومستوى التجميع وعائلات التحليل، ولا تطلب إعدادات درجات لا تخص بنية الملف.
 21) إذا كان recognizedType.id = multi_subject_results فالتزم بنطاق evidenceAnalysis.scopeContext.analysisMode: عند subject حلل selectedSubject وحدها ولا تعمم على بقية المواد؛ وعند all حلل المقارنة الشاملة. جداول الأوائل ودرجة ترتيب الدفعة محسوبة محليًا ومحجوبة عنك، فلا تعِد حساب المراكز ولا تطلب أسماء الطلبة. تعامل مع evidenceAnalysis.scopeContext.rankingPolicy بوصفها سياسة حسابية مقفلة: الأوزان والمواد الأساسية والتعادل والبيانات الناقصة لا يجوز تعديلها أو اقتراح بديل لها.
-22) أعد JSON فقط وفق المخطط، بلا مقدمات أو شرح خارجه.`;
+22) إذا كان evidenceAnalysis.sampleGuard.applied=true فالتزم بنطاقه: عند case_description تصف الحالات المتاحة فقط، لا تستخدم لغة انتشار أو تعميم أو حكم على الصف، واجعل الاستنتاجات غير المباشرة منخفضة الثقة. لا تنشئ تدخلًا ثانيًا بلا قضية مستقلة مدعومة.
+23) غياب الدليل أو عدم قابلية الحساب لا يساوي صفرًا. لا تصف قيمة مفقودة بأنها أداء صفري ولا تدخلها في مقام النسب.
+24) إذا كان evidenceAnalysis.comparabilityGuard.allowTrendInference=false فلا تستنتج تحسنًا أو تراجعًا عبر الزمن؛ سمِّ الفروق «مقارنة وصفية بين الزيارات».
+25) كثرة حضور مجال في النص السردي لا تعني جودة الأداء فيه. افصل «حضور المجال» عن اتجاه الدليل (إجادة/تطوير/محايد).
+26) لا تخترع مستهدفًا رقميًا. إذا لم يوفر evidenceAnalysis.targetPolicy مستهدفًا صريحًا فليكن مؤشر النجاح مقارنة موثقة بخط الأساس، والخادم سيتولى صياغته.
+27) أعد JSON فقط وفق المخطط، بلا مقدمات أو شرح خارجه.`;
 }
 
 function primaryRescueInstructions(rejectionReason = ""): string {
@@ -912,7 +918,7 @@ function primaryRescueInstructions(rejectionReason = ""): string {
 وضع إصلاح عقد موجّه: الاستجابة السابقة وصلت من Gemini لكنها رُفضت بعد التحقق الدلالي. أصلح سبب الرفض المحدد أدناه بدل إعادة بناء تحليل عشوائي من الصفر.
 سبب الرفض السابق: ${reason || "لم تحقق الاستجابة السابقة عقد الجودة بالكامل."}
 ستجد داخل payload.repairContext نسخة من المرشح السابق. احتفظ بالأجزاء الصحيحة منه، وصحح فقط ما يلزم لتحقيق العقد.
-أخرج وحدتي analysisUnits مختلفتين على الأقل، وتدخلين لفئتين أو قضيتين مختلفتين، وثلاث مراحل متابعة بالضبط. يمكن أن تكون methodChecks فارغة. استخدم evidenceRefs الموجودة حرفيًا في availableEvidenceRefs فقط. لا تتجاوز 250 حرفًا في diagnosticAnalysis و130 حرفًا في decisionFinding و110 أحرف في الأثر أو الإجراء و280 حرفًا في الملخص التنفيذي. حافظ على العمق عبر الربط بين الأدلة، لا عبر الإطالة.`;
+أخرج وحدتي analysisUnits مختلفتين على الأقل، وتدخلًا واحدًا على الأقل مدعومًا (وتدخلين في المسار الطبيعي عندما تدعم الأدلة قضيتين مختلفتين)، وثلاث مراحل متابعة بالضبط. يمكن أن تكون methodChecks فارغة. استخدم evidenceRefs الموجودة حرفيًا في availableEvidenceRefs فقط. لا تتجاوز 250 حرفًا في diagnosticAnalysis و130 حرفًا في decisionFinding و110 أحرف في الأثر أو الإجراء و280 حرفًا في الملخص التنفيذي. حافظ على العمق عبر الربط بين الأدلة، لا عبر الإطالة.`;
 }
 
 function buildPrimaryRepairPayload(payload: JsonRecord, rejectedText: string, rejectionReason: string): JsonRecord {
@@ -944,10 +950,10 @@ function primaryActionInstructions(): string {
 
 قواعد إلزامية:
 1) أخرج تدخلين أو ثلاثة لقضايا أو فئات مختلفة فعلًا، لا نسخًا من نفس التدخل.
-2) كل intervention يحدد issue وtargetGroup وaction وخطوات تنفيذ ومسؤولًا وزمنًا ومؤشر نجاح وطريقة متابعة وبديلًا مختصرًا.
+2) كل intervention يحدد issue وtargetGroup وaction وخطوات تنفيذ ومسؤولًا وزمنًا ومؤشر نجاح وطريقة متابعة وبديلًا مختصرًا. يكفي تدخل واحد عند evidenceAnalysis.sampleGuard.mode=case_description إذا لم تدعم الأدلة قضية ثانية مستقلة.
 3) استخدم evidenceRefs الموجودة حرفيًا في availableEvidenceRefs فقط.
-4) في ملفات الدرجات استخدم targetGroupIds من evidenceAnalysis.interventionMathContext.groups فقط، واستخدم successMetric المنظمة؛ الخادم يملك الحساب النهائي ويصحح الهدف رقميًا.
-5) في الأنواع غير الدرجية اجعل targetGroupIds فارغة وsuccessMetric.mode = custom وtargetValue = 0 وtargetSegmentId فارغًا.
+4) في ملفات الدرجات استخدم targetGroupIds من evidenceAnalysis.interventionMathContext.groups فقط، واستخدم successMetric المنظمة مع targetValue=0؛ الخادم يبني مؤشر مقارنة بخط الأساس ولا يعتمد مستهدفًا رقميًا مولدًا.
+5) في الأنواع غير الدرجية اجعل targetGroupIds فارغة وsuccessMetric.mode = custom وtargetValue = 0 وtargetSegmentId فارغًا، ولا تضع رقمًا مستهدفًا في successIndicator ما لم يكن targetPolicy.source_defined.
 6) لا تحول الارتباط إلى سبب، ولا تسمِّ مهارة لا تدعمها البيانات.
 7) أخرج monitoringPlan من ثلاث مراحل بالضبط: خط أساس، متابعة مرحلية، قياس أثر نهائي.
 8) اجعل التدخلات مختصرة وعملية؛ بحد أقصى 3 خطوات لكل تدخل.
@@ -1125,6 +1131,26 @@ function groupEvidenceRef(groupId: string): string {
   return "";
 }
 
+function evidenceObject(payload: JsonRecord): JsonRecord {
+  return payload.evidenceAnalysis && typeof payload.evidenceAnalysis === "object" ? payload.evidenceAnalysis as JsonRecord : {};
+}
+
+function sampleGuardContext(payload: JsonRecord): JsonRecord | null {
+  const evidence = evidenceObject(payload);
+  return evidence.sampleGuard && typeof evidence.sampleGuard === "object" && Boolean((evidence.sampleGuard as JsonRecord).applied)
+    ? evidence.sampleGuard as JsonRecord
+    : null;
+}
+
+function targetPolicyContext(payload: JsonRecord): JsonRecord {
+  const evidence = evidenceObject(payload);
+  return evidence.targetPolicy && typeof evidence.targetPolicy === "object" ? evidence.targetPolicy as JsonRecord : {};
+}
+
+function hasUnverifiedNumericTarget(value: unknown): boolean {
+  return /(?:رفع|خفض|بلوغ|الوصول|انتقال|الحفاظ|تحسن|انخفاض|ارتفاع)[^\n]{0,100}?(?:\d+(?:[.,]\d+)?\s*%|\d+\s*(?:طالب|حاله|حالة|نقطه|نقطة))/i.test(String(value || ""));
+}
+
 function applyScoreInterventionGuard(
   base: JsonRecord,
   rawItem: JsonRecord,
@@ -1137,64 +1163,25 @@ function applyScoreInterventionGuard(
     : "mastery_gain";
   let groupIds = cleanScoreGroupIds(rawItem.targetGroupIds, context);
   const groupMap = new Map(context.groups.map(group => [group.id, group]));
-  const requestedTargetValue = toFiniteNumber(metricInput.targetValue) ?? 0;
   let adjusted = false;
   const adjustmentReasons: string[] = [];
   let targetGroup = "";
   let successIndicator = "";
-  let numericGuard: JsonRecord = { applied: true, mode };
+  let numericGuard: JsonRecord = { applied: true, mode, targetPolicy: "baseline_comparison", totalCount: context.totalCount };
 
   if (mode === "mastery_gain") {
-    if (groupIds.includes("mastery")) {
-      groupIds = groupIds.filter(id => id !== "mastery");
-      adjusted = true;
-      adjustmentReasons.push("استُبعدت فئة المتقنين لأنها لا تضيف حالات جديدة إلى عدد المتقنين.");
-    }
+    groupIds = groupIds.filter(id => id !== "mastery");
     let selectedGroups = groupIds.map(id => groupMap.get(id)).filter((item): item is InterventionGroup => Boolean(item && item.count > 0));
     if (!selectedGroups.length) {
       const fallback = SCORE_GROUP_ORDER.map(id => groupMap.get(id)).find(item => item && item.id !== "mastery" && item.count > 0);
-      if (fallback) {
-        selectedGroups = [fallback];
-        groupIds = [fallback.id];
-        adjusted = true;
-        adjustmentReasons.push("اختيرت أقرب فئة غير متقنة متاحة لأن الفئة المرسلة لا تسمح بقياس كسب في الإتقان.");
-      }
+      if (fallback) { selectedGroups = [fallback]; groupIds = [fallback.id]; adjusted = true; adjustmentReasons.push("اختيرت فئة غير متقنة موجودة فعليًا لتتبع كسب الإتقان."); }
     }
     const eligibleCount = selectedGroups.reduce((sum, group) => sum + group.count, 0);
-    if (eligibleCount <= 0) {
-      mode = "mastery_maintenance";
-      adjusted = true;
-      adjustmentReasons.push("لا توجد حالات غير متقنة صالحة للكسب؛ حُوّل المؤشر إلى تثبيت الإتقان.");
-    } else {
-      const minimumRate = roundDecimal(((context.baselineMasteryCount + 1) / context.totalCount) * 100, 1);
-      const requestedRate = requestedTargetValue > 0 ? clampNumber(requestedTargetValue, minimumRate, 100) : minimumRate;
-      const requestedCount = Math.ceil((requestedRate / 100) * context.totalCount);
-      const requestedGain = Math.max(1, requestedCount - context.baselineMasteryCount);
-      const feasibleGain = Math.min(eligibleCount, requestedGain);
-      if (feasibleGain < requestedGain) {
-        adjusted = true;
-        adjustmentReasons.push("خُفّض الهدف إلى الحد الممكن داخل الفئات المستهدفة بدل إبقاء نسبة مستحيلة حسابيًا.");
-      }
-      const targetCount = context.baselineMasteryCount + feasibleGain;
-      const targetRate = roundDecimal((targetCount / context.totalCount) * 100, 1);
-      const conversionRate = roundDecimal((feasibleGain / eligibleCount) * 100, 1);
+    if (eligibleCount <= 0) { mode = "mastery_maintenance"; groupIds = ["mastery"]; adjusted = true; adjustmentReasons.push("لا توجد حالات غير متقنة صالحة للكسب؛ حُوّل المؤشر إلى تثبيت خط الأساس."); }
+    else {
       targetGroup = groupDisplay(selectedGroups);
-      successIndicator = `رفع عدد المتقنين من ${context.baselineMasteryCount} إلى ${targetCount} طالبًا على الأقل، عبر انتقال ${feasibleGain} من أصل ${eligibleCount} طالبًا مستهدفًا (${conversionRate}%) إلى الإتقان، بما يرفع النسبة من ${context.baselineMasteryRate}% إلى ${targetRate}% تقريبًا.`;
-      numericGuard = {
-        applied: true,
-        mode,
-        totalCount: context.totalCount,
-        baselineCount: context.baselineMasteryCount,
-        baselineRate: context.baselineMasteryRate,
-        eligibleCount,
-        requestedTargetRate: roundDecimal(requestedRate, 1),
-        requiredGain: requestedGain,
-        feasibleGain,
-        targetCount,
-        targetRate,
-        adjusted,
-        adjustmentReasons,
-      };
+      successIndicator = `زيادة عدد المتقنين مقارنة بخط الأساس (${context.baselineMasteryCount} من ${context.totalCount}) مع توثيق عدد المنتقلين من الفئة المستهدفة إلى الإتقان؛ لا يعتمد هدف رقمي مسبق دون معيار خارجي.`;
+      numericGuard = { applied: true, mode, targetPolicy: "baseline_comparison", totalCount: context.totalCount, baselineCount: context.baselineMasteryCount, baselineRate: context.baselineMasteryRate, eligibleCount, targetDefined: false, adjusted, adjustmentReasons };
     }
   }
 
@@ -1204,77 +1191,37 @@ function applyScoreInterventionGuard(
     if (!segment || segment.id === "mastery" || segment.count <= 0) {
       segment = groupIds.map(id => groupMap.get(id)).find(item => item && item.id !== "mastery" && item.count > 0)
         || ["deep_gap", "moderate_gap", "near_mastery"].map(id => groupMap.get(id)).find(item => item && item.count > 0);
-      if (segment) {
-        segmentId = segment.id;
-        adjusted = true;
-        adjustmentReasons.push("صُححت فئة الخفض إلى فئة غير متقنة موجودة فعليًا في البيانات.");
-      }
+      if (segment) { segmentId = segment.id; adjusted = true; adjustmentReasons.push("صُححت الفئة إلى فئة غير متقنة موجودة فعليًا."); }
     }
     if (segment) {
       groupIds = [segment.id];
-      const reductionRate = clampNumber(requestedTargetValue > 0 ? requestedTargetValue : 20, 5, 100);
-      const reductionCount = Math.min(segment.count, Math.max(1, Math.ceil((reductionRate / 100) * segment.count)));
-      const targetSegmentCount = Math.max(0, segment.count - reductionCount);
-      const actualReductionRate = roundDecimal((reductionCount / segment.count) * 100, 1);
       targetGroup = groupDisplay([segment]);
-      successIndicator = `خفض عدد ${segment.label} من ${segment.count} إلى ${targetSegmentCount} طالبًا على الأكثر، أي انتقال ${reductionCount} طالبًا (${actualReductionRate}%) إلى فئة أعلى في القياس اللاحق.`;
-      numericGuard = {
-        applied: true,
-        mode,
-        totalCount: context.totalCount,
-        segmentId: segment.id,
-        baselineSegmentCount: segment.count,
-        reductionCount,
-        targetSegmentCount,
-        targetReductionRate: actualReductionRate,
-        adjusted,
-        adjustmentReasons,
-      };
+      successIndicator = `انخفاض عدد ${segment.label} مقارنة بخط الأساس (${segment.count} طالبًا) مع توثيق الانتقال إلى فئة أعلى في القياس اللاحق، دون فرض نسبة خفض غير مستندة إلى معيار خارجي.`;
+      numericGuard = { applied: true, mode, targetPolicy: "baseline_comparison", totalCount: context.totalCount, segmentId: segment.id, baselineSegmentCount: segment.count, targetDefined: false, adjusted, adjustmentReasons };
     }
   }
 
   if (mode === "mastery_maintenance") {
-    const mastery = groupMap.get("mastery") || {
-      id: "mastery",
-      label: SCORE_GROUP_LABELS.mastery,
-      count: context.baselineMasteryCount,
-      percentage: context.baselineMasteryRate,
-    };
+    const mastery = groupMap.get("mastery") || { id: "mastery", label: SCORE_GROUP_LABELS.mastery, count: context.baselineMasteryCount, percentage: context.baselineMasteryRate };
     groupIds = ["mastery"];
-    const retentionRate = clampNumber(requestedTargetValue > 0 ? requestedTargetValue : 90, 50, 100);
-    const retainedCount = mastery.count > 0 ? Math.min(mastery.count, Math.max(1, Math.ceil((retentionRate / 100) * mastery.count))) : 0;
-    const actualRetentionRate = mastery.count > 0 ? roundDecimal((retainedCount / mastery.count) * 100, 1) : 0;
     targetGroup = groupDisplay([mastery]);
     successIndicator = mastery.count > 0
-      ? `الحفاظ على إتقان ما لا يقل عن ${retainedCount} من أصل ${mastery.count} طالبًا متقنًا (${actualRetentionRate}%)، مع تحقق معيار المهمة الإثرائية المحدد في المتابعة.`
-      : "لا توجد فئة متقنة حاليًا؛ يُستبدل هدف التثبيت بقياس كسب الإتقان بعد التدخل العلاجي.";
-    numericGuard = {
-      applied: true,
-      mode,
-      totalCount: context.totalCount,
-      baselineMasteryCount: mastery.count,
-      retainedCount,
-      retentionRate: actualRetentionRate,
-      adjusted,
-      adjustmentReasons,
-    };
+      ? `عدم تراجع عدد المتقنين عن خط الأساس (${mastery.count} طالبًا) مع تحقق معيار المهمة الإثرائية المحدد في المتابعة.`
+      : "لا توجد فئة متقنة حاليًا؛ يركز القياس اللاحق على كسب الإتقان بدل هدف تثبيت غير موجود.";
+    numericGuard = { applied: true, mode, targetPolicy: "baseline_comparison", totalCount: context.totalCount, baselineMasteryCount: mastery.count, targetDefined: false, adjusted, adjustmentReasons };
   }
 
-  const extraRefs = ["metric:n", "metric:masteryCount", "metric:masteryPct", ...groupIds.map(groupEvidenceRef)]
-    .filter(ref => ref && allowedEvidence.has(ref));
-  const evidenceRefs = [...new Set([...(Array.isArray(base.evidenceRefs) ? base.evidenceRefs as string[] : []), ...extraRefs])].slice(0, 8);
+  const extraRefs = ["metric:n", "metric:masteryCount", "metric:masteryPct", ...groupIds.map(groupEvidenceRef)].filter(ref => ref && allowedEvidence.has(ref));
   return {
     ...base,
     targetGroup: targetGroup || cleanString(base.targetGroup, 260),
     targetGroupIds: groupIds,
     successIndicator: successIndicator || cleanString(base.successIndicator, 380),
-    successMetric: {
-      mode,
-      targetValue: requestedTargetValue,
-      targetSegmentId: String(metricInput.targetSegmentId || ""),
-    },
+    successMetric: { mode, targetValue: 0, targetSegmentId: String(metricInput.targetSegmentId || "") },
     numericGuard,
-    evidenceRefs,
+    targetBasis: "مقارنة بخط الأساس",
+    targetGuardApplied: true,
+    evidenceRefs: [...new Set([...(Array.isArray(base.evidenceRefs) ? base.evidenceRefs as string[] : []), ...extraRefs])].slice(0, 8),
   };
 }
 
@@ -1502,6 +1449,15 @@ function validatePrimaryAnalysis(result: unknown, payload: JsonRecord, mode: "pr
         source: "gemini-primary",
       };
       let guarded = scoreContext ? applyScoreInterventionGuard(base, item, scoreContext, allowed) : base;
+      if (!scoreContext) {
+        const targetPolicy = targetPolicyContext(payload);
+        const explicitTarget = String(targetPolicy.mode || "") === "source_defined" || Boolean(targetPolicy.explicitTarget);
+        if (!explicitTarget && hasUnverifiedNumericTarget(guarded.successIndicator)) {
+          guarded.successIndicator = `تحسن موثق في «${cleanString(guarded.issue, 180) || "المؤشر المستهدف"}» مقارنة بخط الأساس عند إعادة القياس بالأداة أو المعيار نفسه.`;
+          guarded.targetGuardApplied = true;
+        }
+        guarded.targetBasis = explicitTarget ? "مستهدف صريح في المصدر" : "مقارنة بخط الأساس";
+      }
       if (recognizedTypeId === "supervision_multi_visit") guarded = applyMultiVisitScopeGuard(guarded, payload);
       return guarded;
     })
@@ -1538,19 +1494,22 @@ function validatePrimaryAnalysis(result: unknown, payload: JsonRecord, mode: "pr
     throw new Error("لم ينتج المحلل الذكي ملخصًا تنفيذيًا مكتملًا مرتبطًا بالأدلة.");
   }
   const richEvidence = allowed.size >= 6;
-  const minUnits = mode === "primary" && richEvidence ? 3 : 2;
+  const sampleGuard = sampleGuardContext(payload);
+  const minUnits = mode === "primary" && richEvidence && String(sampleGuard?.mode || "") !== "case_description" ? 3 : 2;
+  const minInterventions = String(sampleGuard?.mode || "") === "case_description" ? 1 : 2;
   // أدوات الجودة إثرائية، وليست سببًا لإسقاط تحليل كامل إذا كانت الأدلة لا تحتاج أداة إضافية.
   const minTools = 0;
-  if (units.length < minUnits || interventions.length < 2 || monitoringPlan.length < 3) {
+  if (units.length < minUnits || interventions.length < minInterventions || monitoringPlan.length < 3) {
     const missing: string[] = [];
     if (units.length < minUnits) missing.push(`وحدات التحليل ${units.length}/${minUnits}`);
-    if (interventions.length < 2) missing.push(`التدخلات ${interventions.length}/2`);
+    if (interventions.length < minInterventions) missing.push(`التدخلات ${interventions.length}/${minInterventions}`);
     if (monitoringPlan.length < 3) missing.push(`مراحل المتابعة ${monitoringPlan.length}/3`);
     throw new Error(`التحليل الذكي لم يبلغ عمق القرار المتوازن المطلوب: ${missing.join("، ")}.`);
   }
 
   const numericGuardedInterventions = interventions.filter(item => item.numericGuard && typeof item.numericGuard === "object" && Boolean((item.numericGuard as JsonRecord).applied)).length;
   const adjustedNumericTargets = interventions.filter(item => item.numericGuard && typeof item.numericGuard === "object" && Boolean((item.numericGuard as JsonRecord).adjusted)).length;
+  const baselineTargetGuardedInterventions = interventions.filter(item => String(item.targetBasis || "") === "مقارنة بخط الأساس").length;
   const scopeGuardedInterventions = interventions.filter(item => item.scopeGuard && typeof item.scopeGuard === "object" && Boolean((item.scopeGuard as JsonRecord).applied)).length;
   const adjustedScopeTargets = interventions.filter(item => item.scopeGuard && typeof item.scopeGuard === "object" && Boolean((item.scopeGuard as JsonRecord).adjusted)).length;
   const profileInput = input.analysisProfile && typeof input.analysisProfile === "object" ? input.analysisProfile as JsonRecord : {};
@@ -1596,6 +1555,7 @@ function validatePrimaryAnalysis(result: unknown, payload: JsonRecord, mode: "pr
       distinctInterventionSignatures: interventionSignatures.size,
       numericGuardedInterventions,
       adjustedNumericTargets,
+      baselineTargetGuardedInterventions,
       scopeGuardedInterventions,
       adjustedScopeTargets,
       sampleScopeEnforced: recognizedTypeId === "supervision_multi_visit",
@@ -1699,8 +1659,8 @@ function validatePrimarySegmentShape(segment: PrimarySegmentName, value: JsonRec
   }
   const interventions = Array.isArray(value.interventions) ? value.interventions : [];
   const monitoring = Array.isArray(value.monitoringPlan) ? value.monitoringPlan : [];
-  if (interventions.length < 2 || monitoring.length !== 3) {
-    throw new Error("مقطع action لم يرجع تدخلين على الأقل وثلاث مراحل متابعة بالضبط.");
+  if (interventions.length < 1 || monitoring.length !== 3) {
+    throw new Error("مقطع action لم يرجع تدخلًا واحدًا على الأقل وثلاث مراحل متابعة بالضبط.");
   }
 }
 
@@ -1879,8 +1839,10 @@ function primaryDecisionInstructions(): string {
 8) إذا كان الملف متعدد المواد فالتزم analysisMode وselectedSubject وسياسة rankingPolicy الموجودة في scopeContext.
 9) اجعل diagnosticAnalysis بين 100 و190 حرفًا، وdecisionFinding بين 45 و100 حرف، وeducationalImpact وrecommendedAction بين 35 و90 حرفًا، والملخص التنفيذي بين 100 و220 حرفًا.
 10) limitation وdataRequest جملة قصيرة فقط. additionalCautions وmissingDataRequests بحد أقصى عنصرين.
-11) استخدم evidenceRefs الموجودة حرفيًا فقط.
-12) أعد JSON خامًا فقط دون مقدمات.
+11) إذا كانت sampleGuard مفعلة فصف العينة فقط ولا تعمم، وإذا كانت comparabilityGuard تمنع الاتجاه الزمني فلا تستخدم لغة تحسن/تراجع عبر الزمن. غياب الدليل لا يساوي صفرًا، وحضور المجال في النص لا يساوي جودة الأداء.
+12) لا تنشئ مستهدفات رقمية غير موجودة في المصدر؛ القرارات العلاجية تبنى على خط الأساس والمقارنة اللاحقة.
+13) استخدم evidenceRefs الموجودة حرفيًا فقط.
+14) أعد JSON خامًا فقط دون مقدمات.
 
 الخادم سيبني analysisProfile والتدخلات والمتابعة والحراس الحسابية بعد استجابتك. لا تكتبها أنت.`;
 }
@@ -2264,7 +2226,7 @@ function assessmentComponentInterventions(decision: JsonRecord, payload: JsonRec
       responsibleRole: owner,
       timeframe: "4 أسابيع",
       successIndicator: "يُعاد بناؤه خادميًا من حجم الفئة.",
-      successMetric: { mode: "segment_reduction", targetValue: 20, targetSegmentId: "deep_gap" },
+      successMetric: { mode: "segment_reduction", targetValue: 0, targetSegmentId: "deep_gap" },
       monitoringMethod: "اختبار تشخيصي قبلي وبعدي + سجل انتقال الفئة أسبوعيًا.",
       contingency: "إذا لم يظهر انتقال موثق، تراجع المتطلبات السابقة وطريقة التجميع وتجمع أدلة إضافية قبل استمرار الخطة.",
       resources: ["اختبار تشخيصي قصير", "مهام علاجية متدرجة"],
@@ -2299,7 +2261,7 @@ function assessmentComponentInterventions(decision: JsonRecord, payload: JsonRec
       responsibleRole: owner,
       timeframe: "4 أسابيع",
       successIndicator: "يُعاد بناؤه خادميًا من الفئات المستهدفة وخط الأساس.",
-      successMetric: { mode: "mastery_gain", targetValue: Math.min(100, context.baselineMasteryRate + 5), targetSegmentId: "" },
+      successMetric: { mode: "mastery_gain", targetValue: 0, targetSegmentId: "" },
       monitoringMethod: "مهام قصيرة أسبوعية + قياس مرحلي ونهائي باستخدام حد الإتقان نفسه.",
       contingency: "إذا لم تتحسن معدلات الانتقال، تفصل الفئات في مسارين مستقلين وتراجع المهارات المسببة للفجوة بأداة تشخيصية.",
       resources: ["مهام قصيرة متدرجة", "سجل انتقال بين فئات الإتقان"],
@@ -2324,7 +2286,7 @@ function assessmentComponentInterventions(decision: JsonRecord, payload: JsonRec
       responsibleRole: owner,
       timeframe: "4 أسابيع",
       successIndicator: "يُعاد بناؤه خادميًا من عدد المتقنين الحالي.",
-      successMetric: { mode: "mastery_maintenance", targetValue: 90, targetSegmentId: "mastery" },
+      successMetric: { mode: "mastery_maintenance", targetValue: 0, targetSegmentId: "mastery" },
       monitoringMethod: "Rubric مختصر + قياس الإتقان اللاحق.",
       contingency: "إذا انخفض الإتقان، تراجع المهارات المتأثرة ويعاد توجيه الدعم قبل توسيع الإثراء.",
       resources: ["مهمة إثرائية", "Rubric مختصر"],
@@ -2349,7 +2311,7 @@ function assessmentComponentInterventions(decision: JsonRecord, payload: JsonRec
       responsibleRole: owner,
       timeframe: "6 أسابيع",
       successIndicator: "يُعاد بناؤه خادميًا من خط الأساس والفئة نفسها.",
-      successMetric: { mode: "mastery_gain", targetValue: Math.min(100, context.baselineMasteryRate + 3), targetSegmentId: "" },
+      successMetric: { mode: "mastery_gain", targetValue: 0, targetSegmentId: "" },
       monitoringMethod: "قياس مرحلي للفئة نفسها كل أسبوعين.",
       contingency: "إذا تعذر الانتقال، تراجع الحاجة إلى تدخل فردي أعمق وبيانات إضافية.",
       resources: ["سجل متابعة فردي", "مهام علاجية متدرجة"],
@@ -2378,7 +2340,9 @@ function expandPrimaryDecision(decision: JsonRecord, payload: JsonRecord): JsonR
   const interventions: JsonRecord[] = typeId === "assessment_component"
     ? assessmentComponentInterventions(decision, payload, owner)
     : [];
-  const wanted = Math.max(2, Math.min(3, units.length));
+  const caseDescription = String(sampleGuardContext(payload)?.mode || "") === "case_description";
+  if (caseDescription && interventions.length > 1) interventions.splice(1);
+  const wanted = caseDescription ? 1 : Math.max(2, Math.min(3, units.length));
 
   for (let index = 0; typeId !== "assessment_component" && index < wanted; index += 1) {
     const unit = units[index] || units[units.length - 1] || {};
@@ -2400,15 +2364,15 @@ function expandPrimaryDecision(decision: JsonRecord, payload: JsonRecord): JsonR
       targetSegmentId = group.id;
       if (group.id === "mastery") {
         metricMode = "mastery_maintenance";
-        targetValue = 90;
+        targetValue = 0;
       } else if (group.id === "near_mastery") {
         const context = scoreInterventionContext(payload);
         metricMode = "mastery_gain";
-        targetValue = context ? Math.min(100, context.baselineMasteryRate + 5) : 0;
+        targetValue = 0;
         targetSegmentId = "";
       } else {
         metricMode = "segment_reduction";
-        targetValue = 20;
+        targetValue = 0;
       }
     }
 

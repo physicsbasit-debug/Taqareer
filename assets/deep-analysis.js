@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.2.25";
+  const VERSION = "1.2.26";
 
   function masteryEngine() {
     const engine = window.TaqareerMasteryMetrics;
@@ -168,6 +168,100 @@
     return map;
   }
 
+  const SCORE_SAMPLE_TYPES = new Set(["student_results", "single_subject", "assessment_component"]);
+
+  function buildSampleGuard(n) {
+    const count = Math.max(0, Math.trunc(Number(n) || 0));
+    if (count < 5) return {
+      applied: true, mode: "case_description", n: count, inferenceStrength: "محدودة", confidenceCap: "منخفضة",
+      allowGeneralization: false, allowBoxPlot: false, allowSensitivity: false,
+      notice: `العينة صغيرة جدًا (${count} حالات)؛ النتائج تصف الحالات المتاحة فقط ولا تُعمم على الصف أو المجتمع.`
+    };
+    if (count < 15) return {
+      applied: true, mode: "exploratory_small_sample", n: count, inferenceStrength: "متوسطة إلى محدودة", confidenceCap: "متوسطة",
+      allowGeneralization: false, allowBoxPlot: false, allowSensitivity: true,
+      notice: `العينة محدودة (${count} حالة)؛ التحليل استكشافي ويحتاج عينة أوسع قبل التعميم.`
+    };
+    return {
+      applied: false, mode: "standard", n: count, inferenceStrength: count >= 30 ? "مرتفعة للتحليل الوصفي" : "متوسطة", confidenceCap: "مرتفعة",
+      allowGeneralization: true, allowBoxPlot: true, allowSensitivity: true, notice: ""
+    };
+  }
+
+  function hasExplicitTargetSource(context) {
+    return (context.headers || []).some(header => /المستهدف|الهدف المستهدف|القيمه المستهدفه|القيمة المستهدفة|target/i.test(String(header || "")));
+  }
+
+  function looksLikeInventedNumericTarget(value) {
+    const text = String(value || "");
+    return /(?:رفع|خفض|بلوغ|الوصول|انتقال|الحفاظ|تحسن|انخفاض|ارتفاع)[^\n]{0,90}?(?:\d+(?:[.,]\d+)?\s*%|\d+\s*(?:طالب|حاله|حالة|نقطه|نقطة))/i.test(text);
+  }
+
+  function baselineSuccessIndicator(item, context) {
+    const issue = String(item?.issue || "المؤشر المستهدف").trim();
+    if (SCORE_SAMPLE_TYPES.has(context.typeId)) {
+      if (/تثبيت|اثراء|إثراء/.test(issue)) return "عدم تراجع مستوى الحالات المتقنة عن خط الأساس مع تحقق معيار المهمة الإثرائية المحدد مسبقًا.";
+      return "تحسن موثق مقارنة بخط الأساس في الفئة المستهدفة عند إعادة القياس بالأداة نفسها، دون فرض نسبة تحسن غير مستندة إلى معيار خارجي.";
+    }
+    if (context.typeId === "level_distribution") return "انخفاض الفئات الأدنى مقارنة بخط الأساس في القياس اللاحق بالأداة نفسها، دون اعتماد نسبة مستهدفة غير موثقة.";
+    if (context.typeId === "behavior_attendance") return "انخفاض التكرار مقارنة بخط الأساس عبر فترة تسجيل مماثلة، مع توثيق حجم المجتمع والفترة نفسها.";
+    return `تحسن موثق في «${issue}» مقارنة بخط الأساس عند إعادة القياس بالأداة أو المعيار نفسه.`;
+  }
+
+  function applyLocalTargetGuard(result, context) {
+    const explicitTarget = hasExplicitTargetSource(context);
+    const scoreLike = SCORE_SAMPLE_TYPES.has(context.typeId);
+    result.targetPolicy = {
+      mode: explicitTarget ? "source_defined" : "baseline_comparison",
+      explicitTarget,
+      rule: explicitTarget
+        ? "يحافظ على المستهدف الرقمي فقط عندما يكون موجودًا صراحة في المصدر."
+        : "لا ينشئ مستهدفًا رقميًا جديدًا؛ يقارن القياس اللاحق بخط الأساس ما لم يقدم المستخدم أو المصدر مستهدفًا صريحًا."
+    };
+    result.improvementPlan = (result.improvementPlan || []).map(item => {
+      const preserve = explicitTarget || !looksLikeInventedNumericTarget(item?.successIndicator);
+      return {
+        ...item,
+        successIndicator: preserve ? item.successIndicator : baselineSuccessIndicator(item, context),
+        targetBasis: explicitTarget ? "مستهدف صريح في المصدر" : "مقارنة بخط الأساس",
+        targetGuardApplied: !preserve,
+      };
+    });
+  }
+
+  function applySmallSampleGuard(result, context) {
+    if (!SCORE_SAMPLE_TYPES.has(context.typeId)) return;
+    const guard = buildSampleGuard(result.n);
+    result.sampleGuard = guard;
+    result.reasoningGuardrails = { ...(result.reasoningGuardrails || {}), inferenceStrength: guard.inferenceStrength, sampleGuard: guard };
+    if (!guard.applied) return;
+    result.analysisProfile.dataSufficiency = guard.mode === "case_description"
+      ? "محدودة جدًا - وصف حالات فقط"
+      : "محدودة - تحليل استكشافي";
+    result.analysisProfile.decisionUse = guard.mode === "case_description"
+      ? ["وصف الحالات المتاحة", "تحديد متابعة فردية", "تجنب التعميم"]
+      : ["تحليل استكشافي", "تحديد أولويات أولية", "إعادة القياس بعينة أوسع"];
+    result.limitations = [...new Set([...(result.limitations || []), guard.notice])];
+    result.charts = (result.charts || []).filter(item => guard.allowBoxPlot || item.id !== "box-summary").filter(item => guard.allowSensitivity || item.id !== "mastery-sensitivity");
+    result.qualityTools = (result.qualityTools || []).map(tool => {
+      if (tool.id === "boxplot" && !guard.allowBoxPlot) return { ...tool, conditionsMet: false, reason: "لا يُعرض الصندوق والربيعات بوصفه أداة قرار مع عينة صغيرة جدًا." };
+      if (tool.id === "sensitivity" && !guard.allowSensitivity) return { ...tool, conditionsMet: false, reason: "حساسية معيار الإتقان لا تُستخدم لاتخاذ قرار جماعي مع عينة صغيرة جدًا." };
+      return tool;
+    });
+    if (guard.mode === "case_description") {
+      const masteryText = Number.isFinite(result.masteryPct)
+        ? `حقق ${result.masteryCount} من أصل ${result.n} حالات حد الإتقان المحدد (${result.masteryPctDisplay}%)؛ هذه نسبة وصفية للحالات المتاحة وليست تقديرًا لمجتمع أكبر.`
+        : `تتوفر ${result.n} حالات صالحة فقط، ولا يمكن حساب الإتقان دون درجة كلية معتمدة.`;
+      result.executiveTitle = "وصف محدود للحالات المتاحة";
+      result.executiveSummary = `${masteryText} تُستخدم النتائج للمتابعة الفردية ولا تُعمم على الصف أو المدرسة.`;
+      result.findings = [
+        finding("وصف الحالات المتاحة", `عدد الحالات الصالحة للتحليل ${result.n}، ومتوسط الدرجات ${round(result.mean)} ضمن النطاق ${round(result.min)}-${round(result.max)}.`, "مرتفعة", "هذه قيم مباشرة تخص الحالات المرفوعة فقط.", "مراجعة كل حالة على حدة وربطها بأدلة تعلم إضافية قبل اتخاذ قرار أوسع.", "medium", ["metric:n", "metric:mean"]),
+        ...(Number.isFinite(result.masteryPct) ? [finding("حالة حد الإتقان في العينة الصغيرة", masteryText, "مرتفعة", "تصف تحقق الحد داخل الحالات المتاحة ولا تقيس انتشار الإتقان في مجتمع أكبر.", "استخدام العدد الفعلي للحالات في المتابعة وعدم تحويل النسبة إلى حكم عام.", "medium", ["metric:masteryCount", "metric:n"], [guard.notice])] : [])
+      ];
+      result.improvementPlan = (result.improvementPlan || []).filter(item => !/\(0\)/.test(String(item.targetGroup || ""))).slice(0, 2);
+    }
+  }
+
   function createBase(context, family, purpose) {
     return {
       version: VERSION,
@@ -272,6 +366,7 @@
     if (!values.length) throw new Error("لا توجد درجات صالحة للتحليل العميق.");
 
     const n = values.length;
+    const sampleGuard = buildSampleGuard(n);
     const avg = mean(values), med = median(values), sigma = sd(values), vari = variance(values), q1 = quantile(values, 0.25), q3 = quantile(values, 0.75);
     const min = Math.min(...values), max = Math.max(...values), p10 = quantile(values, 0.1), p90 = quantile(values, 0.9);
     const modes = mode(values), skew = skewness(values), kurt = excessKurtosis(values), cv = coefficientOfVariation(values);
@@ -310,7 +405,7 @@
     result.bins = histogram.map(item => ({ label: item.label, count: item.count }));
     result.segments = segments; result.sensitivity = sensitivity; result.outliers = outliers;
 
-    result.analysisProfile.dataSufficiency = n >= 30 ? "مرتفعة للتحليل الوصفي" : "محدودة نسبيًا";
+    result.analysisProfile.dataSufficiency = sampleGuard.mode === "case_description" ? "محدودة جدًا - وصف حالات فقط" : sampleGuard.mode === "exploratory_small_sample" ? "محدودة - تحليل استكشافي" : n >= 30 ? "مرتفعة للتحليل الوصفي" : "متوسطة";
     result.analysisProfile.dimensions = ["مركز التوزيع", "التشتت", "شكل التوزيع", "الإتقان", "فئات التدخل", "القيم المتطرفة"];
     result.analysisProfile.assumptions = [
       Number.isFinite(maxScore) ? `الدرجة الكلية المعتمدة ${maxScore}.` : "لم تُحدد الدرجة الكلية؛ لا تعتمد نسب الإتقان.",
@@ -354,9 +449,11 @@
 
     if (Number.isFinite(masteryPct)) {
       result.findings.push(finding(
-        `انتشار الإتقان: ${masteryJudgement.label}`,
-        `بلغت نسبة انتشار الإتقان ${masteryPctDisplay}% (${masteryCount} من أصل ${n}) عند حد ${thresholdPct}%، والحكم وفق السلم المعتمد «${masteryJudgement.label}».`,
-        "مرتفعة",
+        sampleGuard.applied ? "حالة الإتقان في العينة المتاحة" : `انتشار الإتقان: ${masteryJudgement.label}`,
+        sampleGuard.applied
+          ? `حقق ${masteryCount} من أصل ${n} حالات حد الإتقان ${thresholdPct}% (${masteryPctDisplay}%). هذه النسبة وصفية للعينة المتاحة ولا تُعمم.`
+          : `بلغت نسبة انتشار الإتقان ${masteryPctDisplay}% (${masteryCount} من أصل ${n}) عند حد ${thresholdPct}%، والحكم وفق السلم المعتمد «${masteryJudgement.label}».`,
+        sampleGuard.mode === "case_description" ? "منخفضة" : sampleGuard.applied ? "متوسطة" : "مرتفعة",
         masteryPct < 50 ? "الحاجة ليست حالات فردية معزولة؛ حجم الفجوة يبرر تدخلًا منظّمًا متعدد المستويات." : "تتطلب الفجوة دعمًا متدرجًا بدل إجراء موحد لجميع الطلبة.",
         "اعتماد مجموعات تدخل وفق قرب الطالب من حد الإتقان، لا وفق تصنيف ثنائي فقط.",
         masteryPct < 50 ? "high" : "medium",
@@ -1489,7 +1586,7 @@
       metric("dateAnomalies", "مشكلات التواريخ", dateAnomalies.length, "قيمة غير منطقية", "integer")
     ];
     result.charts = [
-      chart("themes", "bar", "المجالات الأكثر حضورًا", "عدد الجمل المرتبطة بكل مجال تربوي.", themes, { xKey: "theme", yKey: "count" }),
+      chart("themes", "bar", "حضور المجالات في النص", "عدد الجمل المرتبطة بكل مجال تربوي؛ الحضور لا يعني جودة الأداء.", themes, { xKey: "theme", yKey: "count" }),
       chart("evidence-quality", "bar", "جودة الأدلة السردية", "تصنيف الجمل وفق قوة الدليل والخصوصية.", evidenceLevels, { xKey: "label", yKey: "count" }),
       chart("recommendation-actionability", "bar", "قابلية التوصيات للتنفيذ والقياس", "مدى اكتمال الفئة والزمن والمسؤول ومؤشر النجاح.", actionLevels, { xKey: "label", yKey: "count" }),
       chart("section-alignment", "heatmap", "اتساق المجالات عبر أقسام التقرير", "ظهور كل مجال في الإجادة والتطوير والدعم والتوصيات.", alignmentThemes, { columns: ["strengths", "development", "support", "recommendations"] }),
@@ -1497,7 +1594,7 @@
     ];
 
     const topTheme = themes[0];
-    result.findings.push(finding("المجال الأكثر حضورًا", `ظهر «${topTheme?.theme || "غير محدد"}» في ${topTheme?.count || 0} جملة.`, "مرتفعة", "ارتفاع الحضور قد يعكس أولوية فعلية أو تحيزًا في التوثيق؛ يلزم مقارنته بهدف الزيارة.", "مراجعة توازن تغطية المجالات وربطها بأهداف الاستمارة.", "medium", []));
+    result.findings.push(finding("أعلى مجال حضورًا في النص (لا يعني أنه الأقوى أداءً)", `ظهر «${topTheme?.theme || "غير محدد"}» في ${topTheme?.count || 0} جملة.`, "مرتفعة", "هذا مؤشر تغطية نصية فقط؛ لا يتحول إلى حكم أداء إلا بعد فحص اتجاه الأدلة داخل الإجادة والتطوير.", "مراجعة اتجاه الأدلة داخل المجال وربطه بهدف الزيارة قبل وصفه كنقطة قوة أو أولوية تطوير.", "medium", []));
     result.findings.push(finding(
       evidenceStrongPct >= 40 ? "نسبة جيدة من الأدلة القوية" : "الأحكام أقوى من الأدلة المتاحة",
       `الأدلة القوية ${round(evidenceStrongPct)}%، والمتوسطة ${round(pct(evidenceLevels[1].count, themed.length))}%.`,
@@ -1544,11 +1641,11 @@
       `تحويل جانب التطوير في «${item.theme}» إلى ممارسة محددة، مع دعم تطبيقي ودليل متابعة وتوصية قابلة للقياس.`,
       "المشرف / المعلم الأول والمعلم",
       index < 2 ? "أسبوعان" : "3 أسابيع",
-      `ارتفاع اتساق المجال من ${item.alignment}% إلى 80% أو أكثر في التقرير أو الزيارة اللاحقة`,
+      `تحسن اتساق المجال مقارنة بخط الأساس ${item.alignment}% عند التقرير أو الزيارة اللاحقة`,
       "مصفوفة جانب التطوير - الدعم - التوصية - الدليل",
       "إذا لم يظهر أثر، مراجعة ملاءمة الدعم وجمع دليل ميداني إضافي.",
       []
-    )) : [intervention("متوسطة", "تحسين جودة التوثيق", "معدّو التقارير الإشرافية", "اعتماد قالب موحد للأدلة والتوصيات القابلة للقياس دون توحيد محتوى التحليل.", "المشرف الأول", "خلال شهر", "ارتفاع الأدلة القوية والتوصيات القابلة للقياس إلى 70%", "تدقيق عينة من التقارير", "تقديم تدريب تطبيقي ومراجعة نموذجية إذا لم يتحسن المؤشر.", [])];
+    )) : [intervention("متوسطة", "تحسين جودة التوثيق", "معدّو التقارير الإشرافية", "اعتماد قالب موحد للأدلة والتوصيات القابلة للقياس دون توحيد محتوى التحليل.", "المشرف الأول", "خلال شهر", "تحسن نسبة الأدلة القوية والتوصيات القابلة للقياس مقارنة بخط الأساس عند التدقيق اللاحق", "تدقيق عينة من التقارير", "تقديم تدريب تطبيقي ومراجعة نموذجية إذا لم يتحسن المؤشر.", [])];
     result.monitoringPlan = [
       { stage: "تدقيق التقرير", timing: "قبل الاعتماد", measure: "التعارضات والتواريخ والتكرارات ومراجع الأدلة", owner: "المشرف" },
       { stage: "اعتماد خطة الدعم", timing: "خلال أسبوع", measure: "ربط كل جانب تطوير بإجراء ومسؤول وزمن", owner: "المعلم الأول" },
@@ -1943,18 +2040,37 @@
     "initiatives": /مبادرات|انشطه تربويه|بحث علمي|ابتكار|مسابقات/,
   };
 
-  function multiVisitNarrativeMismatch(row, indicator, level) {
+  function multiVisitNarrativeAlignment(row, indicator, level) {
     const strengths = normalize(row["جوانب الإجادة"] || "");
     const development = normalize(row["جوانب التطوير"] || "");
     const topic = MULTI_VISIT_TOPIC_RULES[indicator.id];
-    if (!topic) return null;
-    const positive = strengths;
-    const gaps = development;
-    const positiveSignal = topic.test(positive) && /متميز|فعال|فاعله|جميع|دقيق|مبدع|بارع|نجاح|اتقان/.test(positive);
-    const gapSignal = topic.test(gaps) && /لم |لا |ضعف|حاجه|يحتاج|بحاجه|عدد قليل|محدود|غير متقن|تنويع|تعزيز|رفع مستوى/.test(gaps);
-    if (level <= 1 && gapSignal) return "تقدير متميز مع دليل تطويري أو قيد واضح داخل الزيارة";
-    if (level >= 3 && positiveSignal && !gapSignal) return "تقدير يحتاج دعمًا مع دليل إيجابي قوي داخل الزيارة";
-    return null;
+    if (!topic) return { status: "insufficient", detail: "لا توجد قاعدة موضوعية كافية للمقارنة السردية لهذا البند." };
+    const positiveTopic = topic.test(strengths);
+    const gapTopic = topic.test(development);
+    if (!positiveTopic && !gapTopic) return { status: "insufficient", detail: "لا يوجد دليل سردي مرتبط بهذا البند داخل الزيارة." };
+    const positiveSignal = positiveTopic && /متميز|فعال|فاعله|جميع|دقيق|مبدع|بارع|نجاح|اتقان/.test(strengths);
+    const gapSignal = gapTopic && /لم |لا |ضعف|حاجه|يحتاج|بحاجه|عدد قليل|محدود|غير متقن|تنويع|تعزيز|رفع مستوى/.test(development);
+    if (level <= 1 && gapSignal) return { status: "mismatch", detail: "تقدير متميز مع دليل تطويري أو قيد واضح داخل الزيارة" };
+    if (level >= 3 && positiveSignal && !gapSignal) return { status: "mismatch", detail: "تقدير يحتاج دعمًا مع دليل إيجابي قوي داخل الزيارة" };
+    return { status: "consistent", detail: "يوجد دليل سردي مرتبط بالبند ولا تظهر إشارة تعارض وفق القواعد المحلية." };
+  }
+
+  function buildMultiVisitComparabilityGuard(rows, catalog, visitSummaries) {
+    const subjects = unique((rows || []).map(row => String(row["المادة"] || "").trim())).filter(Boolean);
+    const grades = unique((rows || []).map(row => String(row["الصف"] || "").trim())).filter(Boolean);
+    const sameInstrument = Array.isArray(catalog) && catalog.length > 0;
+    const completeRatio = visitSummaries.length ? visitSummaries.filter(item => item.ratingCount === catalog.length).length / visitSummaries.length : 0;
+    const reasons = [];
+    if (!sameInstrument) reasons.push("لم تثبت أداة موحدة بين الزيارات.");
+    if (completeRatio < 0.8) reasons.push("اكتمال بنود الزيارات أقل من 80%.");
+    if (subjects.length > 1) reasons.push("الزيارات تشمل مواد متعددة.");
+    if (grades.length > 1) reasons.push("الزيارات تشمل صفوفًا أو فئات متعددة.");
+    reasons.push("وحدة المعلم/الحالة عبر الزمن غير مثبتة بما يكفي لبناء اتجاه زمني فردي.");
+    return {
+      applied: true, status: "descriptive_only", sameScale: true, sameInstrument, completeVisitRatio: round(completeRatio * 100),
+      subjectCount: subjects.length, gradeCount: grades.length, allowTrendInference: false,
+      label: "مقارنة وصفية فقط", reasons
+    };
   }
 
   function buildMultiVisitScopeContext(rows, sourceMeta = {}) {
@@ -1996,6 +2112,7 @@
     const byIndicator = new Map(catalog.map(item => [item.id, { ...item, values: [] }]));
     const visitSummaries = [];
     const mismatches = [];
+    const narrativeChecks = [];
 
     rows.forEach((row, rowIndex) => {
       const visitValues = [];
@@ -2005,16 +2122,13 @@
         ratings.push(level);
         visitValues.push(level);
         byIndicator.get(indicator.id)?.values.push(level);
-        const mismatch = multiVisitNarrativeMismatch(row, indicator, level);
-        if (mismatch) mismatches.push({
-          ref: `row:${rowIndex + 1}`,
-          visit: row["معرف الزيارة"] || `زيارة ${rowIndex + 1}`,
-          subject: row["المادة"] || "",
-          indicatorId: indicator.id,
-          indicator: indicator.label,
-          level,
-          detail: mismatch,
-        });
+        const alignment = multiVisitNarrativeAlignment(row, indicator, level);
+        const check = {
+          ref: `row:${rowIndex + 1}`, visit: row["معرف الزيارة"] || `زيارة ${rowIndex + 1}`, subject: row["المادة"] || "",
+          indicatorId: indicator.id, indicator: indicator.label, level, status: alignment.status, detail: alignment.detail,
+        };
+        narrativeChecks.push(check);
+        if (alignment.status === "mismatch") mismatches.push(check);
       });
       visitSummaries.push({
         ref: `row:${rowIndex + 1}`,
@@ -2046,10 +2160,23 @@
     const goodCount = ratings.filter(value => value === 2).length;
     const supportCount = ratings.filter(value => value >= 3).length;
     const completeVisits = visitSummaries.filter(item => item.ratingCount === catalog.length).length;
+    visitSummaries.forEach(item => {
+      const checks = narrativeChecks.filter(check => check.ref === item.ref);
+      const comparable = checks.filter(check => check.status !== "insufficient");
+      item.narrativeComparableCount = comparable.length;
+      item.narrativeInsufficientCount = checks.filter(check => check.status === "insufficient").length;
+      item.narrativeMismatchCount = comparable.filter(check => check.status === "mismatch").length;
+      item.narrativeAlignmentPct = comparable.length ? round(pct(comparable.length - item.narrativeMismatchCount, comparable.length)) : null;
+    });
+    const comparableNarrativeCount = narrativeChecks.filter(check => check.status !== "insufficient").length;
+    const insufficientNarrativeCount = narrativeChecks.filter(check => check.status === "insufficient").length;
+    const narrativeAlignmentPct = comparableNarrativeCount ? round(pct(comparableNarrativeCount - mismatches.length, comparableNarrativeCount)) : null;
     result.scopeContext = buildMultiVisitScopeContext(rows, context.sourceMeta);
+    result.comparabilityGuard = buildMultiVisitComparabilityGuard(rows, catalog, visitSummaries);
     result.visitSummaries = visitSummaries;
     result.indicatorStats = indicatorStats;
     result.numericNarrativeMismatches = mismatches;
+    result.numericNarrativeChecks = narrativeChecks;
     result.levelDistribution = levelDistribution;
     result.metrics = [
       metric("visitCount", "عدد الزيارات", rows.length, "زيارة مستقلة"),
@@ -2059,17 +2186,20 @@
       metric("excellentPct", "نسبة مستوى متميز", round(pct(excellentCount, ratings.length)), `${excellentCount} تقديرًا`, "percentage"),
       metric("excellentGoodPct", "نسبة متميز أو جيد", round(pct(excellentCount + goodCount, ratings.length)), `${excellentCount + goodCount} تقديرًا`, "percentage"),
       metric("supportRatingPct", "نسبة ملائم أو أقل", round(pct(supportCount, ratings.length)), `${supportCount} تقديرًا`, "percentage"),
-      metric("numericNarrativeMismatchCount", "حالات عدم الاتساق الرقمي السردي", mismatches.length, "داخل الزيارة نفسها"),
+      metric("numericNarrativeComparableCount", "المقارنات الرقمية السردية القابلة للفحص", comparableNarrativeCount, `${insufficientNarrativeCount} حالة بلا دليل سردي كافٍ`, "integer"),
+      metric("numericNarrativeMismatchCount", "حالات تحتاج مراجعة رقمية سردية", mismatches.length, "داخل الزيارة نفسها", "integer"),
+      metric("numericNarrativeAlignmentPct", "اتساق التقدير مع الدليل السردي", narrativeAlignmentPct === null ? "غير متاح" : narrativeAlignmentPct, narrativeAlignmentPct === null ? "لا توجد أدلة سردية مرتبطة تكفي للحساب" : `محسوب من ${comparableNarrativeCount} مقارنة قابلة للفحص`, narrativeAlignmentPct === null ? "text" : "percent"),
     ];
     result.charts = [
       chart("supervision-level-distribution", "bar", "توزيع مستويات الزيارات", "المقياس معكوس من 1 متميز إلى 5 يحتاج إلى تدخل.", levelDistribution, { xKey: "label", yKey: "count" }),
       chart("supervision-indicator-performance", "bar", "أداء بنود التقويم عبر الزيارات", "درجة أداء مطبعة؛ الأعلى أفضل مع بقاء المستوى الأصلي محفوظًا.", indicatorStats, { xKey: "label", yKey: "performanceScore", valueSuffix: "%" }),
-      chart("supervision-visit-performance", "bar", "مقارنة الزيارات", "مقارنة وصفية لا تستخدم لإصدار حكم فردي دون مراجعة الأدلة.", visitSummaries, { xKey: "visit", yKey: "performanceScore", valueSuffix: "%" }),
-      chart("supervision-numeric-narrative-alignment", "bar", "الاتساق بين التقدير والدليل السردي", "عدد الحالات التي تحتاج مراجعة داخل كل زيارة.", visitSummaries.map(item => ({ visit: item.visit, count: mismatches.filter(m => m.ref === item.ref).length })), { xKey: "visit", yKey: "count" }),
+      chart("supervision-visit-performance", "bar", "مقارنة وصفية بين الزيارات", "فروق وصفية فقط؛ لا تمثل اتجاهًا زمنيًا ما لم تثبت قابلية المقارنة ووحدة الحالة عبر الزمن.", visitSummaries, { xKey: "visit", yKey: "performanceScore", valueSuffix: "%" }),
+      ...(visitSummaries.some(item => item.narrativeComparableCount > 0) ? [chart("supervision-numeric-narrative-alignment", "bar", "حالات تحتاج مراجعة بين التقدير والدليل السردي", "يعرض عدد حالات عدم الاتساق فقط؛ غياب الدليل السردي يظهر كغير متاح ولا يحسب صفرًا.", visitSummaries.filter(item => item.narrativeComparableCount > 0).map(item => ({ visit: item.visit, count: item.narrativeMismatchCount, comparable: item.narrativeComparableCount, unavailable: item.narrativeInsufficientCount })), { xKey: "visit", yKey: "count", valueSuffix: " حالة" })] : []),
     ];
     result.limitations = [
       "المقياس معكوس؛ المستوى 1 هو الأفضل والمستوى 5 يحتاج إلى تدخل.",
-      "المقارنة بين الزيارات وصفية ولا تعوض مراجعة اختلاف المعلمين والمواد والصفوف والسياقات.",
+      "المقارنة بين الزيارات وصفية فقط، ولا تُفسر كاتجاه زمني ما لم تثبت وحدة الحالة والأداة والمقياس وقابلية المقارنة.",
+      "غياب الدليل السردي المرتبط ببند لا يساوي صفرًا في الاتساق؛ يسجل كغير متاح ويستبعد من المقام.",
       "كشف عدم الاتساق الرقمي السردي إشارة للمراجعة وليس حكمًا آليًا على جودة الزيارة.",
       "تُحجب أسماء المعلمين وأرقام الملفات قبل المعالجة الخارجية عند تفعيل الخصوصية الافتراضية.",
     ];
@@ -2123,6 +2253,16 @@
       : context.typeId;
     const analyzer = analyzers[inferredAnalyzerId] || analyzeGeneric;
     const result = analyzer(context);
+    applySmallSampleGuard(result, context);
+    applyLocalTargetGuard(result, context);
+    result.reasoningGuardrails = {
+      ...(result.reasoningGuardrails || {}),
+      inferenceStrength: result.reasoningGuardrails?.inferenceStrength || (result.analysisProfile?.dataSufficiency || "متوسطة"),
+      targetPolicy: result.targetPolicy || null,
+      comparabilityGuard: result.comparabilityGuard || null,
+      missingIsNotZero: true,
+      claimHierarchy: "fact -> inference -> hypothesis -> verification"
+    };
     result.analysisRouting = { requestedTypeId: context.typeId, analyzerId: inferredAnalyzerId, semanticProfileVersion: context.analysisProfile?.profileVersion || null };
     if (!Array.isArray(result.diagnosticSections) || !result.diagnosticSections.length) {
       result.diagnosticSections = deriveDiagnosticSections(result);

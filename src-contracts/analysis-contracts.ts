@@ -188,6 +188,8 @@ export interface ActionRecommendation {
   ownerAr?: string;
   timeframeAr?: string;
   successIndicatorAr: string;
+  targetBasisAr?: string;
+  targetGuardApplied?: boolean;
   successMetric?: {
     mode: "mastery_gain" | "segment_reduction" | "mastery_maintenance" | "custom";
     targetValue: number;
@@ -196,12 +198,16 @@ export interface ActionRecommendation {
   numericGuard?: {
     applied: boolean;
     adjusted?: boolean;
+    targetPolicy?: "baseline_comparison" | "source_defined";
+    targetDefined?: boolean;
     totalCount?: number;
     baselineCount?: number;
     eligibleCount?: number;
-    feasibleGain?: number;
-    targetCount?: number;
-    targetRate?: number;
+    baselineRate?: number;
+    baselineSegmentCount?: number;
+    baselineMasteryCount?: number;
+    segmentId?: string;
+    adjustmentReasons?: string[];
   };
   scopeGuard?: {
     applied: boolean;

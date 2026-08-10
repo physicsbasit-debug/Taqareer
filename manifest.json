@@ -1,8 +1,8 @@
 {
   "app": "تقارير",
-  "version": "1.4.4",
-  "phase": "Unified Intake Card Styling",
-  "releaseName": "Unify Visual Treatment for Supported Input Formats",
+  "version": "1.4.5",
+  "phase": "Educational Reasoning Guardrails",
+  "releaseName": "Evidence-Calibrated Educational Reasoning",
   "buildType": "static-github-pages-plus-supabase-edge-function",
   "supportedInputs": {
     "table": [
@@ -221,7 +221,7 @@
     "legacyAnalyzeThinkingBudget": 1024,
     "classificationThinkingBudget": 0,
     "reconciliationContractVersion": "6.6.0",
-    "edgeFunctionVersion": "0.16.4",
+    "edgeFunctionVersion": "0.16.5",
     "fastEnhancementModel": "gemini-3.5-flash-lite",
     "fastEnhancementThinkingBudget": 192,
     "fastEnhancementMaxOutputTokens": 2600,

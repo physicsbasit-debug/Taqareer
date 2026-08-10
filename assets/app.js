@@ -770,7 +770,7 @@
     });
     return {
       locale: "ar-OM",
-      appVersion: "1.4.4",
+      appVersion: "1.4.5",
       source: { name: state.sourceName, meta: state.sourceMeta || {}, mode: state.sourceMeta?.mode || "table" },
       localClassification: state.localRecognition ? {
         id: state.localRecognition.type.id,
@@ -1657,7 +1657,7 @@
     if (!window.TaqareerReconciliation?.composePrimary) throw new Error("محرك التحقق من التحليل الذكي غير محمل.");
     const payload = {
       locale: "ar-OM",
-      appVersion: "1.4.4",
+      appVersion: "1.4.5",
       pipeline: {
         mode: "ai-decision-core-v1",
         instruction: "المحرك المحلي يحسب المؤشرات والرسوم. يبني Gemini نواة القرار التشخيصية مرة واحدة، ثم يبني الخادم التدخلات والمتابعة من القرار والأرقام الحتمية ويطبق حراس الأدلة قبل العرض."
@@ -2254,7 +2254,7 @@
     $("diagnosticSectionsGrid").innerHTML = diagnosticSections.map(section => {
       const evidence = humanizeEvidenceRefs(section.evidenceRefs || []);
       const implications = Array.isArray(section.implications) ? section.implications : [];
-      const source = descriptiveOnly ? "تحليل وصفي" : localFallbackUsed ? "قراءة محلية موثوقة" : "تحليل تربوي موثق";
+      const source = descriptiveOnly ? "تحليل وصفي" : localFallbackUsed ? "قراءة محلية مدعومة بالأدلة" : "قراءة مدعومة بالأدلة";
       const alternatives = Array.isArray(section.alternativeExplanations) ? section.alternativeExplanations : [];
       const requests = Array.isArray(section.dataRequests) ? section.dataRequests : [];
       return `<article class="diagnostic-section-card"><div class="diagnostic-section-meta"><span>${source}</span><span>ثقة ${escapeHtml(section.confidence || "متوسطة")}</span></div><h5>${escapeHtml(section.title || "قراءة تفسيرية")}</h5><p>${escapeHtml(publicText(section.analysis || ""))}</p>${evidence && evidence !== "لم يحدد مرجع دليل واضح." ? `<div class="soft-note">الدليل: ${escapeHtml(evidence)}</div>` : ""}${implications.length ? `<h6>الآثار العملية</h6><ul>${implications.map(item=>`<li>${escapeHtml(publicText(item))}</li>`).join("")}</ul>` : ""}${alternatives.length ? `<h6>تفسيرات بديلة محتملة</h6><ul>${alternatives.map(item=>`<li>${escapeHtml(publicText(item))}</li>`).join("")}</ul>` : ""}${requests.length ? `<h6>بيانات مطلوبة للتحقق</h6><ul>${requests.map(item=>`<li>${escapeHtml(publicText(item))}</li>`).join("")}</ul>` : ""}</article>`;
@@ -2262,7 +2262,8 @@
 
     // التحسين الخارجي جزء تلقائي من مسار التحليل ولا يظهر للمستخدم كمرحلة مستقلة.
     // تبقى واجهة النتائج هادئة: لا رسائل انتظار، لا أسماء مزودين، ولا أزرار إعادة.
-    $("analysisModeChip").textContent = descriptiveOnly ? "تحليل وصفي مكتمل" : localFallbackUsed ? "تحليل محلي مكتمل" : "تحليل تربوي مكتمل";
+    const inferenceStrength = publicDisplayLabel(a.reasoningGuardrails?.inferenceStrength || profile.dataAdequacy || profile.dataSufficiency || "غير محددة", "غير محددة");
+    $("analysisModeChip").textContent = descriptiveOnly ? "تحليل وصفي مكتمل" : `قوة الاستدلال: ${inferenceStrength}`;
     $("analysisModeChip").className = "success-chip";
     const notice = $("aiResultNotice");
     notice.classList.remove("error", "warning");
@@ -2281,7 +2282,7 @@
 
     const findings = (a.findings || []).slice(0, 18);
     $("findings").innerHTML = findings.map((f,i)=>{
-      const sourceLabel=descriptiveOnly ? "تحليل وصفي" : localFallbackUsed ? "قراءة محلية موثوقة" : "تحليل تربوي موثق";
+      const sourceLabel=descriptiveOnly ? "تحليل وصفي" : localFallbackUsed ? "قراءة محلية مدعومة بالأدلة" : "قراءة مدعومة بالأدلة";
       const severity=f.severity||"medium";
       const limitations=f.limitations||[];
       const limitationHtml=limitations.length?`<h5>الحدود</h5><p>${limitations.map(escapeHtml).join("، ")}</p>`:"";
@@ -2299,7 +2300,7 @@
 
     const plans=(a.improvementPlan||[]).slice(0,10);
     $("improvementPlanSection").classList.toggle("hidden",!plans.length);
-    $("improvementPlanBody").innerHTML=plans.map(item=>`<tr><td data-label="الأولوية">${escapeHtml(publicText(item.priority))}</td><td data-label="المشكلة والفئة"><strong>${escapeHtml(publicText(item.issue))}</strong><small>${escapeHtml(publicText(item.targetGroup))}</small></td><td data-label="الإجراء">${escapeHtml(publicText(item.action))}<small>بديل عند عدم التحسن: ${escapeHtml(publicText(item.contingency))}</small></td><td data-label="المسؤول والزمن">${escapeHtml(publicText(item.responsibleRole))}<small>${escapeHtml(publicText(item.timeframe))}</small></td><td data-label="مؤشر النجاح والمتابعة">${escapeHtml(publicText(item.successIndicator))}<small>${escapeHtml(publicText(item.monitoringMethod))}</small></td></tr>`).join("");
+    $("improvementPlanBody").innerHTML=plans.map(item=>`<tr><td data-label="الأولوية">${escapeHtml(publicText(item.priority))}</td><td data-label="المشكلة والفئة"><strong>${escapeHtml(publicText(item.issue))}</strong><small>${escapeHtml(publicText(item.targetGroup))}</small></td><td data-label="الإجراء">${escapeHtml(publicText(item.action))}<small>بديل عند عدم التحسن: ${escapeHtml(publicText(item.contingency))}</small></td><td data-label="المسؤول والزمن">${escapeHtml(publicText(item.responsibleRole))}<small>${escapeHtml(publicText(item.timeframe))}</small></td><td data-label="مؤشر النجاح والمتابعة">${escapeHtml(publicText(item.successIndicator))}${item.targetBasis?`<small>أساس المستهدف: ${escapeHtml(publicText(item.targetBasis))}</small>`:""}<small>${escapeHtml(publicText(item.monitoringMethod))}</small></td></tr>`).join("");
 
     const monitoring=(a.monitoringPlan||[]).slice(0,8);
     $("monitoringPlanSection").classList.toggle("hidden",!monitoring.length);
@@ -2365,7 +2366,7 @@
   function exportAnalysis() {
     const payload = {
       app: "تقارير",
-      version: "1.4.4",
+      version: "1.4.5",
       generatedAt: new Date().toISOString(),
       source: state.sourceName,
       sourceMeta: state.sourceMeta,
@@ -2378,7 +2379,7 @@
     };
     const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="taqareer-analysis-v1.4.4.json"; a.click(); URL.revokeObjectURL(url);
+    a.href=url; a.download="taqareer-analysis-v1.4.5.json"; a.click(); URL.revokeObjectURL(url);
   }
 
   function escapeHtml(v) { return String(v ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }

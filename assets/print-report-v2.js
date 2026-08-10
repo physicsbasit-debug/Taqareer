@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.4.4";
+  const VERSION = "1.4.5";
   const RENDERER_ID = "print-report-v2";
 
   function esc(value) {
@@ -75,9 +75,10 @@
     return refs.map(ref => analysis?.evidenceMap?.[ref] || ref).filter(Boolean).join("، ");
   }
   function inferStatus(data) {
-    if (data.aiUsed) return {label:"تحليل تربوي موثق", detail:text(data.profile?.dataSufficiency,"كفاية البيانات موثقة"), cls:"ai"};
-    if (data.localFallbackUsed) return {label:"تحليل تربوي محلي موثوق", detail:text(data.profile?.dataSufficiency,"تم الاعتماد على الأدلة والحسابات المحلية"), cls:"local"};
-    return {label:"تحليل بحاجة إلى مراجعة", detail:text(data.profile?.dataSufficiency,"راجع حدود البيانات قبل الاعتماد"), cls:"review"};
+    const inferenceStrength = text(data.analysis?.reasoningGuardrails?.inferenceStrength || data.profile?.dataSufficiency, "غير محددة");
+    if (data.aiUsed) return {label:"سلامة الحسابات: موثوقة", detail:`قوة الاستدلال التربوي: ${inferenceStrength}`, cls:"ai"};
+    if (data.localFallbackUsed) return {label:"سلامة الحسابات: موثوقة", detail:`قوة الاستدلال التربوي: ${inferenceStrength} · قراءة محلية`, cls:"local"};
+    return {label:"تحليل بحاجة إلى مراجعة", detail:`قوة الاستدلال التربوي: ${inferenceStrength}`, cls:"review"};
   }
   function metaEntries(data, context) {
     const meta = data.meta || {}, source = sourceLabel(context), isMulti = context.type?.id === "multi_subject_results";
@@ -157,7 +158,7 @@
     return groups.map((group,pageIndex)=>{const sliceRows=findingRows({...data,findings:group}); cursor+=group.length; return {section:"خريطة القرار والاستنتاجات", body:`${sectionTitle("04",pageIndex?"خريطة القرار - متابعة":"الاستنتاجات التشخيصية وخريطة القرار","ملخص قرار يمكن استخدامه مباشرة في اجتماع النتائج")}<table class="decision-table"><thead><tr><th>#</th><th>الاستنتاج</th><th>رتبة الاستدلال</th><th>الدليل</th><th>القرار التربوي</th></tr></thead><tbody>${sliceRows.join("")}</tbody></table>`};});
   }
   function planCost(item){return 34 + Math.ceil(([item.issue,item.action,item.successIndicator,item.monitoringMethod,item.contingency].map(text).join(" ").length)/180)*5 + (item.implementationSteps || []).length*3;}
-  function planRow(item,index){const basis=item.basisClaimType?claim(item.basisClaimType):null;return `<article class="plan-row"><div class="plan-head"><div class="pnum">${index}</div><div><small>${esc(item.priority || "متوسطة")}</small><strong>${esc(item.issue || "أولوية تحسين")}</strong>${basis?`<span class="badge ${basis.cls}">${esc(basis.label)}${item.basisConfidence?` · ثقة ${esc(item.basisConfidence)}`:""}</span>`:""}</div><div><small>الفئة المستهدفة</small><strong>${esc(item.targetGroup || "—")}</strong></div><div><small>الإطار الزمني</small><strong>${esc(item.timeframe || "—")}</strong></div></div><div class="plan-body"><div><span>الإجراء وخطوات التنفيذ</span><strong>${esc(item.action || "")}</strong>${item.implementationSteps?.length?`<ol>${item.implementationSteps.slice(0,4).map(step=>`<li>${esc(step)}</li>`).join("")}</ol>`:""}</div><div><span>المسؤول</span><strong>${esc(item.responsibleRole || "—")}</strong></div><div><span>مؤشر النجاح والمتابعة</span><strong>${esc(item.successIndicator || "—")}</strong><small>${esc(item.monitoringMethod || "")}</small></div><div><span>الخطة البديلة</span><strong>${esc(item.contingency || "—")}</strong></div></div></article>`;}
+  function planRow(item,index){const basis=item.basisClaimType?claim(item.basisClaimType):null;return `<article class="plan-row"><div class="plan-head"><div class="pnum">${index}</div><div><small>${esc(item.priority || "متوسطة")}</small><strong>${esc(item.issue || "أولوية تحسين")}</strong>${basis?`<span class="badge ${basis.cls}">${esc(basis.label)}${item.basisConfidence?` · ثقة ${esc(item.basisConfidence)}`:""}</span>`:""}</div><div><small>الفئة المستهدفة</small><strong>${esc(item.targetGroup || "—")}</strong></div><div><small>الإطار الزمني</small><strong>${esc(item.timeframe || "—")}</strong></div></div><div class="plan-body"><div><span>الإجراء وخطوات التنفيذ</span><strong>${esc(item.action || "")}</strong>${item.implementationSteps?.length?`<ol>${item.implementationSteps.slice(0,4).map(step=>`<li>${esc(step)}</li>`).join("")}</ol>`:""}</div><div><span>المسؤول</span><strong>${esc(item.responsibleRole || "—")}</strong></div><div><span>مؤشر النجاح والمتابعة</span><strong>${esc(item.successIndicator || "—")}</strong>${item.targetBasis?`<small>أساس المستهدف: ${esc(item.targetBasis)}</small>`:""}<small>${esc(item.monitoringMethod || "")}</small></div><div><span>الخطة البديلة</span><strong>${esc(item.contingency || "—")}</strong></div></div></article>`;}
   function planPages(data){const groups=pack(data.plan || [], planCost, 156, 2);let cursor=0;return groups.map((group,pageIndex)=>{const start=cursor;cursor+=group.length;return {section:"خطة التحسين والتدخل",body:`${sectionTitle("05",pageIndex?"خطة التحسين - متابعة":"خطة التحسين والتدخل","تدخلات محددة مرتبطة بمسؤول وزمن ومؤشر نجاح")}<div class="plan-list">${group.map((item,i)=>planRow(item,start+i+1)).join("")}</div>`};});}
   function toolCard(item){return `<article class="tool-card"><small>أداة جودة</small><h3>${esc(item.name || "أداة جودة")}</h3><p>${esc(item.reason || "")}</p>${item.interpretation?`<strong>${esc(item.interpretation)}</strong>`:""}</article>`;}
   function governancePages(data){

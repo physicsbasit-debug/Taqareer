@@ -696,5 +696,51 @@ test('End-to-End assessment-component contract owns cohorts and blocks motivatio
   assert.match(lift.action, /دعم متدرج|مراجعة مركزة/);
   assert.match(lift.targetGroup, /فجوة متوسطة/);
   assert.match(lift.targetGroup, /قريبون من الإتقان/);
-  assert.match(lift.successIndicator, /طالبًا مستهدفًا/);
+  assert.match(lift.successIndicator, /مقارنة بخط الأساس/);
+  assert.equal(lift.successMetric.targetValue, 0);
+  assert.equal(lift.targetBasis, 'مقارنة بخط الأساس');
+  assert.equal(lift.numericGuard.targetPolicy, 'baseline_comparison');
+});
+
+test('End-to-End: case-description sample keeps the server plan minimal and baseline-based', async () => {
+  const p = payload();
+  p.recognizedType = { id: 'single_subject', nameAr: 'نتائج مادة واحدة' };
+  p.availableEvidenceRefs = ['metric:n', 'metric:masteryCount', 'metric:masteryPct', 'metric:deepGapCount'];
+  const groups = [
+    { id: 'mastery', label: 'حققوا حد الإتقان', count: 1, percentage: 50 },
+    { id: 'deep_gap', label: 'دون الإتقان بفجوة عميقة', count: 1, percentage: 50 },
+  ];
+  p.evidenceAnalysis = {
+    metrics: [
+      { id: 'n', value: 2 }, { id: 'masteryCount', value: 1 }, { id: 'masteryPct', value: 50 }, { id: 'deepGapCount', value: 1 },
+    ],
+    charts: [{ id: 'intervention-segments', data: groups }],
+    interventionMathContext: { totalCount: 2, baselineMasteryCount: 1, baselineMasteryRate: 50, groups },
+    sampleGuard: { applied: true, mode: 'case_description', n: 2, inferenceStrength: 'محدودة', confidenceCap: 'منخفضة', allowGeneralization: false },
+    targetPolicy: { mode: 'baseline_comparison', explicitTarget: false },
+    evidenceCatalog: [],
+  };
+  p.data = { mode: 'table', headers: [], rowCount: 2, sentRowCount: 0, sampleRows: [] };
+  const decision = {
+    executive: { title: 'وصف حالتين', summary: 'قراءة محدودة للحالتين المتاحتين.', overallJudgement: 'متابعة فردية', confidence: 'منخفضة', evidenceRefs: ['metric:n'] },
+    findings: [
+      { ...unit(1, 'وصف الحالات', ['metric:n', 'metric:masteryPct']), claimType: 'fact', confidence: 'مرتفعة' },
+      { ...unit(2, 'متابعة الفجوة', ['metric:deepGapCount']), claimType: 'inference', confidence: 'منخفضة' },
+    ].map(item => ({
+      title: item.title, diagnosticAnalysis: item.diagnosticAnalysis, decisionFinding: item.decisionFinding,
+      claimType: item.claimType, evidenceRefs: item.evidenceRefs, confidence: item.confidence, severity: item.severity,
+      educationalImpact: item.educationalImpact, recommendedAction: item.recommendedAction,
+      limitation: 'العينة صغيرة جدًا ولا تسمح بالتعميم.', dataRequest: 'دليل تعلم مباشر للحالة.',
+    })),
+    additionalCautions: ['لا تعمم النتائج خارج الحالتين.'], missingDataRequests: [],
+  };
+  const runtime = await createRuntime([geminiRaw(decision)]);
+  const { status, body } = await invoke(runtime, p);
+  assert.equal(status, 200);
+  assert.equal(body.result.interventions.length, 1);
+  const plan = body.result.interventions[0];
+  assert.equal(plan.successMetric.targetValue, 0);
+  assert.equal(plan.numericGuard.targetPolicy, 'baseline_comparison');
+  assert.equal(plan.targetBasis, 'مقارنة بخط الأساس');
+  assert.match(plan.successIndicator, /مقارنة بخط الأساس/);
 });

@@ -72,9 +72,11 @@ test('decision prompt owns diagnosis and recommendations while server owns inter
 test('schema and validators keep evidence depth without requiring an impossible second score group', () => {
   const edge = read('supabase/functions/analyze-educational-form/index.ts');
   assert.match(edge, /findings: \{[\s\S]*?minItems: 2,[\s\S]*?maxItems: 3,/);
-  assert.match(edge, /mode === "primary" && richEvidence \? 3 : 2/);
+  assert.match(edge, /mode === "primary" && richEvidence && String\(sampleGuard\?\.mode \|\| ""\) !== "case_description" \? 3 : 2/);
   assert.match(edge, /const requiredDistinctScoreGroups = scoreContext \? Math\.min\(2, Math\.max\(1, availableScoreGroups\)\) : 2/);
   assert.match(edge, /numericGuardedInterventions/);
+  assert.match(edge, /baselineTargetGuardedInterventions/);
+  assert.match(edge, /targetPolicy: "baseline_comparison"/);
   assert.match(edge, /serverOwnedInterventionMath: Boolean\(scoreContext\)/);
   assert.match(edge, /targetGroupIds: \{ type: "array"/);
   assert.match(edge, /successMetric: \{/);

@@ -51,7 +51,7 @@ test('official report renders reconciled analysis without exposing AI provenance
   const context = { analysis, type: { name: 'استبانة اتجاهات أو رضا' }, sourceName: 'survey.csv', sourceMeta: { metadata: { school: 'الباسط للبنين الصفوف (8-10)', subject: 'اللغة العربية', grade: '8-10', academicYear: '2025/2026' } }, quality: { completeness: 100 }, recognitionStatus: 'معتمد' };
   const html = sandbox.window.TaqareerReports.buildReportHtml(context, { autoPrint: false });
   assert.equal(sandbox.window.TaqareerReports.VERSION, CURRENT_APP_VERSION);
-  assert.match(html, /تحليل تربوي موثق/);
+  assert.match(html, /سلامة الحسابات: موثوقة/);
   assert.match(html, /منصة التحليل التربوي والبيانات التعليمية/);
   assert.doesNotMatch(html, /ذكاء اصطناعي|Gemini|TQR-/i);
   assert.match(html, /رضا متوسط يخفي أولوية محددة/);
@@ -128,7 +128,7 @@ test('official report completes with a clearly labeled local evidence fallback w
   assert.equal(report.aiUsed, false);
 
   const html = sandbox.window.TaqareerReports.buildReportHtml(context, { autoPrint: false });
-  assert.match(html, /تحليل تربوي محلي موثوق/);
+  assert.match(html, /سلامة الحسابات: موثوقة/);
   assert.doesNotMatch(html, /تحليل غير مكتمل/);
   assert.match(html, /قراءة محلية موثوقة للنتائج/);
 });
@@ -202,14 +202,14 @@ test('End-to-End client guard keeps assessment-component cohort, action, and suc
     interventions: [
       {
         id: 'i1', priority: 'عالية', issue: 'تأهيل الطلبة القريبين من الإتقان', targetGroup: 'قريبون من الإتقان', targetGroupIds: ['deep_gap'], action: 'برنامج سريع للقريبين من الإتقان.', implementationSteps: ['خطوة'], responsibleRole: 'معلم المادة', timeframe: '6 أسابيع', successIndicator: 'قديم', monitoringMethod: 'متابعة', contingency: 'بديل', resources: [], evidenceRefs: ['metric:deepGapCount'],
-        successMetric: { mode: 'segment_reduction', targetValue: 20, targetSegmentId: 'deep_gap' },
-        numericGuard: { applied: true, mode: 'segment_reduction', totalCount: 268, segmentId: 'deep_gap', baselineSegmentCount: 9, reductionCount: 2, targetSegmentCount: 7 },
+        successMetric: { mode: 'segment_reduction', targetValue: 0, targetSegmentId: 'deep_gap' },
+        numericGuard: { applied: true, mode: 'segment_reduction', targetPolicy: 'baseline_comparison', targetDefined: false, totalCount: 268, segmentId: 'deep_gap', baselineSegmentCount: 9 },
         basisClaimType: 'fact', basisConfidence: 'مرتفعة',
       },
       {
         id: 'i2', priority: 'متوسطة', issue: 'إثراء المتفوقين', targetGroup: 'المتفوقون', targetGroupIds: ['moderate_gap', 'near_mastery'], action: 'أنشطة إثرائية للمتفوقين.', implementationSteps: ['خطوة'], responsibleRole: 'معلم المادة', timeframe: '6 أسابيع', successIndicator: 'قديم', monitoringMethod: 'متابعة', contingency: 'بديل', resources: [], evidenceRefs: ['metric:moderateGapCount', 'metric:nearMasteryCount'],
-        successMetric: { mode: 'mastery_gain', targetValue: 57.8, targetSegmentId: '' },
-        numericGuard: { applied: true, mode: 'mastery_gain', totalCount: 268, baselineCount: 141, baselineRate: 52.6, eligibleCount: 118, feasibleGain: 14, targetCount: 155, targetRate: 57.8 },
+        successMetric: { mode: 'mastery_gain', targetValue: 0, targetSegmentId: '' },
+        numericGuard: { applied: true, mode: 'mastery_gain', targetPolicy: 'baseline_comparison', targetDefined: false, totalCount: 268, baselineCount: 141, baselineRate: 52.6, eligibleCount: 118 },
         basisClaimType: 'fact', basisConfidence: 'مرتفعة',
       },
     ],
@@ -240,7 +240,8 @@ test('End-to-End client guard keeps assessment-component cohort, action, and suc
   assert.match(lift.action, /دعم متدرج|مراجعة مركزة/);
   assert.match(lift.targetGroup, /فجوة متوسطة/);
   assert.match(lift.targetGroup, /قريبون من الإتقان/);
-  assert.match(lift.successIndicator, /طالبًا مستهدفًا/);
+  assert.match(lift.successIndicator, /مقارنة بخط الأساس/);
+  assert.equal(lift.targetBasis, 'مقارنة بخط الأساس');
 
   const html = sandbox.window.TaqareerReports.buildReportHtml({
     analysis, type: { id: 'assessment_component', name: 'درجات مكوّن تقويمي' }, sourceName: 'component.pdf',

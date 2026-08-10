@@ -3,7 +3,7 @@
 
   // Phase 2-A: الذكاء الاصطناعي هو مالك التحليل التربوي، بينما يبقى
   // المحرك المحلي مسؤولًا عن الحسابات والرسوم وحزمة الأدلة فقط.
-  const VERSION = "1.4.4";
+  const VERSION = "1.4.5";
   const PROTOCOL_VERSION = "6.8.0";
   const CACHE_KEY = "taqareer-ai-decision-core-cache-v1";
   const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -71,6 +71,10 @@
         thresholdPct: source.thresholdPct ?? null,
         maxScore: source.maxScore ?? null,
       },
+      sampleGuard: source.sampleGuard && typeof source.sampleGuard === "object" ? clone(source.sampleGuard) : null,
+      comparabilityGuard: source.comparabilityGuard && typeof source.comparabilityGuard === "object" ? clone(source.comparabilityGuard) : null,
+      targetPolicy: source.targetPolicy && typeof source.targetPolicy === "object" ? clone(source.targetPolicy) : null,
+      reasoningGuardrails: source.reasoningGuardrails && typeof source.reasoningGuardrails === "object" ? clone(source.reasoningGuardrails) : null,
       scopeContext: source.scopeContext && typeof source.scopeContext === "object"
         ? {
             scopeType: String(source.scopeContext.scopeType || ""),
@@ -254,6 +258,11 @@
         monitoringMustIncludeBaselineCheckpointAndImpact: true,
         aggregateScoresCannotNameSpecificSkillsWithoutEvidence: true,
         interventionsCannotExceedObservedSampleScope: true,
+        smallSamplesMustNotBeGeneralized: true,
+        missingEvidenceIsNotZero: true,
+        crossVisitTrendRequiresComparability: true,
+        narrativePresenceDoesNotEqualPerformance: true,
+        numericTargetsRequireSourceOrBaselinePolicy: true,
         acknowledgeMissingData: true,
         outputLanguage: "العربية الواضحة المهنية",
       },
